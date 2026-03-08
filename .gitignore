@@ -1,0 +1,18 @@
+# Workspace-level ignores
+
+# Node dependencies
+**/node_modules/
+
+# Expo local state
+.expo/
+apps/mobile/.expo/
+apps/mobile/dist/
+apps/mobile/web-build/
+
+# Local environment files
+**/.env
+**/.env.local
+**/.env*.local
+
+# Build artifacts
+**/*.tsbuildinfo

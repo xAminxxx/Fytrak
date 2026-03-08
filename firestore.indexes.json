@@ -1,0 +1,47 @@
+{
+    "indexes": [
+        {
+            "collectionGroup": "templates",
+            "queryScope": "COLLECTION",
+            "fields": [
+                {
+                    "fieldPath": "type",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "createdAt",
+                    "order": "DESCENDING"
+                }
+            ]
+        },
+        {
+            "collectionGroup": "prescribed_meals",
+            "queryScope": "COLLECTION",
+            "fields": [
+                {
+                    "fieldPath": "isApplied",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "assignedAt",
+                    "order": "DESCENDING"
+                }
+            ]
+        },
+        {
+            "collectionGroup": "prescribedWorkouts",
+            "queryScope": "COLLECTION",
+            "fields": [
+                {
+                    "fieldPath": "isCompleted",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "assignedAt",
+                    "order": "DESCENDING"
+                }
+            ]
+        }
+    ],
+    "fieldOverrides": []
+}

@@ -1,0 +1,397 @@
+import { useEffect, useState } from "react";
+import {
+    StyleSheet,
+    Text,
+    View,
+    ScrollView,
+    TextInput,
+    Pressable,
+    Alert,
+    ActivityIndicator,
+    Modal
+} from "react-native";
+import { ScreenShell } from "../../components/ScreenShell";
+import { colors } from "../../theme/colors";
+import { Ionicons } from "@expo/vector-icons";
+import { savePrescribedWorkout, CoachTemplate, subscribeToCoachTemplates } from "../../services/userSession";
+import { auth } from "../../config/firebase";
+import { useNavigation, useRoute } from "@react-navigation/native";
+
+export function PrescribeWorkoutScreen() {
+    const route = useRoute<any>();
+    const navigation = useNavigation<any>();
+    const { traineeId, traineeName } = route.params;
+
+    const [title, setTitle] = useState("");
+    const [exercises, setExercises] = useState([
+        { name: "", targetSets: 4, targetReps: "10-12", restTime: "60s" }
+    ]);
+    const [templates, setTemplates] = useState<CoachTemplate[]>([]);
+    const [libModalVisible, setLibModalVisible] = useState(false);
+    const [saveAsTemplate, setSaveAsTemplate] = useState(false);
+    const [isSubmitting, setIsSubmitting] = useState(false);
+
+    useEffect(() => {
+        const user = auth.currentUser;
+        if (!user) return;
+        const unsubscribe = subscribeToCoachTemplates(user.uid, "workout", (data) => {
+            setTemplates(data);
+        });
+        return () => unsubscribe();
+    }, []);
+
+    const applyTemplate = (t: CoachTemplate) => {
+        setTitle(t.title);
+        if (t.data.exercises) {
+            setExercises(t.data.exercises);
+        }
+        setLibModalVisible(false);
+    };
+
+    const addExercise = () => {
+        setExercises([...exercises, { name: "", targetSets: 4, targetReps: "10-12", restTime: "60s" }]);
+    };
+
+    const updateExercise = (index: number, field: string, value: any) => {
+        const newEx = [...exercises];
+        newEx[index] = { ...newEx[index], [field]: value };
+        setExercises(newEx);
+    };
+
+    const handleSave = async () => {
+        if (!title.trim()) {
+            Alert.alert("Missing Title", "Please give this workout a name (e.g., Upper Body A)");
+            return;
+        }
+        if (exercises.some(e => !e.name.trim())) {
+            Alert.alert("Missing Exercise", "Please fill in all exercise names.");
+            return;
+        }
+
+        try {
+            setIsSubmitting(true);
+            const user = auth.currentUser;
+            if (!user) throw new Error("No coach session");
+
+            await savePrescribedWorkout(traineeId, {
+                coachId: user.uid,
+                coachName: user.displayName || "Your Coach",
+                title: title.trim(),
+                exercises: exercises,
+                isCompleted: false
+            });
+
+            if (saveAsTemplate) {
+                const { saveCoachTemplate } = require("../../services/userSession");
+                await saveCoachTemplate(user.uid, {
+                    title: title.trim(),
+                    type: "workout",
+                    data: { exercises }
+                });
+            }
+
+            Alert.alert("Success", "Workout prescribed successfully!", [
+                { text: "OK", onPress: () => navigation.goBack() }
+            ]);
+        } catch (error) {
+            console.error(error);
+            Alert.alert("Error", "Failed to assign workout.");
+        } finally {
+            setIsSubmitting(false);
+        }
+    };
+
+    return (
+        <ScreenShell
+            title="Prescribe Routine"
+            subtitle={`Assign a new workout for ${traineeName}`}
+            contentStyle={styles.shellContent}
+        >
+            <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scroll}>
+                <View style={styles.topActions}>
+                    <Pressable
+                        style={styles.loadBtn}
+                        onPress={() => {
+                            if (templates.length === 0) {
+                                Alert.alert("Library Empty", "Save a workout as a template first to use this feature.");
+                            } else {
+                                setLibModalVisible(true);
+                            }
+                        }}
+                    >
+                        <Ionicons name="library" size={18} color={colors.primary} />
+                        <Text style={styles.loadBtnText}>LOAD FROM LIBRARY</Text>
+                        <View style={styles.countBadge}><Text style={styles.countText}>{templates.length}</Text></View>
+                    </Pressable>
+                </View>
+
+                <View style={styles.card}>
+                    <Text style={styles.label}>Workout Title</Text>
+                    <TextInput
+                        style={styles.titleInput}
+                        placeholder="e.g. Strength Phase - Day 1"
+                        placeholderTextColor="#444"
+                        value={title}
+                        onChangeText={setTitle}
+                    />
+                </View>
+
+                {exercises.map((ex, idx) => (
+                    <View key={idx} style={styles.exerciseCard}>
+                        <View style={styles.exHeader}>
+                            <Text style={styles.exNumber}>EXERCISE #{idx + 1}</Text>
+                            <Pressable
+                                onPress={() => setExercises(exercises.filter((_, i) => i !== idx))}
+                                disabled={exercises.length === 1}
+                            >
+                                <Ionicons name="trash-outline" size={18} color={exercises.length === 1 ? "#333" : "#ff4444"} />
+                            </Pressable>
+                        </View>
+
+                        <TextInput
+                            style={styles.exNameInput}
+                            placeholder="Exercise Name"
+                            placeholderTextColor="#666"
+                            value={ex.name}
+                            onChangeText={(v) => updateExercise(idx, "name", v)}
+                        />
+
+                        <View style={styles.paramGrid}>
+                            <View style={styles.paramItem}>
+                                <Text style={styles.paramLabel}>SETS</Text>
+                                <TextInput
+                                    style={styles.paramInput}
+                                    keyboardType="numeric"
+                                    value={ex.targetSets.toString()}
+                                    onChangeText={(v) => updateExercise(idx, "targetSets", parseInt(v) || 0)}
+                                />
+                            </View>
+                            <View style={styles.paramItem}>
+                                <Text style={styles.paramLabel}>REPS</Text>
+                                <TextInput
+                                    style={styles.paramInput}
+                                    value={ex.targetReps}
+                                    onChangeText={(v) => updateExercise(idx, "targetReps", v)}
+                                />
+                            </View>
+                            <View style={styles.paramItem}>
+                                <Text style={styles.paramLabel}>REST</Text>
+                                <TextInput
+                                    style={styles.paramInput}
+                                    value={ex.restTime}
+                                    onChangeText={(v) => updateExercise(idx, "restTime", v)}
+                                />
+                            </View>
+                        </View>
+                    </View>
+                ))}
+
+                <Pressable style={styles.addBtn} onPress={addExercise}>
+                    <Ionicons name="add-circle" size={24} color={colors.primary} />
+                    <Text style={styles.addBtnText}>ADD EXERCISE</Text>
+                </Pressable>
+
+                <View style={styles.divider} />
+
+                <Pressable
+                    style={styles.templateToggle}
+                    onPress={() => setSaveAsTemplate(!saveAsTemplate)}
+                >
+                    <View style={styles.iconBox}>
+                        <Ionicons name="save-outline" size={20} color={saveAsTemplate ? colors.primary : "#666"} />
+                    </View>
+                    <View style={{ flex: 1 }}>
+                        <Text style={styles.toggleTitle}>Save to Template Library</Text>
+                        <Text style={styles.toggleSub}>Reusable for other trainees</Text>
+                    </View>
+                    <View style={[styles.switch, saveAsTemplate && styles.switchActive]}>
+                        <View style={[styles.switchCircle, saveAsTemplate && styles.switchCircleActive]} />
+                    </View>
+                </Pressable>
+
+                <View style={styles.footer}>
+                    <Pressable
+                        style={[styles.saveBtn, isSubmitting && { opacity: 0.7 }]}
+                        onPress={handleSave}
+                        disabled={isSubmitting}
+                    >
+                        {isSubmitting ? <ActivityIndicator color={colors.primaryText} /> : (
+                            <>
+                                <Text style={styles.saveBtnText}>ASSIGN TO TRAINEE</Text>
+                                <Ionicons name="paper-plane" size={20} color={colors.primaryText} />
+                            </>
+                        )}
+                    </Pressable>
+                </View>
+            </ScrollView>
+
+            <Modal
+                visible={libModalVisible}
+                animationType="slide"
+                transparent={true}
+                onRequestClose={() => setLibModalVisible(false)}
+            >
+                <View style={styles.modalOverlay}>
+                    <View style={styles.modalContent}>
+                        <View style={styles.modalHeader}>
+                            <Text style={styles.modalTitle}>Select Template</Text>
+                            <Pressable onPress={() => setLibModalVisible(false)} style={styles.closeBtn}>
+                                <Ionicons name="close" size={24} color="#fff" />
+                            </Pressable>
+                        </View>
+                        <ScrollView style={styles.modalList}>
+                            {templates.map(t => (
+                                <Pressable key={t.id} style={styles.modalItem} onPress={() => applyTemplate(t)}>
+                                    <View style={{ flex: 1 }}>
+                                        <Text style={styles.modalItemTitle}>{t.title}</Text>
+                                        <Text style={styles.modalItemSub}>{t.data.exercises?.length || 0} exercises</Text>
+                                    </View>
+                                    <Ionicons name="add-circle-outline" size={24} color={colors.primary} />
+                                </Pressable>
+                            ))}
+                        </ScrollView>
+                    </View>
+                </View>
+            </Modal>
+        </ScreenShell>
+    );
+}
+
+const styles = StyleSheet.create({
+    shellContent: { paddingBottom: 0 },
+    scroll: { paddingBottom: 60, gap: 20, marginTop: 10 },
+    topActions: { marginBottom: 4 },
+    loadBtn: {
+        flexDirection: "row",
+        alignItems: "center",
+        backgroundColor: "#161616",
+        padding: 16,
+        borderRadius: 20,
+        borderWidth: 1,
+        borderColor: "#2c2c2e",
+        gap: 12,
+    },
+    loadBtnText: { color: colors.primary, fontSize: 13, fontWeight: "900", letterSpacing: 0.5 },
+    countBadge: { backgroundColor: "#1c1c1e", paddingHorizontal: 8, paddingVertical: 2, borderRadius: 8, borderWidth: 1, borderColor: "#333" },
+    countText: { color: "#666", fontSize: 10, fontWeight: "800" },
+    card: {
+        backgroundColor: "#161616",
+        borderRadius: 20,
+        padding: 20,
+        borderWidth: 1,
+        borderColor: "#2c2c2e",
+        gap: 8,
+    },
+    label: { color: colors.primary, fontSize: 11, fontWeight: "900", letterSpacing: 1, textTransform: "uppercase" },
+    titleInput: { color: "#ffffff", fontSize: 20, fontWeight: "800", paddingVertical: 8 },
+    exerciseCard: {
+        backgroundColor: "#1c1c1e",
+        borderRadius: 22,
+        padding: 20,
+        gap: 16,
+        borderWidth: 1,
+        borderColor: "#2c2c2e",
+    },
+    exHeader: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
+    exNumber: { color: "#444", fontSize: 12, fontWeight: "900" },
+    exNameInput: {
+        backgroundColor: "#161616",
+        borderRadius: 12,
+        paddingHorizontal: 16,
+        paddingVertical: 14,
+        color: "#ffffff",
+        fontSize: 16,
+        fontWeight: "700",
+        borderWidth: 1,
+        borderColor: "#2c2c2e",
+    },
+    paramGrid: { flexDirection: "row", gap: 12 },
+    paramItem: { flex: 1, gap: 6 },
+    paramLabel: { color: "#666", fontSize: 10, fontWeight: "900", textAlign: "center" },
+    paramInput: {
+        backgroundColor: "#161616",
+        borderRadius: 10,
+        paddingVertical: 10,
+        textAlign: "center",
+        color: colors.primary,
+        fontSize: 15,
+        fontWeight: "800",
+        borderWidth: 1,
+        borderColor: "#2c2c2e",
+    },
+    addBtn: {
+        flexDirection: "row",
+        alignItems: "center",
+        justifyContent: "center",
+        paddingVertical: 18,
+        gap: 10,
+        backgroundColor: "#161616",
+        borderRadius: 20,
+        borderStyle: "dashed",
+        borderWidth: 1,
+        borderColor: "#333",
+    },
+    addBtnText: { color: colors.primary, fontWeight: "900", fontSize: 13 },
+    divider: { height: 1, backgroundColor: "#2c2c2e", marginVertical: 4 },
+    templateToggle: {
+        flexDirection: "row",
+        alignItems: "center",
+        backgroundColor: "#161616",
+        padding: 18,
+        borderRadius: 24,
+        borderWidth: 1,
+        borderColor: "#2c2c2e",
+        gap: 16,
+    },
+    iconBox: {
+        width: 44,
+        height: 44,
+        borderRadius: 14,
+        backgroundColor: "#1c1c1e",
+        alignItems: "center",
+        justifyContent: "center",
+    },
+    toggleTitle: { color: "#ffffff", fontSize: 15, fontWeight: "700" },
+    toggleSub: { color: "#666", fontSize: 12, fontWeight: "500", marginTop: 2 },
+    switch: { width: 44, height: 24, borderRadius: 12, backgroundColor: "#333", padding: 2, justifyContent: "center" },
+    switchActive: { backgroundColor: colors.primary },
+    switchCircle: { width: 20, height: 20, borderRadius: 10, backgroundColor: "#ffffff" },
+    switchCircleActive: { alignSelf: "flex-end" },
+    footer: { marginTop: 10 },
+    saveBtn: {
+        backgroundColor: colors.primary,
+        borderRadius: 22,
+        height: 64,
+        flexDirection: "row",
+        alignItems: "center",
+        justifyContent: "center",
+        gap: 12,
+    },
+    saveBtnText: { color: colors.primaryText, fontWeight: "900", fontSize: 16, letterSpacing: 1 },
+    modalOverlay: { flex: 1, backgroundColor: "rgba(0,0,0,0.8)", justifyContent: "flex-end" },
+    modalContent: {
+        backgroundColor: "#000",
+        borderTopLeftRadius: 32,
+        borderTopRightRadius: 32,
+        height: "70%",
+        padding: 24,
+        borderWidth: 1,
+        borderColor: "#2c2c2e",
+    },
+    modalHeader: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 24 },
+    modalTitle: { color: "#fff", fontSize: 20, fontWeight: "900" },
+    closeBtn: { width: 40, height: 40, borderRadius: 20, backgroundColor: "#111", alignItems: "center", justifyContent: "center" },
+    modalList: { flex: 1 },
+    modalItem: {
+        flexDirection: "row",
+        alignItems: "center",
+        backgroundColor: "#121212",
+        padding: 20,
+        borderRadius: 24,
+        marginBottom: 12,
+        borderWidth: 1,
+        borderColor: "#222",
+    },
+    modalItemTitle: { color: "#fff", fontSize: 16, fontWeight: "800", marginBottom: 4 },
+    modalItemSub: { color: "#666", fontSize: 12, fontWeight: "600" },
+});

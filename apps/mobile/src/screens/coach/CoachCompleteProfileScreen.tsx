@@ -1,0 +1,259 @@
+import { useMemo, useState } from "react";
+import {
+    ActivityIndicator,
+    Pressable,
+    StyleSheet,
+    Text,
+    TextInput,
+    View,
+    ScrollView,
+    KeyboardAvoidingView,
+    Platform
+} from "react-native";
+import { ScreenShell } from "../../components/ScreenShell";
+import { colors } from "../../theme/colors";
+import { Ionicons } from "@expo/vector-icons";
+import type { CoachProfilePayload } from "../../services/userSession";
+
+type CoachCompleteProfileScreenProps = {
+    onComplete: (payload: CoachProfilePayload) => Promise<void>;
+};
+
+const SPECIALTIES = [
+    "Fat Loss", "Muscle Gain", "Bodybuilding", "Yoga",
+    "Powerlifting", "HIIT", "Nutrition", "Rehab"
+];
+
+export function CoachCompleteProfileScreen({ onComplete }: CoachCompleteProfileScreenProps) {
+    const [bio, setBio] = useState("");
+    const [experience, setExperience] = useState("");
+    const [selectedSpecialties, setSelectedSpecialties] = useState<string[]>([]);
+    const [isSubmitting, setIsSubmitting] = useState(false);
+    const [errorText, setErrorText] = useState<string | null>(null);
+
+    const canSubmit = useMemo(() =>
+        bio.trim().length > 10 &&
+        experience.trim().length > 0 &&
+        selectedSpecialties.length > 0 &&
+        !isSubmitting,
+        [bio, experience, selectedSpecialties, isSubmitting]);
+
+    const toggleSpecialty = (s: string) => {
+        setSelectedSpecialties(prev =>
+            prev.includes(s) ? prev.filter(x => x !== s) : [...prev, s]
+        );
+    };
+
+    const handleContinue = async () => {
+        if (!canSubmit) return;
+        try {
+            setIsSubmitting(true);
+            setErrorText(null);
+            await onComplete({ bio, specialties: selectedSpecialties, experience: parseInt(experience) || 0 });
+        } catch (error) {
+            setErrorText(error instanceof Error ? error.message : "Failed to save profile.");
+        } finally {
+            setIsSubmitting(false);
+        }
+    };
+
+    return (
+        <ScreenShell
+            title="Professional Setup"
+            subtitle="Define your coaching profile to attract trainees"
+            contentStyle={styles.shellContent}
+        >
+            <KeyboardAvoidingView
+                behavior={Platform.OS === "ios" ? "padding" : "height"}
+                style={{ flex: 1 }}
+            >
+                <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scroll}>
+                    <View style={styles.card}>
+                        <View style={styles.inputGroup}>
+                            <Text style={styles.label}>Professional Bio</Text>
+                            <TextInput
+                                multiline
+                                numberOfLines={4}
+                                placeholder="Tell potential trainees about your philosophy, background and how you can help them..."
+                                placeholderTextColor="#666"
+                                style={[styles.input, styles.textArea]}
+                                value={bio}
+                                onChangeText={setBio}
+                            />
+                        </View>
+
+                        <View style={styles.inputGroup}>
+                            <Text style={styles.label}>Years of Experience</Text>
+                            <TextInput
+                                placeholder="e.g. 5"
+                                placeholderTextColor="#666"
+                                style={styles.input}
+                                keyboardType="numeric"
+                                value={experience}
+                                onChangeText={setExperience}
+                            />
+                        </View>
+
+                        <View style={styles.inputGroup}>
+                            <Text style={styles.label}>Your Specialties (Select all that apply)</Text>
+                            <View style={styles.specialtyGrid}>
+                                {SPECIALTIES.map((s) => (
+                                    <Pressable
+                                        key={s}
+                                        onPress={() => toggleSpecialty(s)}
+                                        style={[
+                                            styles.specialtyPill,
+                                            selectedSpecialties.includes(s) && styles.specialtyPillActive
+                                        ]}
+                                    >
+                                        <Text style={[
+                                            styles.specialtyText,
+                                            selectedSpecialties.includes(s) && styles.specialtyTextActive
+                                        ]}>{s}</Text>
+                                    </Pressable>
+                                ))}
+                            </View>
+                        </View>
+
+                        <Pressable
+                            style={[styles.finishBtn, !canSubmit && styles.disabledButton]}
+                            disabled={!canSubmit}
+                            onPress={() => void handleContinue()}
+                        >
+                            {isSubmitting ? (
+                                <ActivityIndicator color={colors.primaryText} />
+                            ) : (
+                                <>
+                                    <Text style={styles.finishBtnText}>COMPLETE SETUP</Text>
+                                    <Ionicons name="checkmark-circle" size={20} color={colors.primaryText} />
+                                </>
+                            )}
+                        </Pressable>
+
+                        {errorText ? <Text style={styles.errorText}>{errorText}</Text> : null}
+                    </View>
+
+                    <View style={styles.infoBox}>
+                        <Ionicons name="shield-checkmark" size={18} color="#4ade80" />
+                        <Text style={styles.infoText}>Your profile will be public in the 'Find a Coach' section for trainees.</Text>
+                    </View>
+                </ScrollView>
+            </KeyboardAvoidingView>
+        </ScreenShell>
+    );
+}
+
+const styles = StyleSheet.create({
+    shellContent: {
+        paddingBottom: 0,
+    },
+    scroll: {
+        paddingBottom: 40,
+        marginTop: 10,
+        gap: 20,
+    },
+    card: {
+        backgroundColor: "#161616",
+        borderRadius: 28,
+        padding: 24,
+        borderWidth: 1,
+        borderColor: "#2c2c2e",
+        gap: 24,
+    },
+    inputGroup: {
+        gap: 12,
+    },
+    label: {
+        color: "#ffffff",
+        fontSize: 16,
+        fontWeight: "700",
+        marginLeft: 2,
+    },
+    input: {
+        backgroundColor: "#1c1c1e",
+        borderRadius: 16,
+        paddingHorizontal: 16,
+        paddingVertical: 14,
+        color: "#ffffff",
+        fontSize: 15,
+        fontWeight: "600",
+        borderWidth: 1,
+        borderColor: "#2c2c2e",
+    },
+    textArea: {
+        minHeight: 120,
+        textAlignVertical: "top",
+    },
+    specialtyGrid: {
+        flexDirection: "row",
+        flexWrap: "wrap",
+        gap: 8,
+    },
+    specialtyPill: {
+        backgroundColor: "#1c1c1e",
+        borderRadius: 12,
+        paddingVertical: 10,
+        paddingHorizontal: 16,
+        borderWidth: 1,
+        borderColor: "#2c2c2e",
+    },
+    specialtyPillActive: {
+        borderColor: colors.primary,
+        backgroundColor: "#22251a",
+    },
+    specialtyText: {
+        color: "#8c8c8c",
+        fontWeight: "700",
+        fontSize: 13,
+    },
+    specialtyTextActive: {
+        color: colors.primary,
+    },
+    finishBtn: {
+        backgroundColor: colors.primary,
+        borderRadius: 18,
+        height: 60,
+        flexDirection: "row",
+        alignItems: "center",
+        justifyContent: "center",
+        gap: 12,
+        marginTop: 8,
+        shadowColor: colors.primary,
+        shadowOffset: { width: 0, height: 6 },
+        shadowOpacity: 0.3,
+        shadowRadius: 12,
+        elevation: 8,
+    },
+    finishBtnText: {
+        color: colors.primaryText,
+        fontWeight: "900",
+        fontSize: 14,
+        letterSpacing: 1,
+    },
+    disabledButton: {
+        opacity: 0.5,
+    },
+    errorText: {
+        color: "#ff4444",
+        textAlign: "center",
+        fontSize: 14,
+        fontWeight: "600",
+    },
+    infoBox: {
+        flexDirection: "row",
+        alignItems: "center",
+        gap: 12,
+        backgroundColor: "#161616",
+        padding: 16,
+        borderRadius: 20,
+        borderWidth: 1,
+        borderColor: "#2c2c2e",
+    },
+    infoText: {
+        flex: 1,
+        color: "#8c8c8c",
+        fontSize: 13,
+        fontWeight: "500",
+        lineHeight: 18,
+    },
+});
