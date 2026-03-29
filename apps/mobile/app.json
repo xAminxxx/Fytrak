@@ -1,16 +1,17 @@
 {
   "expo": {
     "name": "Fytrak",
+    "owner": "xamin",
     "slug": "fytrak-mobile",
     "scheme": "fytrak",
     "version": "1.0.0",
     "orientation": "portrait",
-    "icon": "./assets/icon.png",
-    "userInterfaceStyle": "light",
+    "icon": "./assets/branding/raster/icon_main.webp",
+    "userInterfaceStyle": "dark",
     "splash": {
-      "image": "./assets/splash-icon.png",
+      "image": "./assets/branding/raster/logo_full_light.png",
       "resizeMode": "contain",
-      "backgroundColor": "#ffffff"
+      "backgroundColor": "#000000"
     },
     "ios": {
       "supportsTablet": true
@@ -19,10 +20,8 @@
       "package": "com.fytrak",
       "googleServicesFile": "./google-services.json",
       "adaptiveIcon": {
-        "backgroundColor": "#E6F4FE",
-        "foregroundImage": "./assets/android-icon-foreground.png",
-        "backgroundImage": "./assets/android-icon-background.png",
-        "monochromeImage": "./assets/android-icon-monochrome.png"
+        "backgroundColor": "#ffffff",
+        "foregroundImage": "./assets/branding/raster/icon_main.webp"
       },
       "predictiveBackGestureEnabled": false
     },
@@ -31,7 +30,11 @@
     },
     "plugins": [
       "expo-localization",
-      "expo-web-browser"
+      "expo-web-browser",
+      "@react-native-community/datetimepicker",
+      "expo-font",
+      "expo-video",
+      "expo-audio"
     ],
     "extra": {
       "eas": {
