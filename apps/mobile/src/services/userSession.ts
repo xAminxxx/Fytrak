@@ -30,6 +30,48 @@ export type UserProfile = {
     carbs: number;
     fats: number;
   };
+  weight?: number;
+  height?: number;
+  birthDate?: string;
+  activityLevel?: string;
+
+  // New Coach-requested fields
+  city?: string;
+  country?: string;
+  lastTrainedDate?: string;
+  work?: {
+    toughness: number; // 1-10
+    timing: string;
+    stress: number; // 1-10
+  };
+  trainingExperience?: string; // Time spent continuous training
+  healthIssues?: string; // health problems, postures
+  flexibility?: number; // 1-10
+  medical?: {
+    allergies: string;
+    medications: string;
+  };
+  lifestyle?: {
+    smoker: boolean;
+    cigarettesPerDay: number;
+    coffeePerDay: number;
+    alcoholPerDay: number;
+    sleepHours: number;
+    sleepTiming: string;
+  };
+  nutrition?: {
+    specificDishes: string;
+    supplements: string;
+    regularEating: boolean;
+  };
+
+  workoutProfileCompleted?: boolean;
+  nutritionProfileCompleted?: boolean;
+  isPremium?: boolean;
+  assignmentStatus?: AssignmentStatus;
+  selectedCoachId?: string | null;
+  selectedCoachName?: string | null;
+
   coachProfile?: {
     bio: string;
     specialties: string[];
@@ -39,8 +81,46 @@ export type UserProfile = {
 
 export type CompleteProfilePayload = {
   goal: string;
+  weight: number;
+  height: number;
+  birthDate: string;
+  city: string;
+  country: string;
+};
+
+export type WorkoutIntakePayload = {
   level: ProfileLevel;
+  lastTrainedDate: string;
+  trainingExperience: string;
+  healthIssues: string;
+  flexibility: number;
   injuries: string;
+  work: {
+    toughness: number;
+    timing: string;
+    stress: number;
+  };
+};
+
+export type NutritionIntakePayload = {
+  activityLevel: string;
+  medical: {
+    allergies: string;
+    medications: string;
+  };
+  lifestyle: {
+    smoker: boolean;
+    cigarettesPerDay: number;
+    coffeePerDay: number;
+    alcoholPerDay: number;
+    sleepHours: number;
+    sleepTiming: string;
+  };
+  nutrition: {
+    specificDishes: string;
+    supplements: string;
+    regularEating: boolean;
+  };
 };
 
 export type CoachProfilePayload = {
@@ -263,13 +343,36 @@ export const saveCompleteProfile = async (uid: string, payload: CompleteProfileP
       profileCompleted: true,
       profile: {
         goal: payload.goal.trim(),
-        level: payload.level,
-        injuries: payload.injuries.trim(),
+        weight: payload.weight,
+        height: payload.height,
+        birthDate: payload.birthDate,
+        city: payload.city.trim(),
+        country: payload.country.trim(),
       },
+      workoutProfileCompleted: false,
+      nutritionProfileCompleted: false,
       updatedAt: serverTimestamp(),
     },
     { merge: true }
   );
+};
+
+export const saveWorkoutIntake = async (uid: string, payload: WorkoutIntakePayload): Promise<void> => {
+  const ref = doc(db, usersCollection, uid);
+  await setDoc(ref, {
+    workoutProfileCompleted: true,
+    profile: payload, // Merges into the profile object
+    updatedAt: serverTimestamp(),
+  }, { merge: true });
+};
+
+export const saveNutritionIntake = async (uid: string, payload: NutritionIntakePayload): Promise<void> => {
+  const ref = doc(db, usersCollection, uid);
+  await setDoc(ref, {
+    nutritionProfileCompleted: true,
+    profile: payload, // Merges into the profile object
+    updatedAt: serverTimestamp(),
+  }, { merge: true });
 };
 
 export const saveCoachProfile = async (uid: string, payload: CoachProfilePayload): Promise<void> => {
@@ -567,6 +670,11 @@ export const subscribeToProgressPhotos = (uid: string, callback: (photos: Progre
     } as ProgressPhoto));
     callback(photos);
   });
+};
+
+export const deleteProgressPhoto = async (uid: string, photoId: string): Promise<void> => {
+  const ref = doc(db, usersCollection, uid, "photos", photoId);
+  await deleteDoc(ref);
 };
 
 // --- COACH LIBRARY TEMPLATES ---

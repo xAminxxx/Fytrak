@@ -1,3 +1,4 @@
+import * as Haptics from "expo-haptics";
 import { useEffect, useMemo, useState } from "react";
 import { Pressable, ScrollView, StyleSheet, Text, TextInput, View, ActivityIndicator, Alert } from "react-native";
 import { ScreenShell } from "../../components/ScreenShell";
@@ -25,6 +26,49 @@ export function NutritionScreen() {
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [applyingPlanId, setApplyingPlanId] = useState<string | null>(null);
+
+  // --- NUTRITION INTAKE STATE ---
+  const [showIntake, setShowIntake] = useState(false);
+  const [activityLevel, setActivityLevel] = useState("Moderate");
+  const [allergies, setAllergies] = useState("");
+  const [meds, setMeds] = useState("");
+  const [smoker, setSmoker] = useState(false);
+  const [cigs, setCigs] = useState(0);
+  const [coffee, setCoffee] = useState(1);
+  const [alcohol, setAlcohol] = useState(0);
+  const [sleep, setSleep] = useState(7);
+  const [sleepTiming, setSleepTiming] = useState("");
+  const [dishes, setDishes] = useState("");
+  const [supps, setSupps] = useState("");
+  const [isSavingIntake, setIsSavingIntake] = useState(false);
+
+  useEffect(() => {
+    if (profile && profile.nutritionProfileCompleted !== true) {
+      setShowIntake(true);
+    }
+  }, [profile]);
+
+  const handleSaveIntake = async () => {
+    if (!auth.currentUser) return;
+    try {
+      setIsSavingIntake(true);
+      const { saveNutritionIntake } = require("../../services/userSession");
+      await saveNutritionIntake(auth.currentUser.uid, {
+        activityLevel,
+        medical: { allergies, medications: meds },
+        lifestyle: { smoker, cigarettesPerDay: cigs, coffeePerDay: coffee, alcoholPerDay: alcohol, sleepHours: sleep, sleepTiming },
+        nutrition: { specificDishes: dishes, supplements: supps, regularEating: true }
+      });
+      setShowIntake(false);
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    } catch (e) {
+      Alert.alert("Error", "Failed to save nutrition details.");
+    } finally {
+      setIsSavingIntake(false);
+    }
+  };
+
+  // --- RENDERING ---
 
   useEffect(() => {
     const user = auth.currentUser;
@@ -126,6 +170,69 @@ export function NutritionScreen() {
     }
   };
 
+  if (showIntake) {
+    return (
+      <ScreenShell title="Nutrition" subtitle="Medical & Lifestyle intake" contentStyle={styles.shellContent}>
+        <ScrollView contentContainerStyle={styles.scroll}>
+          <View style={styles.logCard}>
+            <SectionTitle title="LIFESTYLE" icon="body" />
+            <Text style={styles.label}>Daily Activity Level</Text>
+            <View style={styles.groupRow}>
+              {["Sedentary", "Moderate", "Active"].map(l => (
+                <Pressable key={l} style={[styles.pill, activityLevel === l && styles.pillActive]} onPress={() => setActivityLevel(l)}>
+                  <Text style={[styles.pillText, activityLevel === l && styles.pillTextActive]}>{l.toUpperCase()}</Text>
+                </Pressable>
+              ))}
+            </View>
+
+            <View style={styles.row}>
+              <MetricStepper label="Coffee / Day" value={coffee} onAdjust={(d) => setCoffee(Math.max(0, coffee + d))} />
+              <MetricStepper label="Sleep (hrs)" value={sleep} onAdjust={(d) => setSleep(Math.max(2, sleep + d))} />
+            </View>
+
+            <SectionTitle title="MEDICAL" icon="medkit" />
+            <View style={styles.inputGroup}>
+              <Text style={styles.label}>Food Allergies</Text>
+              <TextInput style={styles.input} placeholder="Lactose, nuts..." placeholderTextColor="#666" value={allergies} onChangeText={setAllergies} />
+            </View>
+            <View style={styles.inputGroup}>
+              <Text style={styles.label}>Medications / Supplements</Text>
+              <TextInput style={styles.input} placeholder="Vitamins, Omega 3..." placeholderTextColor="#666" value={supps} onChangeText={setSupps} />
+            </View>
+
+            <View style={styles.inputGroup}>
+              <Text style={styles.label}>Sleep Quality & Timing</Text>
+              <TextInput style={styles.input} placeholder="e.g. 11pm - 7am, restless..." placeholderTextColor="#666" value={sleepTiming} onChangeText={setSleepTiming} />
+            </View>
+
+            <SectionTitle title="HABITS" icon="cafe" />
+            <View style={styles.row}>
+              <Pressable style={[styles.pill, smoker && styles.pillActive]} onPress={() => setSmoker(!smoker)}>
+                <Text style={[styles.pillText, smoker && styles.pillTextActive]}>{smoker ? "SMOKER: YES" : "SMOKER: NO"}</Text>
+              </Pressable>
+              {smoker && (
+                <MetricStepper label="Cigs / Day" value={cigs} onAdjust={(d) => setCigs(Math.max(1, cigs + d))} />
+              )}
+            </View>
+            <View style={styles.row}>
+              <MetricStepper label="Alcohol / Week" value={alcohol} onAdjust={(d) => setAlcohol(Math.max(0, alcohol + d))} />
+            </View>
+
+            <SectionTitle title="PREFERENCES" icon="restaurant" />
+            <View style={styles.inputGroup}>
+              <Text style={styles.label}>Any Specific Dishes / Cuisines?</Text>
+              <TextInput style={styles.input} placeholder="Mediterranean, Rice & Chicken..." placeholderTextColor="#666" value={dishes} onChangeText={setDishes} />
+            </View>
+
+            <Pressable style={[styles.saveBtn, { marginTop: 20 }]} onPress={handleSaveIntake} disabled={isSavingIntake}>
+              {isSavingIntake ? <ActivityIndicator color="#000" /> : <Text style={styles.saveBtnText}>COMPLETE NUTRITION PROFILE</Text>}
+            </Pressable>
+          </View>
+        </ScrollView>
+      </ScreenShell>
+    );
+  }
+
   return (
     <ScreenShell
       title="Nutrition"
@@ -160,7 +267,7 @@ export function NutritionScreen() {
           </View>
 
           {/* COACH PRESCRIPTION BANNER */}
-          {prescribed.length > 0 && (
+          {profile?.isPremium && prescribed.length > 0 && (
             <View style={styles.coachBanner}>
               <View style={styles.bannerHeader}>
                 <Ionicons name="sparkles" size={18} color={colors.primary} />
@@ -570,5 +677,42 @@ const styles = StyleSheet.create({
     fontWeight: "900",
     fontSize: 13,
     letterSpacing: 0.5,
-  }
+  },
+  groupRow: { flexDirection: "row", gap: 8, marginBottom: 16 },
+  pill: { flex: 1, paddingVertical: 12, borderRadius: 12, backgroundColor: "#1c1c1e", alignItems: "center", borderWidth: 1, borderColor: "#333" },
+  pillActive: { backgroundColor: colors.primary, borderColor: colors.primary },
+  pillText: { color: "#8c8c8c", fontSize: 11, fontWeight: "900" },
+  pillTextActive: { color: "#000" },
+  sectionHeader: { flexDirection: "row", alignItems: "center", gap: 10, marginTop: 10, marginBottom: 4 },
+  sectionTitleText: { color: "#ffffff", fontWeight: "800", fontSize: 13, letterSpacing: 0.5 },
+  label: { color: "#8c8c8c", fontSize: 14, fontWeight: "600", marginBottom: 4 },
+  stepperContainer: { flexDirection: "row", alignItems: "center", backgroundColor: "#1c1c1e", borderRadius: 12, padding: 4, borderWidth: 1, borderColor: "#333" },
+  stepperBtn: { width: 36, height: 36, alignItems: "center", justifyContent: "center" },
+  stepperValueText: { flex: 1, textAlign: "center", color: "#fff", fontSize: 16, fontWeight: "800" },
 });
+
+function SectionTitle({ title, icon }: { title: string, icon: any }) {
+  return (
+    <View style={styles.sectionHeader}>
+      <Ionicons name={icon} size={18} color={colors.primary} />
+      <Text style={styles.sectionTitleText}>{title}</Text>
+    </View>
+  );
+}
+
+function MetricStepper({ label, value, onAdjust }: { label: string, value: number, onAdjust: (d: number) => void }) {
+  return (
+    <View style={[styles.inputGroup, { flex: 1 }]}>
+      <Text style={styles.label}>{label}</Text>
+      <View style={styles.stepperContainer}>
+        <Pressable style={styles.stepperBtn} onPress={() => onAdjust(-1)}>
+          <Ionicons name="remove" size={18} color={colors.primary} />
+        </Pressable>
+        <Text style={styles.stepperValueText}>{value}</Text>
+        <Pressable style={styles.stepperBtn} onPress={() => onAdjust(1)}>
+          <Ionicons name="add" size={18} color={colors.primary} />
+        </Pressable>
+      </View>
+    </View>
+  );
+}

@@ -7,10 +7,49 @@ import { useNavigation } from "@react-navigation/native";
 import { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import { RootStackParamList } from "../../navigation/RootNavigator";
 import * as WebBrowser from "expo-web-browser";
+import { Typography } from "../../components/Typography";
+import { PrimaryButton } from "../../components/Button";
 import * as Google from "expo-auth-session/providers/google";
 import { appEnv } from "../../config/env";
+import Svg, { Path, G, Circle } from "react-native-svg";
+import appConfig from "../../../app.json";
 
 WebBrowser.maybeCompleteAuthSession();
+
+// Build the Expo Auth Proxy URI dynamically from app.json
+const EXPO_AUTH_PROXY = `https://auth.expo.io/@${appConfig.expo.owner}/${appConfig.expo.slug}`;
+
+// PREMIUM SVG LOGOS
+const GoogleLogo = () => (
+  <Svg width="20" height="20" viewBox="0 0 24 24">
+    <Path
+      fill="#4285F4"
+      d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"
+    />
+    <Path
+      fill="#34A853"
+      d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-1 .67-2.28 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"
+    />
+    <Path
+      fill="#FBBC05"
+      d="M5.84 14.1c-.22-.66-.35-1.36-.35-2.1s.13-1.44.35-2.1V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l3.66-2.83z"
+    />
+    <Path
+      fill="#EA4335"
+      d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.83c.87-2.6 3.3-4.52 6.16-4.52z"
+    />
+  </Svg>
+);
+
+const FacebookLogo = () => (
+  <Svg width="20" height="20" viewBox="0 0 24 24">
+    <Circle cx="12" cy="12" r="12" fill="#1877F2" />
+    <Path
+      fill="#ffffff"
+      d="M15.12 12.67l.43-2.8h-2.69V8.05c0-.77.38-1.53 1.59-1.53h1.23V4.13s-1.12-.19-2.19-.19c-2.23 0-3.69 1.35-3.69 3.8v2.12H7.33v2.8h2.47v6.79c.5.08 1 .12 1.51.12s1.01-.04 1.51-.12v-6.79h2.3z"
+    />
+  </Svg>
+);
 
 type LoginScreenProps = {
   onLogin: (credentials: { email: string; password: string }) => Promise<void>;
@@ -23,9 +62,11 @@ export function LoginScreen({ onLogin, onGoogleLogin }: LoginScreenProps) {
   const [password, setPassword] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errorText, setErrorText] = useState<string | null>(null);
+
   const [request, _response, promptAsync] = Google.useIdTokenAuthRequest({
     clientId: appEnv.google.webClientId,
-    androidClientId: appEnv.google.androidClientId || appEnv.google.webClientId,
+    androidClientId: appEnv.google.androidClientId,
+    redirectUri: EXPO_AUTH_PROXY,
   });
 
   const canSubmit = useMemo(() => email.trim().includes("@") && password.trim().length >= 6, [email, password]);
@@ -47,9 +88,13 @@ export function LoginScreen({ onLogin, onGoogleLogin }: LoginScreenProps) {
   };
 
   const handleGoogleLogin = async () => {
-    if (!request || isSubmitting) {
+    // If request failed to init (client IDs missing), report it early
+    if (!request) {
+      setErrorText("Google Authentication is not configured.");
       return;
     }
+
+    if (isSubmitting) return;
 
     try {
       setIsSubmitting(true);
@@ -83,24 +128,9 @@ export function LoginScreen({ onLogin, onGoogleLogin }: LoginScreenProps) {
       contentStyle={styles.contentTight}
     >
       <View style={styles.form}>
-        <Pressable style={styles.socialButton} onPress={() => void handleGoogleLogin()}>
-          <Ionicons name="logo-google" size={20} color="#4285F4" />
-          <Text style={styles.socialText}>Sign in with Google</Text>
-        </Pressable>
-
-        <Pressable style={styles.socialButton} disabled>
-          <Ionicons name="logo-facebook" size={20} color="#1877F2" />
-          <Text style={styles.socialText}>Continue with Facebook</Text>
-        </Pressable>
-
-        <View style={styles.dividerRow}>
-          <View style={styles.dividerLine} />
-          <Text style={styles.dividerText}>or</Text>
-          <View style={styles.dividerLine} />
-        </View>
-
         <TextInput
           autoCapitalize="none"
+          keyboardType="email-address"
           placeholder="Phone, email, or username"
           placeholderTextColor="#8C93A3"
           style={styles.input}
@@ -124,19 +154,30 @@ export function LoginScreen({ onLogin, onGoogleLogin }: LoginScreenProps) {
           <Text style={styles.forgotText}>Forgot Password?</Text>
         </Pressable>
 
-        <Pressable
-          style={[styles.primaryButton, !canSubmit && styles.disabledButton]}
+        <PrimaryButton
+          title="Login"
           disabled={!canSubmit || isSubmitting}
           onPress={() => void handleLogin()}
-        >
-          {isSubmitting ? (
-            <ActivityIndicator color={colors.primaryText} />
-          ) : (
-            <Text style={styles.primaryButtonText}>Login</Text>
-          )}
+          style={styles.loginBtn}
+        />
+
+        {errorText ? <Typography color={colors.danger} style={styles.errorText}>{errorText}</Typography> : null}
+
+        <View style={styles.dividerRow}>
+          <View style={styles.dividerLine} />
+          <Text style={styles.dividerText}>or</Text>
+          <View style={styles.dividerLine} />
+        </View>
+
+        <Pressable style={styles.socialButton} onPress={() => void handleGoogleLogin()}>
+          <GoogleLogo />
+          <Typography color="#000" variant="button">Sign in with Google</Typography>
         </Pressable>
 
-        {errorText ? <Text style={styles.errorText}>{errorText}</Text> : null}
+        <Pressable style={styles.socialButton} onPress={() => Alert.alert("Facebook", "Facebook Login is pending final verification.")}>
+          <FacebookLogo />
+          <Typography color="#000" variant="button">Continue with Facebook</Typography>
+        </Pressable>
 
         <View style={styles.signupRow}>
           <Text style={styles.signupText}>Don't have an account? </Text>
@@ -148,6 +189,8 @@ export function LoginScreen({ onLogin, onGoogleLogin }: LoginScreenProps) {
     </ScreenShell>
   );
 }
+
+import { Alert } from "react-native";
 
 const styles = StyleSheet.create({
   form: {
@@ -174,7 +217,8 @@ const styles = StyleSheet.create({
   },
   socialText: {
     color: "#000000",
-    fontWeight: "600",
+    fontWeight: "700",
+    letterSpacing: -0.2,
     fontSize: 16,
   },
   dividerRow: {
@@ -240,6 +284,9 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.3,
     shadowRadius: 8,
     elevation: 5,
+  },
+  loginBtn: {
+    marginTop: 10,
   },
   primaryButtonText: {
     color: colors.primaryText,

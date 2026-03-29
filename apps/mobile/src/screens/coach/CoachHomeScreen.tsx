@@ -87,8 +87,8 @@ export function CoachHomeScreen() {
     };
 
     return (
-        <ScreenShell
-            title="Dashboard"
+        <ScreenShell 
+            title="Home"
             subtitle="Your high-performance command center"
             contentStyle={styles.shellContent}
             rightActionIcon="notifications-outline"

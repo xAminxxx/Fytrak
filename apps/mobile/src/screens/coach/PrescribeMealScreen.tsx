@@ -95,6 +95,12 @@ export function PrescribeMealScreen() {
         }
     };
 
+    const [libSearchQuery, setLibSearchQuery] = useState("");
+
+    const filteredTemplates = templates.filter(t =>
+        t.title.toLowerCase().includes(libSearchQuery.toLowerCase())
+    );
+
     return (
         <ScreenShell
             title="Prescribe Nutrition"
@@ -233,16 +239,32 @@ export function PrescribeMealScreen() {
                                 <Ionicons name="close" size={24} color="#fff" />
                             </Pressable>
                         </View>
+
+                        <View style={styles.modalSearch}>
+                            <Ionicons name="search" size={18} color="#666" />
+                            <TextInput
+                                style={styles.modalSearchInput}
+                                placeholder="Search templates..."
+                                placeholderTextColor="#666"
+                                value={libSearchQuery}
+                                onChangeText={setLibSearchQuery}
+                            />
+                        </View>
+
                         <ScrollView style={styles.modalList}>
-                            {templates.map(t => (
-                                <Pressable key={t.id} style={styles.modalItem} onPress={() => applyTemplate(t)}>
-                                    <View style={{ flex: 1 }}>
-                                        <Text style={styles.modalItemTitle}>{t.title}</Text>
-                                        <Text style={styles.modalItemSub}>{t.data.macros?.calories || 0} kcal</Text>
-                                    </View>
-                                    <Ionicons name="add-circle-outline" size={24} color={colors.primary} />
-                                </Pressable>
-                            ))}
+                            {filteredTemplates.length === 0 ? (
+                                <Text style={styles.emptyText}>No templates found.</Text>
+                            ) : (
+                                filteredTemplates.map(t => (
+                                    <Pressable key={t.id} style={styles.modalItem} onPress={() => applyTemplate(t)}>
+                                        <View style={{ flex: 1 }}>
+                                            <Text style={styles.modalItemTitle}>{t.title}</Text>
+                                            <Text style={styles.modalItemSub}>{t.data.macros?.calories || 0} kcal</Text>
+                                        </View>
+                                        <Ionicons name="add-circle-outline" size={24} color={colors.primary} />
+                                    </Pressable>
+                                ))
+                            )}
                         </ScrollView>
                     </View>
                 </View>
@@ -365,4 +387,28 @@ const styles = StyleSheet.create({
     },
     modalItemTitle: { color: "#fff", fontSize: 16, fontWeight: "800", marginBottom: 4 },
     modalItemSub: { color: "#666", fontSize: 12, fontWeight: "600" },
+    modalSearch: {
+        flexDirection: "row",
+        alignItems: "center",
+        backgroundColor: "#111",
+        borderRadius: 16,
+        paddingHorizontal: 16,
+        height: 52,
+        gap: 12,
+        borderWidth: 1,
+        borderColor: "#2c2c2e",
+        marginBottom: 20,
+    },
+    modalSearchInput: {
+        flex: 1,
+        color: "#fff",
+        fontSize: 15,
+        fontWeight: "600",
+    },
+    emptyText: {
+        color: "#666",
+        textAlign: "center",
+        marginTop: 40,
+        fontSize: 15,
+    },
 });

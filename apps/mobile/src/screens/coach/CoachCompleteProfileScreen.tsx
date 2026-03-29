@@ -84,14 +84,30 @@ export function CoachCompleteProfileScreen({ onComplete }: CoachCompleteProfileS
 
                         <View style={styles.inputGroup}>
                             <Text style={styles.label}>Years of Experience</Text>
-                            <TextInput
-                                placeholder="e.g. 5"
-                                placeholderTextColor="#666"
-                                style={styles.input}
-                                keyboardType="numeric"
-                                value={experience}
-                                onChangeText={setExperience}
-                            />
+                            <View style={styles.experienceStepper}>
+                                <Pressable
+                                    onPress={() => {
+                                        const val = parseInt(experience) || 0;
+                                        if (val > 0) setExperience((val - 1).toString());
+                                    }}
+                                    style={styles.stepperBtn}
+                                >
+                                    <Ionicons name="remove" size={20} color="#fff" />
+                                </Pressable>
+                                <View style={styles.experienceDisplay}>
+                                    <Text style={styles.experienceValue}>{experience || "0"}</Text>
+                                    <Text style={styles.experienceUnit}>YEARS</Text>
+                                </View>
+                                <Pressable
+                                    onPress={() => {
+                                        const val = parseInt(experience) || 0;
+                                        setExperience((val + 1).toString());
+                                    }}
+                                    style={styles.stepperBtn}
+                                >
+                                    <Ionicons name="add" size={20} color={colors.primary} />
+                                </Pressable>
+                            </View>
                         </View>
 
                         <View style={styles.inputGroup}>
@@ -179,6 +195,38 @@ const styles = StyleSheet.create({
         fontWeight: "600",
         borderWidth: 1,
         borderColor: "#2c2c2e",
+    },
+    experienceStepper: {
+        flexDirection: "row",
+        alignItems: "center",
+        justifyContent: "space-between",
+        backgroundColor: "#1c1c1e",
+        borderRadius: 20,
+        padding: 8,
+        borderWidth: 1,
+        borderColor: "#2c2c2e",
+    },
+    stepperBtn: {
+        width: 50,
+        height: 50,
+        borderRadius: 15,
+        backgroundColor: "#2c2c2e",
+        alignItems: "center",
+        justifyContent: "center",
+    },
+    experienceDisplay: {
+        alignItems: "center",
+    },
+    experienceValue: {
+        color: colors.primary,
+        fontSize: 24,
+        fontWeight: "900",
+    },
+    experienceUnit: {
+        color: "#666",
+        fontSize: 10,
+        fontWeight: "800",
+        marginTop: -4,
     },
     textArea: {
         minHeight: 120,

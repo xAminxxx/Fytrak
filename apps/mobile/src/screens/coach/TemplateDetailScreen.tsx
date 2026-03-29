@@ -7,7 +7,8 @@ import {
     Pressable,
     Alert,
     ActivityIndicator,
-    Modal
+    Modal,
+    TextInput
 } from "react-native";
 import { ScreenShell } from "../../components/ScreenShell";
 import { colors } from "../../theme/colors";
@@ -115,6 +116,12 @@ export function TemplateDetailScreen() {
         );
     };
 
+    const [searchQuery, setSearchQuery] = useState("");
+
+    const filteredTrainees = trainees.filter(t =>
+        (t.name || "").toLowerCase().includes(searchQuery.toLowerCase())
+    );
+
     if (isLoading) {
         return (
             <ScreenShell title="Loading..." contentStyle={styles.center}>
@@ -199,11 +206,25 @@ export function TemplateDetailScreen() {
                                 <Ionicons name="close" size={24} color="#fff" />
                             </Pressable>
                         </View>
+
+                        <View style={styles.modalSearch}>
+                            <Ionicons name="search" size={18} color="#666" />
+                            <TextInput
+                                style={styles.modalSearchInput}
+                                placeholder="Search clients..."
+                                placeholderTextColor="#666"
+                                value={searchQuery}
+                                onChangeText={setSearchQuery}
+                            />
+                        </View>
+
                         <ScrollView showsVerticalScrollIndicator={false}>
-                            {trainees.length === 0 ? (
-                                <Text style={styles.emptyText}>You don't have any active clients yet.</Text>
+                            {filteredTrainees.length === 0 ? (
+                                <Text style={styles.emptyText}>
+                                    {searchQuery ? "No clients found." : "You don't have any active clients yet."}
+                                </Text>
                             ) : (
-                                trainees.map(t => (
+                                filteredTrainees.map(t => (
                                     <Pressable
                                         key={t.id}
                                         style={styles.traineeItem}
@@ -316,5 +337,23 @@ const styles = StyleSheet.create({
     avatarTxt: { color: colors.primaryText, fontWeight: "900", fontSize: 16 },
     traineeName: { flex: 1, color: "#fff", fontSize: 16, fontWeight: "700" },
     emptyText: { color: "#666", textAlign: "center", marginTop: 40, fontSize: 15 },
+    modalSearch: {
+        flexDirection: "row",
+        alignItems: "center",
+        backgroundColor: "#111",
+        borderRadius: 16,
+        paddingHorizontal: 16,
+        height: 52,
+        gap: 12,
+        borderWidth: 1,
+        borderColor: "#2c2c2e",
+        marginBottom: 20,
+    },
+    modalSearchInput: {
+        flex: 1,
+        color: "#fff",
+        fontSize: 15,
+        fontWeight: "600",
+    },
     loadingOverlay: { ...StyleSheet.absoluteFillObject, backgroundColor: "rgba(0,0,0,0.7)", alignItems: "center", justifyContent: "center", borderRadius: 32 },
 });

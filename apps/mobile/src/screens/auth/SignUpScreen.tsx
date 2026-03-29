@@ -3,6 +3,8 @@ import { ActivityIndicator, Pressable, StyleSheet, Text, TextInput, View } from 
 import { ScreenShell } from "../../components/ScreenShell";
 import { colors } from "../../theme/colors";
 import { Ionicons } from "@expo/vector-icons";
+import { Typography } from "../../components/Typography";
+import { PrimaryButton } from "../../components/Button";
 import * as WebBrowser from "expo-web-browser";
 import * as Google from "expo-auth-session/providers/google";
 import { appEnv } from "../../config/env";
@@ -97,7 +99,7 @@ export function SignUpScreen({ onSignUp, onGoogleLogin }: SignUpScreenProps) {
     >
       <View style={styles.form}>
         <View style={styles.inputGroup}>
-          <Text style={styles.label}>Name</Text>
+          <Typography variant="label">Name</Typography>
           <TextInput
             value={name}
             onChangeText={setName}
@@ -121,7 +123,7 @@ export function SignUpScreen({ onSignUp, onGoogleLogin }: SignUpScreenProps) {
         </View>
 
         <View style={styles.inputGroup}>
-          <Text style={styles.label}>Phone</Text>
+          <Text style={styles.label}>Phone (Optional)</Text>
           <TextInput
             value={phone}
             onChangeText={setPhone}
@@ -157,33 +159,36 @@ export function SignUpScreen({ onSignUp, onGoogleLogin }: SignUpScreenProps) {
         </View>
 
         <View style={styles.inputGroup}>
-          <Text style={styles.label}>I am a...</Text>
-          <View style={styles.roleRow}>
+          <Text style={styles.label}>I want to join as a...</Text>
+          <View style={styles.roleGrid}>
             <Pressable
-              style={[styles.rolePill, role === "trainee" && styles.rolePillActive]}
+              style={[styles.roleCard, role === "trainee" && styles.roleCardActive]}
               onPress={() => setRole("trainee")}
             >
-              <Ionicons
-                name="person"
-                size={16}
-                color={role === "trainee" ? colors.primary : "#8c8c8c"}
-              />
-              <Text style={[styles.roleText, role === "trainee" && styles.roleTextActive]}>
-                Trainee
-              </Text>
+              <View style={[styles.roleIconContainer, role === "trainee" && styles.roleIconActive]}>
+                <Ionicons
+                  name="fitness-outline"
+                  size={24}
+                  color={role === "trainee" ? colors.primary : "#8c8c8c"}
+                />
+              </View>
+              <Text style={[styles.roleLabel, role === "trainee" && styles.roleLabelActive]}>Trainee</Text>
+              <Text style={styles.roleSub}>I want to be coached</Text>
             </Pressable>
+
             <Pressable
-              style={[styles.rolePill, role === "coach" && styles.rolePillActive]}
+              style={[styles.roleCard, role === "coach" && styles.roleCardActive]}
               onPress={() => setRole("coach")}
             >
-              <Ionicons
-                name="trophy"
-                size={16}
-                color={role === "coach" ? colors.primary : "#8c8c8c"}
-              />
-              <Text style={[styles.roleText, role === "coach" && styles.roleTextActive]}>
-                Coach
-              </Text>
+              <View style={[styles.roleIconContainer, role === "coach" && styles.roleIconActive]}>
+                <Ionicons
+                  name="trophy-outline"
+                  size={24}
+                  color={role === "coach" ? colors.primary : "#8c8c8c"}
+                />
+              </View>
+              <Text style={[styles.roleLabel, role === "coach" && styles.roleLabelActive]}>Coach</Text>
+              <Text style={styles.roleSub}>I want to manage clients</Text>
             </Pressable>
           </View>
         </View>
@@ -197,19 +202,14 @@ export function SignUpScreen({ onSignUp, onGoogleLogin }: SignUpScreenProps) {
           </Text>
         </Pressable>
 
-        <Pressable
-          style={[styles.primaryButton, !canSubmit && styles.disabledButton]}
-          disabled={!canSubmit || isSubmitting}
-          onPress={() => void handleSignUp()}
-        >
-          {isSubmitting ? (
-            <ActivityIndicator color={colors.primaryText} />
-          ) : (
-            <Text style={styles.primaryButtonText}>Sign up</Text>
-          )}
-        </Pressable>
+        <PrimaryButton 
+          title="Sign up" 
+          disabled={!canSubmit || isSubmitting} 
+          onPress={() => void handleSignUp()} 
+          style={styles.signupBtn} 
+        />
 
-        {errorText ? <Text style={styles.errorText}>{errorText}</Text> : null}
+        {errorText ? <Typography color={colors.danger} style={styles.errorText}>{errorText}</Typography> : null}
 
         <Text style={styles.socialLabel}>or sign up with</Text>
         <View style={styles.socialRow}>
@@ -280,33 +280,50 @@ const styles = StyleSheet.create({
     color: colors.primary,
     textDecorationLine: "underline",
   },
-  roleRow: {
+  roleGrid: {
     flexDirection: "row",
     gap: 12,
+    marginTop: 8,
   },
-  rolePill: {
+  roleCard: {
     flex: 1,
-    flexDirection: "row",
+    backgroundColor: colors.inputBg,
+    borderRadius: 20,
+    padding: 16,
+    alignItems: "center",
+    borderWidth: 2,
+    borderColor: "transparent",
+    gap: 8,
+  },
+  roleCardActive: {
+    borderColor: colors.primary,
+    backgroundColor: "#1c1d15",
+  },
+  roleIconContainer: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    backgroundColor: "#1c1c1e",
     alignItems: "center",
     justifyContent: "center",
-    gap: 8,
-    backgroundColor: colors.inputBg,
-    borderRadius: 14,
-    paddingVertical: 13,
-    borderWidth: 1,
-    borderColor: "transparent",
+    marginBottom: 4,
   },
-  rolePillActive: {
-    borderColor: colors.primary,
+  roleIconActive: {
     backgroundColor: "#22251a",
   },
-  roleText: {
+  roleLabel: {
     color: "#8c8c8c",
-    fontSize: 15,
-    fontWeight: "700",
+    fontSize: 16,
+    fontWeight: "800",
   },
-  roleTextActive: {
+  roleLabelActive: {
     color: colors.primary,
+  },
+  roleSub: {
+    color: "#444",
+    fontSize: 10,
+    fontWeight: "600",
+    textAlign: "center",
   },
   primaryButton: {
     marginTop: 4,
@@ -319,6 +336,9 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.3,
     shadowRadius: 8,
     elevation: 5,
+  },
+  signupBtn: {
+    marginTop: 10,
   },
   primaryButtonText: {
     color: colors.primaryText,

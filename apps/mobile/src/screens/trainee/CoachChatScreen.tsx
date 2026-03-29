@@ -156,7 +156,7 @@ export function CoachChatScreen({ traineeId, coachId, traineeName }: CoachChatSc
 
   return (
     <ScreenShell
-      title={traineeName ? `Chat: ${traineeName}` : "Coach Chat"}
+      title={traineeName ? `Chat: ${traineeName}` : "Chat"}
       subtitle={traineeName ? "Discussion with your trainee" : "Direct support with your assigned coach"}
       contentStyle={styles.shellContent}
     >

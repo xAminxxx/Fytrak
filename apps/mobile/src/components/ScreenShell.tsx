@@ -11,6 +11,8 @@ type ScreenShellProps = PropsWithChildren<{
   titleStyle?: StyleProp<TextStyle>;
   subtitleStyle?: StyleProp<TextStyle>;
   contentStyle?: StyleProp<ViewStyle>;
+  leftActionIcon?: keyof typeof Ionicons.glyphMap;
+  onLeftAction?: () => void;
   rightActionIcon?: keyof typeof Ionicons.glyphMap;
   onRightAction?: () => void;
 }>;
@@ -22,6 +24,8 @@ export function ScreenShell({
   titleStyle,
   subtitleStyle,
   contentStyle,
+  leftActionIcon,
+  onLeftAction,
   rightActionIcon,
   onRightAction,
   children,
@@ -31,7 +35,15 @@ export function ScreenShell({
       <View style={[styles.container, centered && styles.containerCentered]}>
         <View style={styles.header}>
           <View style={styles.headerTitleRow}>
-            <Text numberOfLines={1} style={[styles.title, titleStyle, { flex: 1 }]}>
+            {leftActionIcon && onLeftAction && (
+              <Pressable onPress={onLeftAction} style={[styles.headerButton, { marginRight: 16 }]}>
+                <Ionicons name={leftActionIcon} size={24} color="#fff" />
+              </Pressable>
+            )}
+            <Text 
+              numberOfLines={1} 
+              style={[styles.title, titleStyle, { flex: 1 }]}
+            >
               {title.toUpperCase()}
             </Text>
             {rightActionIcon && onRightAction && (
@@ -80,12 +92,11 @@ const styles = StyleSheet.create({
     borderColor: "#333",
   },
   title: {
-    fontSize: 40,
-    fontWeight: "900",
+    fontFamily: "Adcure", // Brand font re-applied
+    fontSize: 34,
     color: colors.primary,
     letterSpacing: 1.0,
-    fontStyle: "italic",
-    lineHeight: 48,
+    lineHeight: 40,
     paddingRight: 10,
   },
   subtitle: {
@@ -104,4 +115,3 @@ const styles = StyleSheet.create({
     marginTop: 20,
   },
 });
-

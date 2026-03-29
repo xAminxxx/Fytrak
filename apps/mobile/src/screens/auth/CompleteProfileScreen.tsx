@@ -3,6 +3,8 @@ import { ActivityIndicator, Pressable, StyleSheet, Text, TextInput, View, Scroll
 import { ScreenShell } from "../../components/ScreenShell";
 import { colors } from "../../theme/colors";
 import { Ionicons } from "@expo/vector-icons";
+import DateTimePicker from "@react-native-community/datetimepicker";
+import * as Haptics from "expo-haptics";
 import type { CompleteProfilePayload } from "../../services/userSession";
 
 type CompleteProfileScreenProps = {
@@ -11,19 +13,40 @@ type CompleteProfileScreenProps = {
 
 export function CompleteProfileScreen({ onComplete }: CompleteProfileScreenProps) {
   const [goal, setGoal] = useState("");
-  const [level, setLevel] = useState<"Beginner" | "Intermediate" | "Advanced">("Beginner");
-  const [injuries, setInjuries] = useState("");
+  // Basic Stats
+  const [weight, setWeight] = useState(75);
+  const [height, setHeight] = useState(175);
+  const [birthDate, setBirthDate] = useState(new Date(2000, 0, 1));
+  const [showBirthPicker, setShowBirthPicker] = useState(false);
+  const [city, setCity] = useState("");
+  const [country, setCountry] = useState("");
+
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errorText, setErrorText] = useState<string | null>(null);
 
-  const canSubmit = useMemo(() => goal.trim().length > 2 && !isSubmitting, [goal, isSubmitting]);
+  const canSubmit = useMemo(() =>
+    goal.trim().length > 2 &&
+    city.trim().length > 1 &&
+    weight > 0 &&
+    height > 0 &&
+    !isSubmitting,
+    [goal, weight, height, city, isSubmitting]
+  );
 
   const handleContinue = async () => {
     if (!canSubmit) return;
     try {
       setIsSubmitting(true);
       setErrorText(null);
-      await onComplete({ goal, level, injuries });
+      await onComplete({
+        goal,
+        weight,
+        height,
+        birthDate: birthDate.toISOString().split('T')[0],
+        city,
+        country,
+      });
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     } catch (error) {
       setErrorText(error instanceof Error ? error.message : "Failed to save profile.");
     } finally {
@@ -31,10 +54,15 @@ export function CompleteProfileScreen({ onComplete }: CompleteProfileScreenProps
     }
   };
 
+  const adjustMetric = (setter: React.Dispatch<React.SetStateAction<number>>, delta: number, min = 0) => {
+    setter(prev => Math.max(min, prev + delta));
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+  };
+
   return (
     <ScreenShell
       title="Personalize"
-      subtitle="Complete your profile to get the best experience"
+      subtitle="Just a few basics to get started"
       contentStyle={styles.shellContent}
     >
       <KeyboardAvoidingView
@@ -42,11 +70,14 @@ export function CompleteProfileScreen({ onComplete }: CompleteProfileScreenProps
         style={{ flex: 1 }}
       >
         <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scroll}>
+
+          {/* Section: Basic Info */}
+          <SectionTitle title="GENERAL STATS" icon="person" />
           <View style={styles.card}>
             <View style={styles.inputGroup}>
-              <Text style={styles.label}>What is your primary fitness goal?</Text>
+              <Text style={styles.label}>Primary Fitness Goal</Text>
               <TextInput
-                placeholder="e.g. Lose 5kg of fat, build muscle"
+                placeholder="e.g. Lose fat, Build muscle"
                 placeholderTextColor="#666"
                 style={styles.input}
                 value={goal}
@@ -54,55 +85,56 @@ export function CompleteProfileScreen({ onComplete }: CompleteProfileScreenProps
               />
             </View>
 
-            <View style={styles.inputGroup}>
-              <Text style={styles.label}>Select your current level</Text>
-              <View style={styles.levelRow}>
-                {(["Beginner", "Intermediate", "Advanced"] as const).map((item) => (
-                  <Pressable
-                    key={item}
-                    onPress={() => setLevel(item)}
-                    style={[styles.levelPill, level === item && styles.levelPillActive]}
-                  >
-                    <Text style={[styles.levelPillText, level === item && styles.levelPillTextActive]}>{item}</Text>
-                  </Pressable>
-                ))}
+            <View style={styles.row}>
+              <MetricStepper label="Weight (kg)" value={weight} onAdjust={(d) => adjustMetric(setWeight, d)} />
+              <MetricStepper label="Height (cm)" value={height} onAdjust={(d) => adjustMetric(setHeight, d)} />
+            </View>
+
+            <View style={styles.row}>
+              <View style={[styles.inputGroup, { flex: 1 }]}>
+                <Text style={styles.label}>City</Text>
+                <TextInput placeholder="Tunis" placeholderTextColor="#666" style={styles.input} value={city} onChangeText={setCity} />
+              </View>
+              <View style={[styles.inputGroup, { flex: 1 }]}>
+                <Text style={styles.label}>Country</Text>
+                <TextInput placeholder="Tunisia" placeholderTextColor="#666" style={styles.input} value={country} onChangeText={setCountry} />
               </View>
             </View>
 
             <View style={styles.inputGroup}>
-              <Text style={styles.label}>Injuries or limitations (optional)</Text>
-              <TextInput
-                multiline
-                numberOfLines={3}
-                placeholder="Any history of injuries or medical conditions"
-                placeholderTextColor="#666"
-                style={[styles.input, styles.textArea]}
-                value={injuries}
-                onChangeText={setInjuries}
-              />
-            </View>
-
-            <Pressable
-              style={[styles.finishBtn, !canSubmit && styles.disabledButton]}
-              disabled={!canSubmit}
-              onPress={() => void handleContinue()}
-            >
-              {isSubmitting ? (
-                <ActivityIndicator color={colors.primaryText} />
-              ) : (
-                <>
-                  <Text style={styles.finishBtnText}>START YOUR JOURNEY</Text>
-                  <Ionicons name="arrow-forward" size={20} color={colors.primaryText} />
-                </>
+              <Text style={styles.label}>Birth Date</Text>
+              <DateButton date={birthDate} onPress={() => setShowBirthPicker(true)} />
+              {showBirthPicker && (
+                <DateTimePicker
+                  value={birthDate}
+                  mode="date"
+                  onChange={(e, d) => { setShowBirthPicker(false); if (d) setBirthDate(d); }}
+                  maximumDate={new Date()}
+                />
               )}
-            </Pressable>
-
-            {errorText ? <Text style={styles.errorText}>{errorText}</Text> : null}
+            </View>
           </View>
 
+          <Pressable
+            style={[styles.finishBtn, !canSubmit && styles.disabledButton]}
+            disabled={!canSubmit || isSubmitting}
+            onPress={() => void handleContinue()}
+          >
+            {isSubmitting ? (
+              <ActivityIndicator color={colors.primaryText} />
+            ) : (
+              <>
+                <Text style={styles.finishBtnText}>START YOUR JOURNEY</Text>
+                <Ionicons name="arrow-forward" size={20} color={colors.primaryText} />
+              </>
+            )}
+          </Pressable>
+
+          {errorText ? <Text style={styles.errorText}>{errorText}</Text> : null}
+
           <View style={styles.infoBox}>
-            <Ionicons name="shield-checkmark" size={18} color="#4ade80" />
-            <Text style={styles.infoText}>Your data is private and only shared with your assigned coach.</Text>
+            <Ionicons name="lock-closed" size={18} color="#4ade80" />
+            <Text style={styles.infoText}>Detailed workout and nutrition questions will follow when you access those sections.</Text>
           </View>
         </ScrollView>
       </KeyboardAvoidingView>
@@ -110,117 +142,69 @@ export function CompleteProfileScreen({ onComplete }: CompleteProfileScreenProps
   );
 }
 
+// Reusable Components to keep UI clean
+function SectionTitle({ title, icon }: { title: string, icon: any }) {
+  return (
+    <View style={styles.sectionHeader}>
+      <Ionicons name={icon} size={18} color={colors.primary} />
+      <Text style={styles.sectionTitleText}>{title}</Text>
+    </View>
+  );
+}
+
+function MetricStepper({ label, value, onAdjust }: { label: string, value: number, onAdjust: (d: number) => void }) {
+  return (
+    <View style={[styles.inputGroup, { flex: 1 }]}>
+      <Text style={[styles.label, { fontSize: 13 }]}>{label}</Text>
+      <View style={styles.stepperContainer}>
+        <Pressable style={styles.stepperBtn} onPress={() => onAdjust(-1)}>
+          <Ionicons name="remove" size={18} color={colors.primary} />
+        </Pressable>
+        <Text style={styles.stepperValueText}>{value}</Text>
+        <Pressable style={styles.stepperBtn} onPress={() => onAdjust(1)}>
+          <Ionicons name="add" size={18} color={colors.primary} />
+        </Pressable>
+      </View>
+    </View>
+  );
+}
+
+function DateButton({ date, onPress }: { date: Date, onPress: () => void }) {
+  return (
+    <Pressable style={styles.dateSelector} onPress={onPress}>
+      <Ionicons name="calendar-outline" size={20} color={colors.primary} />
+      <Text style={styles.dateText}>
+        {date.toLocaleDateString('en-GB', { day: '2-digit', month: '2-digit', year: 'numeric' })}
+      </Text>
+    </Pressable>
+  );
+}
+
 const styles = StyleSheet.create({
-  shellContent: {
-    paddingBottom: 0,
-  },
-  scroll: {
-    paddingBottom: 40,
-    marginTop: 10,
-    gap: 20,
-  },
-  card: {
-    backgroundColor: "#161616",
-    borderRadius: 28,
-    padding: 24,
-    borderWidth: 1,
-    borderColor: "#2c2c2e",
-    gap: 24,
-  },
-  inputGroup: {
-    gap: 12,
-  },
-  label: {
-    color: "#ffffff",
-    fontSize: 16,
-    fontWeight: "700",
-    marginLeft: 2,
-  },
-  input: {
-    backgroundColor: "#1c1c1e",
-    borderRadius: 16,
-    paddingHorizontal: 16,
-    paddingVertical: 14,
-    color: "#ffffff",
-    fontSize: 15,
-    fontWeight: "600",
-    borderWidth: 1,
-    borderColor: "#2c2c2e",
-  },
-  textArea: {
-    minHeight: 100,
-    textAlignVertical: "top",
-  },
-  levelRow: {
-    flexDirection: "row",
-    gap: 10,
-  },
-  levelPill: {
-    flex: 1,
-    backgroundColor: "#1c1c1e",
-    borderRadius: 12,
-    paddingVertical: 12,
-    alignItems: "center",
-    borderWidth: 1,
-    borderColor: "#2c2c2e",
-  },
-  levelPillActive: {
-    borderColor: colors.primary,
-    backgroundColor: "#22251a",
-  },
-  levelPillText: {
-    color: "#8c8c8c",
-    fontWeight: "700",
-    fontSize: 13,
-  },
-  levelPillTextActive: {
-    color: colors.primary,
-  },
-  finishBtn: {
-    backgroundColor: colors.primary,
-    borderRadius: 18,
-    height: 60,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 12,
-    marginTop: 8,
-    shadowColor: colors.primary,
-    shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.3,
-    shadowRadius: 12,
-    elevation: 8,
-  },
-  finishBtnText: {
-    color: colors.primaryText,
-    fontWeight: "900",
-    fontSize: 14,
-    letterSpacing: 1,
-  },
-  disabledButton: {
-    opacity: 0.5,
-  },
-  errorText: {
-    color: "#ff4444",
-    textAlign: "center",
-    fontSize: 14,
-    fontWeight: "600",
-  },
-  infoBox: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 12,
-    backgroundColor: "#161616",
-    padding: 16,
-    borderRadius: 20,
-    borderWidth: 1,
-    borderColor: "#2c2c2e",
-  },
-  infoText: {
-    flex: 1,
-    color: "#8c8c8c",
-    fontSize: 13,
-    fontWeight: "500",
-    lineHeight: 18,
-  },
+  shellContent: { paddingBottom: 0 },
+  scroll: { paddingBottom: 60, marginTop: 10, gap: 16 },
+  sectionHeader: { flexDirection: "row", alignItems: "center", gap: 8, marginLeft: 8, marginTop: 8 },
+  sectionTitleText: { color: colors.primary, fontSize: 13, fontWeight: "900", letterSpacing: 1 },
+  card: { backgroundColor: "#161616", borderRadius: 24, padding: 20, borderWidth: 1, borderColor: "#2c2c2e", gap: 16 },
+  inputGroup: { gap: 8 },
+  row: { flexDirection: "row", gap: 12 },
+  label: { color: "#8c8c8c", fontSize: 14, fontWeight: "700", marginLeft: 2 },
+  input: { backgroundColor: "#1c1c1e", borderRadius: 14, paddingHorizontal: 16, paddingVertical: 12, color: "#ffffff", fontSize: 15, fontWeight: "600", borderWidth: 1, borderColor: "#2c2c2e" },
+  textArea: { minHeight: 80, textAlignVertical: "top", paddingTop: 12 },
+  stepperContainer: { flexDirection: "row", alignItems: "center", backgroundColor: "#1c1c1e", borderRadius: 14, borderWidth: 1, borderColor: "#2c2c2e", height: 48, overflow: "hidden" },
+  stepperBtn: { width: 40, height: "100%", alignItems: "center", justifyContent: "center" },
+  stepperValueText: { flex: 1, color: "#ffffff", fontSize: 16, fontWeight: "800", textAlign: "center" },
+  dateSelector: { flexDirection: "row", alignItems: "center", backgroundColor: "#1c1c1e", borderRadius: 14, paddingHorizontal: 16, paddingVertical: 12, gap: 12, borderWidth: 1, borderColor: "#2c2c2e" },
+  dateText: { color: "#ffffff", fontSize: 15, fontWeight: "600" },
+  levelRow: { flexDirection: "row", gap: 8 },
+  levelPill: { flex: 1, backgroundColor: "#1c1c1e", borderRadius: 12, paddingVertical: 12, alignItems: "center", borderWidth: 1, borderColor: "#2c2c2e" },
+  levelPillActive: { borderColor: colors.primary, backgroundColor: "#22251a" },
+  levelPillText: { color: "#444", fontWeight: "900", fontSize: 10, textAlign: "center" },
+  levelPillTextActive: { color: colors.primary },
+  finishBtn: { backgroundColor: colors.primary, borderRadius: 18, height: 62, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 12, marginTop: 12, shadowColor: colors.primary, shadowOffset: { width: 0, height: 6 }, shadowOpacity: 0.3, shadowRadius: 12, elevation: 8 },
+  finishBtnText: { color: colors.primaryText, fontWeight: "900", fontSize: 16, letterSpacing: 1 },
+  disabledButton: { opacity: 0.5 },
+  errorText: { color: "#ff4444", textAlign: "center", fontSize: 14, fontWeight: "600", marginTop: 10 },
+  infoBox: { flexDirection: "row", alignItems: "center", gap: 12, backgroundColor: "#161616", padding: 16, borderRadius: 20, borderWidth: 1, borderColor: "#2c2c2e", marginTop: 10 },
+  infoText: { flex: 1, color: "#8c8c8c", fontSize: 13, fontWeight: "500", lineHeight: 18 },
 });

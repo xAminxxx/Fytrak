@@ -30,6 +30,11 @@ export function PrescribeWorkoutScreen() {
     const [libModalVisible, setLibModalVisible] = useState(false);
     const [saveAsTemplate, setSaveAsTemplate] = useState(false);
     const [isSubmitting, setIsSubmitting] = useState(false);
+    const [libSearchQuery, setLibSearchQuery] = useState("");
+
+    const filteredTemplates = templates.filter(t =>
+        t.title.toLowerCase().includes(libSearchQuery.toLowerCase())
+    );
 
     useEffect(() => {
         const user = auth.currentUser;
@@ -125,12 +130,12 @@ export function PrescribeWorkoutScreen() {
                     </Pressable>
                 </View>
 
-                <View style={styles.card}>
+                <View style={styles.inputGroup}>
                     <Text style={styles.label}>Workout Title</Text>
                     <TextInput
-                        style={styles.titleInput}
-                        placeholder="e.g. Strength Phase - Day 1"
-                        placeholderTextColor="#444"
+                        placeholder="e.g. Monday - Push Day"
+                        placeholderTextColor="#666"
+                        style={styles.input}
                         value={title}
                         onChangeText={setTitle}
                     />
@@ -139,29 +144,30 @@ export function PrescribeWorkoutScreen() {
                 {exercises.map((ex, idx) => (
                     <View key={idx} style={styles.exerciseCard}>
                         <View style={styles.exHeader}>
-                            <Text style={styles.exNumber}>EXERCISE #{idx + 1}</Text>
+                            <View style={styles.indexCircle}><Text style={styles.indexText}>{idx + 1}</Text></View>
+                            <TextInput
+                                placeholder="Exercise Name"
+                                placeholderTextColor="#444"
+                                style={styles.exInput}
+                                value={ex.name}
+                                onChangeText={(v) => updateExercise(idx, "name", v)}
+                            />
                             <Pressable
-                                onPress={() => setExercises(exercises.filter((_, i) => i !== idx))}
-                                disabled={exercises.length === 1}
+                                onPress={() => {
+                                    const newEx = exercises.filter((_, i) => i !== idx);
+                                    setExercises(newEx.length ? newEx : [{ name: "", targetSets: 4, targetReps: "10-12", restTime: "60s" }]);
+                                }}
                             >
-                                <Ionicons name="trash-outline" size={18} color={exercises.length === 1 ? "#333" : "#ff4444"} />
+                                <Ionicons name="close-circle-outline" size={20} color="#ff4444" />
                             </Pressable>
                         </View>
-
-                        <TextInput
-                            style={styles.exNameInput}
-                            placeholder="Exercise Name"
-                            placeholderTextColor="#666"
-                            value={ex.name}
-                            onChangeText={(v) => updateExercise(idx, "name", v)}
-                        />
 
                         <View style={styles.paramGrid}>
                             <View style={styles.paramItem}>
                                 <Text style={styles.paramLabel}>SETS</Text>
                                 <TextInput
-                                    style={styles.paramInput}
                                     keyboardType="numeric"
+                                    style={styles.paramInput}
                                     value={ex.targetSets.toString()}
                                     onChangeText={(v) => updateExercise(idx, "targetSets", parseInt(v) || 0)}
                                 />
@@ -239,16 +245,32 @@ export function PrescribeWorkoutScreen() {
                                 <Ionicons name="close" size={24} color="#fff" />
                             </Pressable>
                         </View>
+
+                        <View style={styles.modalSearch}>
+                            <Ionicons name="search" size={18} color="#666" />
+                            <TextInput
+                                style={styles.modalSearchInput}
+                                placeholder="Search templates..."
+                                placeholderTextColor="#666"
+                                value={libSearchQuery}
+                                onChangeText={setLibSearchQuery}
+                            />
+                        </View>
+
                         <ScrollView style={styles.modalList}>
-                            {templates.map(t => (
-                                <Pressable key={t.id} style={styles.modalItem} onPress={() => applyTemplate(t)}>
-                                    <View style={{ flex: 1 }}>
-                                        <Text style={styles.modalItemTitle}>{t.title}</Text>
-                                        <Text style={styles.modalItemSub}>{t.data.exercises?.length || 0} exercises</Text>
-                                    </View>
-                                    <Ionicons name="add-circle-outline" size={24} color={colors.primary} />
-                                </Pressable>
-                            ))}
+                            {filteredTemplates.length === 0 ? (
+                                <Text style={styles.emptyText}>No templates found.</Text>
+                            ) : (
+                                filteredTemplates.map(t => (
+                                    <Pressable key={t.id} style={styles.modalItem} onPress={() => applyTemplate(t)}>
+                                        <View style={{ flex: 1 }}>
+                                            <Text style={styles.modalItemTitle}>{t.title}</Text>
+                                            <Text style={styles.modalItemSub}>{t.data.exercises?.length || 0} exercises</Text>
+                                        </View>
+                                        <Ionicons name="add-circle-outline" size={24} color={colors.primary} />
+                                    </Pressable>
+                                ))
+                            )}
                         </ScrollView>
                     </View>
                 </View>
@@ -304,6 +326,43 @@ const styles = StyleSheet.create({
         fontWeight: "700",
         borderWidth: 1,
         borderColor: "#2c2c2e",
+    },
+    inputGroup: {
+        gap: 12,
+        marginBottom: 10,
+    },
+    input: {
+        backgroundColor: "#161616",
+        borderRadius: 16,
+        paddingHorizontal: 16,
+        paddingVertical: 14,
+        color: "#ffffff",
+        fontSize: 16,
+        fontWeight: "700",
+        borderWidth: 1,
+        borderColor: "#2c2c2e",
+    },
+    indexCircle: {
+        width: 30,
+        height: 30,
+        borderRadius: 15,
+        backgroundColor: "#1c1c1e",
+        alignItems: "center",
+        justifyContent: "center",
+        borderWidth: 1,
+        borderColor: "#333",
+    },
+    indexText: {
+        color: "#666",
+        fontSize: 14,
+        fontWeight: "900",
+    },
+    exInput: {
+        flex: 1,
+        color: "#fff",
+        fontSize: 16,
+        fontWeight: "700",
+        paddingVertical: 4,
     },
     paramGrid: { flexDirection: "row", gap: 12 },
     paramItem: { flex: 1, gap: 6 },
@@ -394,4 +453,28 @@ const styles = StyleSheet.create({
     },
     modalItemTitle: { color: "#fff", fontSize: 16, fontWeight: "800", marginBottom: 4 },
     modalItemSub: { color: "#666", fontSize: 12, fontWeight: "600" },
+    modalSearch: {
+        flexDirection: "row",
+        alignItems: "center",
+        backgroundColor: "#111",
+        borderRadius: 16,
+        paddingHorizontal: 16,
+        height: 52,
+        gap: 12,
+        borderWidth: 1,
+        borderColor: "#2c2c2e",
+        marginBottom: 20,
+    },
+    modalSearchInput: {
+        flex: 1,
+        color: "#fff",
+        fontSize: 15,
+        fontWeight: "600",
+    },
+    emptyText: {
+        color: "#666",
+        textAlign: "center",
+        marginTop: 40,
+        fontSize: 15,
+    },
 });

@@ -65,6 +65,8 @@ export function TraineeHomeScreen({ onQuickAskCoach }: TraineeHomeScreenProps) {
     };
   }, []);
 
+  const isPremium = profile?.isPremium === true;
+
   const nutritionStats = useMemo(() => {
     const totalCals = meals.reduce((sum, m) => sum + (m.calories || 0), 0);
     const targetCals = profile?.macroTargets?.calories || 2100;
@@ -77,8 +79,8 @@ export function TraineeHomeScreen({ onQuickAskCoach }: TraineeHomeScreenProps) {
 
   return (
     <ScreenShell
-      title="Dashboard"
-      subtitle="Your adherence and today's progress"
+      title="Home"
+      subtitle={isPremium ? "Premium Access Active" : "Your daily training tracking"}
       contentStyle={styles.shellContent}
       rightActionIcon="person-circle-outline"
       onRightAction={() => navigation.navigate("Profile")}
@@ -89,10 +91,46 @@ export function TraineeHomeScreen({ onQuickAskCoach }: TraineeHomeScreenProps) {
         </View>
       ) : (
         <View style={styles.container}>
+
+          {!isPremium && (
+            <Pressable 
+              style={styles.premiumBanner}
+              onPress={() => {
+                if (profile?.assignmentStatus === 'pending') {
+                  navigation.navigate("PendingCoach");
+                } else if (profile?.assignmentStatus === 'assigned') {
+                   // Already assigned, maybe they just need to pay premium
+                   Alert.alert("Fytrak Premium", "Connect with your coach and unlock plans.");
+                } else {
+                   navigation.navigate("CoachAssignment");
+                }
+              }}
+            >
+              <View style={styles.bannerInfo}>
+                <Ionicons 
+                    name={profile?.assignmentStatus === 'pending' ? "hourglass-outline" : "sparkles"} 
+                    size={24} 
+                    color={colors.primary} 
+                />
+                <View>
+                  <Text style={styles.bannerTitleText}>
+                    {profile?.assignmentStatus === 'pending' ? "Coach Request Pending" : "Find Your Coach"}
+                  </Text>
+                  <Text style={styles.bannerSubText}>
+                    {profile?.assignmentStatus === 'pending' ? `Waiting for ${profile?.selectedCoachName}` : "Unlock custom plans from elite coaches"}
+                  </Text>
+                </View>
+              </View>
+              <Ionicons name="chevron-forward" size={20} color={colors.primary} />
+            </Pressable>
+          )}
+
           <View style={styles.card}>
             <View style={styles.cardHeader}>
               <Ionicons name="stats-chart" size={18} color={colors.primary} />
               <Text style={styles.cardTitle}>Today status</Text>
+              {isPremium && <PremiumBadge />}
+              {profile?.assignmentStatus === 'assigned' && <View style={[styles.coachBadge, { marginLeft: 8 }]}><Text style={styles.coachBadgeText}>COACHED</Text></View>}
             </View>
             <View style={styles.statsGrid}>
               <StatusLine
@@ -112,7 +150,7 @@ export function TraineeHomeScreen({ onQuickAskCoach }: TraineeHomeScreenProps) {
             </View>
           </View>
 
-          {prescribed.length > 0 && (
+          {isPremium && prescribed.length > 0 && (
             <View style={[styles.card, { borderColor: colors.primary, backgroundColor: "#1a1a10" }]}>
               <View style={styles.cardHeader}>
                 <Ionicons name="barbell-outline" size={18} color={colors.primary} />
@@ -131,7 +169,10 @@ export function TraineeHomeScreen({ onQuickAskCoach }: TraineeHomeScreenProps) {
                 style={styles.startPrescribedBtn}
                 onPress={() => Alert.alert("Start Workout", `Prepare for ${prescribed[0].title}?`, [
                   { text: "Later", style: "cancel" },
-                  { text: "Start Now", onPress: () => navigation.navigate("Workouts" as any) }
+                  {
+                    text: "Start Now",
+                    onPress: () => navigation.navigate("Workouts" as any, { autoLoadPrescriptionId: prescribed[0].id })
+                  }
                 ])}
               >
                 <Text style={styles.startPrescribedText}>START SESSION</Text>
@@ -140,7 +181,7 @@ export function TraineeHomeScreen({ onQuickAskCoach }: TraineeHomeScreenProps) {
             </View>
           )}
 
-          {prescribedMeals.length > 0 && (
+          {isPremium && prescribedMeals.length > 0 && (
             <View style={[styles.card, { borderColor: "#4ade80", backgroundColor: "#101a14" }]}>
               <View style={styles.cardHeader}>
                 <Ionicons name="restaurant-outline" size={18} color="#4ade80" />
@@ -165,16 +206,39 @@ export function TraineeHomeScreen({ onQuickAskCoach }: TraineeHomeScreenProps) {
             </View>
           )}
 
+          {!isPremium && (
+            <View style={[styles.card, { borderStyle: 'dashed', opacity: 0.8 }]}>
+              <View style={[styles.cardHeader, { opacity: 0.5 }]}>
+                <Ionicons name="lock-closed" size={18} color="#888" />
+                <Text style={[styles.cardTitle, { color: '#888' }]}>Custom Coach Plans</Text>
+              </View>
+              <Text style={styles.upsellText}>Upgrade to premium to receive personalized training and nutrition plans from your coach.</Text>
+            </View>
+          )}
+
           <View style={styles.card}>
             <View style={styles.cardHeader}>
               <Ionicons name="flash" size={18} color={colors.primary} />
               <Text style={styles.cardTitle}>Quick actions</Text>
             </View>
             <View style={styles.actionsGrid}>
-              <Pressable style={styles.actionButton} onPress={onQuickAskCoach}>
-                <Ionicons name="chatbubble-ellipses" size={20} color={colors.primaryText} />
-                <Text style={styles.actionButtonText}>Ask Coach</Text>
-              </Pressable>
+              {profile?.assignmentStatus === 'assigned' ? (
+                <Pressable 
+                  style={[styles.actionButton, !isPremium && styles.disabledAction]} 
+                  onPress={() => isPremium ? onQuickAskCoach() : Alert.alert("Premium Only", "Asking a coach directly is a premium feature.")}
+                >
+                  <Ionicons name={isPremium ? "chatbubble-ellipses" : "lock-closed"} size={20} color={isPremium ? colors.primaryText : "#666"} />
+                  <Text style={[styles.actionButtonText, !isPremium && { color: '#666' }]}>Ask Coach</Text>
+                </Pressable>
+              ) : (
+                <Pressable 
+                  style={[styles.actionButton, { backgroundColor: colors.primary }]} 
+                  onPress={() => navigation.navigate("CoachAssignment")}
+                >
+                  <Ionicons name="search" size={20} color={colors.primaryText} />
+                  <Text style={styles.actionButtonText}>Find Coach</Text>
+                </Pressable>
+              )}
 
               <Pressable
                 style={[styles.actionButton, { backgroundColor: "#1a1a1a", borderWidth: 1, borderColor: "#333" }]}
@@ -193,6 +257,15 @@ export function TraineeHomeScreen({ onQuickAskCoach }: TraineeHomeScreenProps) {
         </View>
       )}
     </ScreenShell>
+  );
+}
+
+function PremiumBadge() {
+  return (
+    <View style={styles.premiumBadge}>
+      <Ionicons name="star" size={10} color="#000" />
+      <Text style={styles.premiumBadgeText}>PREMIUM</Text>
+    </View>
   );
 }
 
@@ -216,6 +289,32 @@ const styles = StyleSheet.create({
   container: {
     gap: 16,
     marginTop: 10,
+  },
+  premiumBanner: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    backgroundColor: "#1c1c1e",
+    borderRadius: 20,
+    padding: 18,
+    borderWidth: 1,
+    borderColor: colors.primary,
+    borderStyle: "dashed",
+  },
+  bannerInfo: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 14,
+  },
+  bannerTitleText: {
+    color: "#fff",
+    fontWeight: "900",
+    fontSize: 16,
+  },
+  bannerSubText: {
+    color: "#8c8c8c",
+    fontSize: 12,
+    fontWeight: "600",
   },
   card: {
     backgroundColor: "#161616",
@@ -269,11 +368,31 @@ const styles = StyleSheet.create({
     paddingVertical: 16,
     gap: 8,
   },
+  disabledAction: {
+    backgroundColor: "#222",
+    borderColor: "#333",
+    borderWidth: 1,
+  },
   actionButtonText: {
     color: colors.primaryText,
     fontWeight: "900",
     fontSize: 14,
     textTransform: "uppercase",
+  },
+  premiumBadge: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: colors.primary,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 4,
+    gap: 4,
+    marginLeft: 8,
+  },
+  premiumBadgeText: {
+    color: "#000",
+    fontSize: 9,
+    fontWeight: "900",
   },
   coachBadge: {
     marginLeft: "auto",
@@ -300,6 +419,12 @@ const styles = StyleSheet.create({
     color: "#8c8c8c",
     fontSize: 14,
     fontWeight: "600",
+  },
+  upsellText: {
+    color: "#444",
+    fontSize: 13,
+    fontWeight: "600",
+    lineHeight: 18,
   },
   startPrescribedBtn: {
     backgroundColor: colors.primary,

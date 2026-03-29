@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { ScrollView, StyleSheet, Text, View, Pressable, ActivityIndicator } from "react-native";
+import { ScrollView, StyleSheet, Text, View, Pressable, ActivityIndicator, TextInput } from "react-native";
 import { useNavigation } from "@react-navigation/native";
 import { ScreenShell } from "../../components/ScreenShell";
 import { colors } from "../../theme/colors";
@@ -11,6 +11,7 @@ export function CoachLibraryScreen() {
     const [templates, setTemplates] = useState<CoachTemplate[]>([]);
     const [isLoading, setIsLoading] = useState(true);
     const [activeTab, setActiveTab] = useState<"workout" | "meal">("workout");
+    const [searchQuery, setSearchQuery] = useState("");
 
     const navigation = useNavigation<any>();
 
@@ -26,65 +27,102 @@ export function CoachLibraryScreen() {
         return () => unsubscribe();
     }, [activeTab]);
 
+    const filteredTemplates = templates.filter(t =>
+        t.title.toLowerCase().includes(searchQuery.toLowerCase())
+    );
+
     return (
         <ScreenShell
             title="Library"
             subtitle="Manage your training & meal templates"
             contentStyle={styles.shellContent}
         >
-            <View style={styles.tabs}>
+            <View style={styles.headerRow}>
+                <View style={styles.tabs}>
+                    <Pressable
+                        style={[styles.tab, activeTab === "workout" && styles.tabActive]}
+                        onPress={() => { setIsLoading(true); setActiveTab("workout"); }}
+                    >
+                        <Text style={[styles.tabText, activeTab === "workout" && styles.tabTextActive]}>Workouts</Text>
+                    </Pressable>
+                    <Pressable
+                        style={[styles.tab, activeTab === "meal" && styles.tabActive]}
+                        onPress={() => { setIsLoading(true); setActiveTab("meal"); }}
+                    >
+                        <Text style={[styles.tabText, activeTab === "meal" && styles.tabTextActive]}>Meals</Text>
+                    </Pressable>
+                </View>
+
                 <Pressable
-                    style={[styles.tab, activeTab === "workout" && styles.tabActive]}
-                    onPress={() => { setIsLoading(true); setActiveTab("workout"); }}
+                    style={styles.addIconBtn}
+                    onPress={() => navigation.navigate("CreateTemplate", { type: activeTab })}
                 >
-                    <Text style={[styles.tabText, activeTab === "workout" && styles.tabTextActive]}>Workouts</Text>
+                    <Ionicons name="add" size={26} color={colors.primary} />
                 </Pressable>
-                <Pressable
-                    style={[styles.tab, activeTab === "meal" && styles.tabActive]}
-                    onPress={() => { setIsLoading(true); setActiveTab("meal"); }}
-                >
-                    <Text style={[styles.tabText, activeTab === "meal" && styles.tabTextActive]}>Meals</Text>
-                </Pressable>
+            </View>
+
+            <View style={styles.searchBar}>
+                <Ionicons name="search" size={18} color="#666" />
+                <TextInput
+                    style={styles.searchInput}
+                    placeholder={`Search ${activeTab}s...`}
+                    placeholderTextColor="#666"
+                    value={searchQuery}
+                    onChangeText={setSearchQuery}
+                />
             </View>
 
             {isLoading ? (
                 <View style={styles.loader}><ActivityIndicator color={colors.primary} /></View>
             ) : (
                 <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scroll}>
-                    {templates.length === 0 ? (
+                    {filteredTemplates.length === 0 ? (
                         <View style={styles.emptyBox}>
                             <View style={styles.iconCircle}>
                                 <Ionicons name={activeTab === "workout" ? "barbell-outline" : "nutrition-outline"} size={40} color="#333" />
                             </View>
-                            <Text style={styles.emptyTitle}>No {activeTab}s yet</Text>
-                            <Text style={styles.emptyText}>Save a workout while prescribing it, or create a standalone template here.</Text>
-
-                            <Pressable style={styles.createBtn} onPress={() => navigation.navigate("CreateTemplate", { type: activeTab })}>
-                                <Ionicons name="add" size={20} color={colors.primaryText} />
-                                <Text style={styles.createBtnText}>NEW {activeTab.toUpperCase()}</Text>
-                            </Pressable>
+                            <Text style={styles.emptyTitle}>Nothing found</Text>
+                            <Text style={styles.emptyText}>
+                                {searchQuery
+                                    ? "No templates match your search."
+                                    : `Save a ${activeTab} while prescribing it, or create a standalone template.`}
+                            </Text>
                         </View>
                     ) : (
                         <View style={styles.grid}>
-                            {templates.map(t => (
+                            {filteredTemplates.map(t => (
                                 <Pressable
                                     key={t.id}
                                     style={styles.templateCard}
                                     onPress={() => navigation.navigate("TemplateDetail", { templateId: t.id, type: t.type })}
                                 >
-                                    <View style={styles.cardHeader}>
-                                        <Text style={styles.templateTitle} numberOfLines={1}>{t.title}</Text>
-                                        <Ionicons name="chevron-forward" size={16} color="#444" />
+                                    <View style={styles.cardAccent} />
+                                    <View style={styles.cardIconBox}>
+                                        <Ionicons
+                                            name={t.type === "workout" ? "barbell" : "restaurant"}
+                                            size={20}
+                                            color={t.type === "workout" ? colors.primary : "#4ade80"}
+                                        />
                                     </View>
-                                    <Text style={styles.templateMeta}>
-                                        {t.type === "workout"
-                                            ? `${t.data.exercises?.length || 0} exercises`
-                                            : "Custom meal plan"}
-                                    </Text>
+                                    <View style={styles.cardContent}>
+                                        <Text style={styles.templateTitle} numberOfLines={1}>{t.title}</Text>
+                                        <Text style={styles.templateMeta}>
+                                            {t.type === "workout"
+                                                ? `${t.data.exercises?.length || 0} Exercises`
+                                                : `${t.data.macros?.calories || 0} kcal • ${t.data.macros?.protein || 0}g Pro`}
+                                        </Text>
+                                    </View>
+                                    <Ionicons name="chevron-forward" size={16} color="#444" style={styles.cardArrow} />
                                 </Pressable>
                             ))}
-                            <Pressable style={styles.addMiniBtn} onPress={() => navigation.navigate("CreateTemplate", { type: activeTab })}>
-                                <Ionicons name="add" size={24} color={colors.primary} />
+                            <Pressable
+                                style={styles.addFullCard}
+                                onPress={() => navigation.navigate("CreateTemplate", { type: activeTab })}
+                            >
+                                <View style={styles.addCircle}>
+                                    <Ionicons name="add" size={24} color={colors.primary} />
+                                </View>
+                                <Text style={styles.addText}>Create new {activeTab}</Text>
                             </Pressable>
                         </View>
                     )}
@@ -100,11 +138,26 @@ const styles = StyleSheet.create({
     shellContent: {
         paddingBottom: 0,
     },
+    headerRow: {
+        flexDirection: "row",
+        justifyContent: "space-between",
+        alignItems: "center",
+        marginTop: 10,
+        marginBottom: 10,
+    },
     tabs: {
         flexDirection: "row",
         gap: 12,
-        marginBottom: 20,
-        marginTop: 10,
+    },
+    addIconBtn: {
+        width: 44,
+        height: 44,
+        borderRadius: 12,
+        backgroundColor: "#1c1c1e",
+        alignItems: "center",
+        justifyContent: "center",
+        borderWidth: 1,
+        borderColor: "#2c2c2e",
     },
     tab: {
         paddingHorizontal: 20,
@@ -125,6 +178,24 @@ const styles = StyleSheet.create({
     },
     tabTextActive: {
         color: colors.primaryText,
+    },
+    searchBar: {
+        flexDirection: "row",
+        alignItems: "center",
+        backgroundColor: "#161616",
+        borderRadius: 16,
+        paddingHorizontal: 16,
+        height: 52,
+        gap: 12,
+        borderWidth: 1,
+        borderColor: "#2c2c2e",
+        marginBottom: 24,
+    },
+    searchInput: {
+        flex: 1,
+        color: "#ffffff",
+        fontSize: 15,
+        fontWeight: "600",
     },
     loader: {
         paddingTop: 40,
@@ -179,43 +250,75 @@ const styles = StyleSheet.create({
         letterSpacing: 1,
     },
     grid: {
-        flexDirection: "row",
-        flexWrap: "wrap",
-        gap: 12,
+        gap: 16,
     },
     templateCard: {
-        width: "48%",
         backgroundColor: "#161616",
-        padding: 20,
         borderRadius: 24,
+        padding: 16,
+        paddingLeft: 24,
+        flexDirection: "row",
+        alignItems: "center",
         borderWidth: 1,
         borderColor: "#2c2c2e",
-        gap: 8,
+        overflow: "hidden",
     },
-    cardHeader: {
-        flexDirection: "row",
-        justifyContent: "space-between",
+    cardAccent: {
+        position: "absolute",
+        left: 0,
+        top: 0,
+        bottom: 0,
+        width: 6,
+        backgroundColor: colors.primary,
+    },
+    cardIconBox: {
+        width: 48,
+        height: 48,
+        borderRadius: 14,
+        backgroundColor: "#1c1c1e",
         alignItems: "center",
+        justifyContent: "center",
+        marginRight: 16,
+    },
+    cardContent: {
+        flex: 1,
     },
     templateTitle: {
-        flex: 1,
         color: "#ffffff",
-        fontSize: 15,
+        fontSize: 16,
         fontWeight: "800",
+        marginBottom: 4,
     },
     templateMeta: {
         color: "#666",
-        fontSize: 12,
+        fontSize: 13,
         fontWeight: "600",
     },
-    addMiniBtn: {
-        width: "48%",
-        height: 100,
+    cardArrow: {
+        marginLeft: 8,
+    },
+    addFullCard: {
+        height: 80,
         borderRadius: 24,
         borderWidth: 1,
         borderColor: "#2c2c2e",
         borderStyle: "dashed",
+        flexDirection: "row",
+        alignItems: "center",
+        paddingHorizontal: 24,
+        gap: 16,
+    },
+    addCircle: {
+        width: 40,
+        height: 40,
+        borderRadius: 20,
+        backgroundColor: "#1c1c1e",
         alignItems: "center",
         justifyContent: "center",
+    },
+    addText: {
+        color: "#666",
+        fontSize: 15,
+        fontWeight: "700",
     },
 });

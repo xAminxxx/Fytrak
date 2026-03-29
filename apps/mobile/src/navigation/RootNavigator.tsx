@@ -1,7 +1,7 @@
 import { NavigationContainer } from "@react-navigation/native";
 import { createNativeStackNavigator } from "@react-navigation/native-stack";
 import { useEffect, useMemo, useState } from "react";
-import { ActivityIndicator, View } from "react-native";
+import { ActivityIndicator, View, Image } from "react-native";
 import { CompleteProfileScreen } from "../screens/auth/CompleteProfileScreen";
 import { CoachCompleteProfileScreen } from "../screens/coach/CoachCompleteProfileScreen";
 import { LoginScreen } from "../screens/auth/LoginScreen";
@@ -23,6 +23,8 @@ import { CoachChatScreen } from "../screens/trainee/CoachChatScreen";
 import { auth } from "../config/firebase";
 import { onAuthStateChanged } from "firebase/auth";
 import { colors } from "../theme/colors";
+import { SplashScreen } from "../screens/onboarding/SplashScreen";
+import { WelcomeScreen } from "../screens/onboarding/WelcomeScreen";
 import {
   ensureUserSession,
   saveAssignmentStatus,
@@ -32,6 +34,7 @@ import {
 } from "../services/userSession";
 
 export type RootStackParamList = {
+  Welcome: undefined;
   Login: undefined;
   SignUp: undefined;
   CompleteProfile: undefined;
@@ -63,9 +66,13 @@ const initialSession: SessionState = {
 import { doc, onSnapshot } from "firebase/firestore";
 import { db } from "../config/firebase";
 
+import { OnboardingFlow } from "../screens/onboarding/OnboardingFlow";
+
 export function RootNavigator() {
   const [session, setSession] = useState<SessionState>(initialSession);
   const [isBootstrapping, setIsBootstrapping] = useState(true);
+  const [isSplashFinished, setIsSplashFinished] = useState(false);
+  const [showWelcome, setShowWelcome] = useState(true);
 
   useEffect(() => {
     let unsubscribeDoc: (() => void) | null = null;
@@ -119,7 +126,7 @@ export function RootNavigator() {
     const user = auth.currentUser;
 
     if (!user) {
-      throw new Error("Authentication succeeded but no user session was found.");
+      throw new Error("Authentication succeeded but no user user session was found.");
     }
 
     const persisted = await ensureUserSession(user.uid, initialRole);
@@ -127,19 +134,8 @@ export function RootNavigator() {
   };
 
 
-  if (isBootstrapping) {
-    return (
-      <View
-        style={{
-          flex: 1,
-          alignItems: "center",
-          justifyContent: "center",
-          backgroundColor: colors.bg,
-        }}
-      >
-        <ActivityIndicator color={colors.primary} />
-      </View>
-    );
+  if (isBootstrapping || !isSplashFinished) {
+    return <SplashScreen onFinish={() => setIsSplashFinished(true)} />;
   }
 
   return (
@@ -148,6 +144,11 @@ export function RootNavigator() {
         {!session.isAuthenticated ? (
           /* AUTHENTICATION FLOW */
           <>
+            {showWelcome && (
+              <Stack.Screen name="Welcome" options={{ animation: 'fade' }}>
+                {() => <WelcomeScreen onStart={() => setShowWelcome(false)} />}
+              </Stack.Screen>
+            )}
             <Stack.Screen name="Login">
               {() => (
                 <LoginScreen
@@ -195,14 +196,19 @@ export function RootNavigator() {
                       }}
                     />
                   ) : (
-                    <CompleteProfileScreen
+                    <OnboardingFlow
                       onComplete={async (payload) => {
                         const user = auth.currentUser;
                         if (!user) {
                           throw new Error("Please login again to continue.");
                         }
+                        // Transition payload into saving service
                         await saveCompleteProfile(user.uid, payload);
                         setSession((prev) => ({ ...prev, profileCompleted: true }));
+                      }}
+                      onExit={() => {
+                        auth.signOut();
+                        setSession(initialSession);
                       }}
                     />
                   )
@@ -212,42 +218,43 @@ export function RootNavigator() {
               <Stack.Screen name="CoachTabs">
                 {() => <CoachTabs session={session} />}
               </Stack.Screen>
-            ) : session.assignmentStatus === "assigned" ? (
-              <Stack.Screen name="TraineeTabs">
-                {() => <TraineeTabs session={session} />}
-              </Stack.Screen>
-            ) : session.assignmentStatus === "pending" ? (
-              <Stack.Screen name="PendingCoach">
-                {() => (
-                  <PendingCoachScreen
-                    coachName={session.selectedCoachName}
-                    onSimulateApprove={async () => {
-                      const user = auth.currentUser;
-                      if (!user) throw new Error("Please login again.");
-                      await saveAssignmentStatus(user.uid, "assigned");
-                      setSession((prev) => ({ ...prev, assignmentStatus: "assigned" }));
-                    }}
-                  />
-                )}
-              </Stack.Screen>
             ) : (
-              <Stack.Screen name="CoachAssignment">
-                {() => (
-                  <CoachAssignmentScreen
-                    onSendRequest={async (coach) => {
-                      const user = auth.currentUser;
-                      if (!user) throw new Error("Please login again.");
-                      await saveCoachRequest(user.uid, coach);
-                      setSession((prev) => ({
-                        ...prev,
-                        assignmentStatus: "pending",
-                        selectedCoachId: coach.id,
-                        selectedCoachName: coach.name,
-                      }));
-                    }}
-                  />
-                )}
-              </Stack.Screen>
+              /* TRAINEE FLOW - NO BLOCKER */
+              <>
+                <Stack.Screen name="TraineeTabs">
+                  {() => <TraineeTabs session={session} />}
+                </Stack.Screen>
+                <Stack.Screen name="CoachAssignment">
+                  {() => (
+                    <CoachAssignmentScreen
+                      onSendRequest={async (coach) => {
+                        const user = auth.currentUser;
+                        if (!user) throw new Error("Please login again.");
+                        await saveCoachRequest(user.uid, coach);
+                        setSession((prev) => ({
+                          ...prev,
+                          assignmentStatus: "pending",
+                          selectedCoachId: coach.id,
+                          selectedCoachName: coach.name,
+                        }));
+                      }}
+                    />
+                  )}
+                </Stack.Screen>
+                <Stack.Screen name="PendingCoach">
+                  {() => (
+                    <PendingCoachScreen
+                      coachName={session.selectedCoachName}
+                      onSimulateApprove={async () => {
+                        const user = auth.currentUser;
+                        if (!user) throw new Error("Please login again.");
+                        await saveAssignmentStatus(user.uid, "assigned");
+                        setSession((prev) => ({ ...prev, assignmentStatus: "assigned" }));
+                      }}
+                    />
+                  )}
+                </Stack.Screen>
+              </>
             )}
             <Stack.Screen name="Profile">
               {() => <ProfileScreen session={session} />}

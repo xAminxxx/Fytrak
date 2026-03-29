@@ -5,12 +5,15 @@ import { colors } from "../../theme/colors";
 import { Ionicons } from "@expo/vector-icons";
 import { fetchCoaches, type Coach, type CoachRequestPayload } from "../../services/userSession";
 
+const CATEGORIES = ["All", "Powerlifting", "Bodybuilding", "Weight Loss", "Yoga", "Endurance"];
+
 type CoachAssignmentScreenProps = {
   onSendRequest: (coach: CoachRequestPayload) => Promise<void>;
 };
 
 export function CoachAssignmentScreen({ onSendRequest }: CoachAssignmentScreenProps) {
-  const [mode, setMode] = useState<"invite" | "discover">("discover");
+  const [mode, setMode] = useState<"invite" | "discover" | "onboarding">("discover");
+  const [selectedCategory, setSelectedCategory] = useState("All");
   const [searchQuery, setSearchQuery] = useState("");
   const [coachCode, setCoachCode] = useState("");
   const [coachEmail, setCoachEmail] = useState("");
@@ -36,11 +39,14 @@ export function CoachAssignmentScreen({ onSendRequest }: CoachAssignmentScreenPr
 
   const filteredCoaches = useMemo(() => {
     return coachesList
-      .filter((c) =>
-        c.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        c.specialties.some(s => s.toLowerCase().includes(searchQuery.toLowerCase()))
-      );
-  }, [coachesList, searchQuery]);
+      .filter((c) => {
+        const matchesSearch = c.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+          c.specialties.some(s => s.toLowerCase().includes(searchQuery.toLowerCase()));
+        const matchesCategory = selectedCategory === "All" ||
+          c.specialties.some(s => s.toLowerCase() === selectedCategory.toLowerCase());
+        return matchesSearch && matchesCategory;
+      });
+  }, [coachesList, searchQuery, selectedCategory]);
 
   const selectedCoach = useMemo(() => {
     if (mode === "invite") {
@@ -63,27 +69,44 @@ export function CoachAssignmentScreen({ onSendRequest }: CoachAssignmentScreenPr
   return (
     <ScreenShell
       title="Coaching"
-      subtitle="Find your expert or invite your existing coach"
+      subtitle="The fastest way to reach your goals"
       contentStyle={styles.shellContent}
     >
       {isLoading ? (
         <View style={styles.loader}>
           <ActivityIndicator color={colors.primary} size="large" />
-          <Text style={styles.loaderText}>Finding best coaches...</Text>
+          <Text style={styles.loaderText}>Curating top experts...</Text>
         </View>
       ) : (
         <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scroll}>
+          {/* ONBOARDING PROMO */}
+          {!searchQuery && selectedCategory === "All" && mode === "discover" && (
+            <View style={styles.promoCard}>
+              <View style={styles.promoIcon}>
+                <Ionicons name="sparkles" size={24} color="#000" />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.promoTitle}>Why get a coach?</Text>
+                <Text style={styles.promoDesc}>
+                  Users with a coach reach their goals 3x faster through personalized plans and real-time form checks.
+                </Text>
+              </View>
+            </View>
+          )}
+
           <View style={styles.tabContainer}>
             <Pressable
               style={[styles.tab, mode === "discover" && styles.tabActive]}
               onPress={() => setMode("discover")}
             >
+              <Ionicons name="compass" size={16} color={mode === "discover" ? "#000" : "#8c8c8c"} />
               <Text style={[styles.tabText, mode === "discover" && styles.tabTextActive]}>Discover</Text>
             </Pressable>
             <Pressable
               style={[styles.tab, mode === "invite" && styles.tabActive]}
               onPress={() => setMode("invite")}
             >
+              <Ionicons name="mail-open" size={16} color={mode === "invite" ? "#000" : "#8c8c8c"} />
               <Text style={[styles.tabText, mode === "invite" && styles.tabTextActive]}>Invite</Text>
             </Pressable>
           </View>
@@ -93,7 +116,7 @@ export function CoachAssignmentScreen({ onSendRequest }: CoachAssignmentScreenPr
               <View style={styles.searchBox}>
                 <Ionicons name="search" size={20} color="#8c8c8c" />
                 <TextInput
-                  placeholder="Search specialties or names..."
+                  placeholder="Search coaches..."
                   placeholderTextColor="#8c8c8c"
                   style={styles.searchInput}
                   value={searchQuery}
@@ -101,11 +124,27 @@ export function CoachAssignmentScreen({ onSendRequest }: CoachAssignmentScreenPr
                 />
               </View>
 
+              <ScrollView
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                contentContainerStyle={styles.categoryScroll}
+              >
+                {CATEGORIES.map(cat => (
+                  <Pressable
+                    key={cat}
+                    style={[styles.chip, selectedCategory === cat && styles.chipActive]}
+                    onPress={() => setSelectedCategory(cat)}
+                  >
+                    <Text style={[styles.chipText, selectedCategory === cat && styles.chipTextActive]}>{cat}</Text>
+                  </Pressable>
+                ))}
+              </ScrollView>
+
               <View style={styles.coachList}>
                 {filteredCoaches.length === 0 ? (
                   <View style={styles.emptyState}>
                     <Ionicons name="search-outline" size={48} color="#333" />
-                    <Text style={styles.emptyText}>No coaches found matching your search.</Text>
+                    <Text style={styles.emptyText}>No experts found in {selectedCategory}.</Text>
                   </View>
                 ) : (
                   filteredCoaches.map((coach) => {
@@ -244,9 +283,12 @@ const styles = StyleSheet.create({
   },
   tab: {
     flex: 1,
-    paddingVertical: 10,
+    paddingVertical: 12,
     alignItems: "center",
-    borderRadius: 8,
+    justifyContent: "center",
+    borderRadius: 10,
+    flexDirection: "row",
+    gap: 8,
   },
   tabActive: {
     backgroundColor: colors.primary,
@@ -257,7 +299,62 @@ const styles = StyleSheet.create({
     fontSize: 14,
   },
   tabTextActive: {
-    color: colors.primaryText,
+    color: "#000",
+  },
+  promoCard: {
+    backgroundColor: colors.primary,
+    borderRadius: 24,
+    padding: 20,
+    flexDirection: "row",
+    gap: 16,
+    marginBottom: 24,
+    marginTop: 10,
+    alignItems: "center",
+  },
+  promoIcon: {
+    width: 52,
+    height: 52,
+    borderRadius: 16,
+    backgroundColor: "rgba(0,0,0,0.1)",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  promoTitle: {
+    color: "#000",
+    fontSize: 18,
+    fontWeight: "900",
+  },
+  promoDesc: {
+    color: "rgba(0,0,0,0.7)",
+    fontSize: 13,
+    fontWeight: "600",
+    lineHeight: 18,
+    marginTop: 2,
+  },
+  categoryScroll: {
+    paddingBottom: 16,
+    gap: 8,
+  },
+  chip: {
+    backgroundColor: "#1c1c1e",
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: "#2c2c2e",
+  },
+  chipActive: {
+    backgroundColor: colors.primary,
+    borderColor: colors.primary,
+  },
+  chipText: {
+    color: "#8c8c8c",
+    fontSize: 13,
+    fontWeight: "700",
+  },
+  chipTextActive: {
+    color: "#000",
+    fontWeight: "800",
   },
   searchBox: {
     flexDirection: "row",
