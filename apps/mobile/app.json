@@ -6,7 +6,7 @@
     "scheme": "fytrak",
     "version": "1.0.0",
     "orientation": "portrait",
-    "icon": "./assets/branding/raster/icon_main.webp",
+    "icon": "./assets/branding/raster/icon_yellow_symbol.png",
     "userInterfaceStyle": "dark",
     "splash": {
       "image": "./assets/branding/raster/logo_full_light.png",
@@ -21,7 +21,7 @@
       "googleServicesFile": "./google-services.json",
       "adaptiveIcon": {
         "backgroundColor": "#ffffff",
-        "foregroundImage": "./assets/branding/raster/icon_main.webp"
+        "foregroundImage": "./assets/branding/raster/icon_yellow_symbol.png"
       },
       "predictiveBackGestureEnabled": false
     },
