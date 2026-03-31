@@ -31,7 +31,7 @@ export function ScreenShell({
   children,
 }: ScreenShellProps) {
   return (
-    <SafeAreaView style={styles.safeArea} edges={["top", "left", "right"]}>
+    <SafeAreaView style={styles.safeArea} edges={["top", "left", "right", "bottom"]}>
       <View style={[styles.container, centered && styles.containerCentered]}>
         <View style={styles.header}>
           <View style={styles.headerTitleRow}>

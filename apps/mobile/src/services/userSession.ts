@@ -14,16 +14,20 @@ import {
   limit,
   type DocumentData,
 } from "firebase/firestore";
-import { db, auth } from "../config/firebase";
+import { db, auth, storage } from "../config/firebase";
+import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
+import { appEnv } from "../config/env";
 import type { AssignmentStatus, SessionState, UserRole } from "../state/types";
 
 export type ProfileLevel = "Beginner" | "Intermediate" | "Advanced";
 
 export type UserProfile = {
+  gender?: "male" | "female" | null;
   goal?: string;
   level?: ProfileLevel;
   injuries?: string;
   name?: string;
+  profileImageUrl?: string;
   macroTargets?: {
     calories: number;
     protein: number;
@@ -38,6 +42,9 @@ export type UserProfile = {
   // New Coach-requested fields
   city?: string;
   country?: string;
+  workoutProfileCompleted?: boolean;
+  nutritionProfileCompleted?: boolean;
+  isPremium?: boolean;
   lastTrainedDate?: string;
   work?: {
     toughness: number; // 1-10
@@ -65,9 +72,6 @@ export type UserProfile = {
     regularEating: boolean;
   };
 
-  workoutProfileCompleted?: boolean;
-  nutritionProfileCompleted?: boolean;
-  isPremium?: boolean;
   assignmentStatus?: AssignmentStatus;
   selectedCoachId?: string | null;
   selectedCoachName?: string | null;
@@ -80,12 +84,20 @@ export type UserProfile = {
 };
 
 export type CompleteProfilePayload = {
-  goal: string;
+  goal: string | null;
   weight: number;
   height: number;
-  birthDate: string;
-  city: string;
-  country: string;
+  birthday: string;
+  gender?: "male" | "female" | null;
+  level?: string | null;
+  city?: string;
+  country?: string;
+  macroTargets?: {
+    calories: number;
+    protein: number;
+    carbs: number;
+    fats: number;
+  };
 };
 
 export type WorkoutIntakePayload = {
@@ -309,6 +321,15 @@ export const subscribeToUserProfile = (uid: string, callback: (profile: UserProf
           carbs: 220,
           fats: 65,
         },
+        workoutProfileCompleted: data.workoutProfileCompleted || false,
+        nutritionProfileCompleted: data.nutritionProfileCompleted || false,
+        isPremium: data.isPremium || false,
+        lifestyle: data.profile?.lifestyle || data.lifestyle,
+        work: data.profile?.work || data.work,
+        weight: data.profile?.weight || data.weight,
+        height: data.profile?.height || data.height,
+        activityLevel: data.profile?.activityLevel || data.activityLevel,
+        profileImageUrl: data.profileImageUrl,
       });
     }
   });
@@ -342,15 +363,23 @@ export const saveCompleteProfile = async (uid: string, payload: CompleteProfileP
     {
       profileCompleted: true,
       profile: {
-        goal: payload.goal.trim(),
+        goal: payload.goal ? payload.goal.trim() : "",
         weight: payload.weight,
         height: payload.height,
-        birthDate: payload.birthDate,
-        city: payload.city.trim(),
-        country: payload.country.trim(),
+        birthDate: payload.birthday,
+        gender: payload.gender || null,
+        level: payload.level || null,
+        city: payload.city?.trim() || "",
+        country: payload.country?.trim() || "",
       },
       workoutProfileCompleted: false,
       nutritionProfileCompleted: false,
+      macroTargets: payload.macroTargets || {
+        calories: 2100,
+        protein: 160,
+        carbs: 220,
+        fats: 65,
+      },
       updatedAt: serverTimestamp(),
     },
     { merge: true }
@@ -532,11 +561,18 @@ export const subscribeToWorkouts = (uid: string, callback: (workouts: WorkoutLog
 export const saveBodyMetric = async (uid: string, metric: { weight: number; bodyFat?: number }): Promise<void> => {
   const today = new Date().toISOString().split("T")[0];
   const ref = collection(db, usersCollection, uid, "metrics");
-  await addDoc(ref, {
-    ...metric,
-    date: today,
-    createdAt: serverTimestamp(),
-  });
+  
+  // SANITIZE: Prevent 'undefined' from crashing Firebase addDoc
+  const data: any = { 
+    weight: Number(metric.weight), 
+    date: today, 
+    createdAt: serverTimestamp() 
+  };
+  if (metric.bodyFat !== undefined && metric.bodyFat !== null) {
+    data.bodyFat = Number(metric.bodyFat);
+  }
+
+  await addDoc(ref, data);
 };
 
 export const subscribeToLatestMetrics = (uid: string, callback: (metrics: BodyMetric[]) => void) => {
@@ -714,3 +750,46 @@ export const deleteCoachTemplate = async (coachId: string, templateId: string): 
   const ref = doc(db, usersCollection, coachId, "templates", templateId);
   await deleteDoc(ref);
 };
+
+export async function uploadProfileImage(userId: string, uri: string) {
+	try {
+        const uploadEndpoint = `https://api.cloudinary.com/v1_1/${appEnv.cloudinary.cloudName}/image/upload`;
+
+        console.log("[UserSession] Cloudinary URL:", uploadEndpoint);
+        console.log("[UserSession] Preset:", appEnv.cloudinary.uploadPreset);
+
+        const data = new FormData();
+        data.append('file', {
+            uri,
+            type: 'image/jpeg',
+            name: 'avatar.jpg',
+        } as any);
+        data.append('upload_preset', appEnv.cloudinary.uploadPreset);
+        data.append('cloud_name', appEnv.cloudinary.cloudName);
+        data.append('folder', `fytrak/profiles/${userId}`);
+
+        const response = await fetch(uploadEndpoint, {
+            method: 'POST',
+            body: data,
+        });
+
+        if (!response.ok) {
+            const errorText = await response.text();
+            console.error("[UserSession] Cloudinary Error Response:", errorText);
+            throw new Error(`Cloudinary upload failed with status ${response.status}`);
+        }
+
+        const result = await response.json();
+        const downloadUrl = result.secure_url;
+		
+        if (!downloadUrl) {
+            throw new Error(result.error?.message || "Cloudinary upload failed - no secure_url returned");
+        }
+
+		await saveUserProfile(userId, { profileImageUrl: downloadUrl });
+		return downloadUrl;
+	} catch (e) {
+		console.error("Cloudinary profile upload failed:", e);
+		throw e;
+	}
+}

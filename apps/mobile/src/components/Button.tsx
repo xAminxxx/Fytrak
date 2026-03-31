@@ -31,12 +31,12 @@ export function PrimaryButton({ onPress, title, icon, disabled, style }: ButtonP
 const styles = StyleSheet.create({
   button: {
     backgroundColor: colors.primary,
-    height: 64,
-    borderRadius: 32,
+    height: 58,
+    borderRadius: 14,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 12,
+    gap: 10,
   },
   buttonDisabled: {
     backgroundColor: '#161616',
@@ -44,7 +44,9 @@ const styles = StyleSheet.create({
   },
   text: {
     color: '#000',
-    fontSize: 18,
+    fontSize: 14,
     fontWeight: '900',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
   },
 });

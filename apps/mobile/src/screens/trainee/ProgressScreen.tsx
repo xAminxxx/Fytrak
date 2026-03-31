@@ -16,6 +16,7 @@ import {
 import { ScreenShell } from "../../components/ScreenShell";
 import { colors } from "../../theme/colors";
 import { Ionicons } from "@expo/vector-icons";
+import { Typography } from "../../components/Typography";
 import { auth } from "../../config/firebase";
 import * as ImagePicker from "expo-image-picker";
 import { LineChart } from "react-native-gifted-charts";
@@ -333,8 +334,8 @@ export function ProgressScreen() {
               <CompareSlider 
                 beforeUri={activeComparePair[0].url}
                 afterUri={activeComparePair[1].url}
-                beforeDate={new Date(activeComparePair[0].date).toLocaleDateString()}
-                afterDate={new Date(activeComparePair[1].date).toLocaleDateString()}
+                beforeDate={`${new Date(activeComparePair[0].date).toLocaleDateString()} (Before)`}
+                afterDate={`${new Date(activeComparePair[1].date).toLocaleDateString()} (After - ${Math.round((new Date(activeComparePair[1].date).getTime() - new Date(activeComparePair[0].date).getTime()) / (1000 * 60 * 60 * 24))} Days Split)`}
                 onClose={() => setActiveComparePair(null)}
               />
             )}
@@ -429,14 +430,36 @@ export function ProgressScreen() {
 
           <View style={styles.grid}>
             <MetricCard icon="calendar" label="This Week" value={weeklyConsistency} unit="Sessions" color="#FF9500" />
-            <MetricCard icon="stats-chart" label="BMI" value={calculateBMI} unit="Metric" color={colors.success} />
-            <MetricCard icon="scale" label="Weight" value={metrics[0]?.weight || "--"} unit="kg" color={colors.primary} />
-            <MetricCard icon="body" label="Body Fat" value={metrics[0]?.bodyFat ? `${metrics[0].bodyFat}%` : "--"} unit="" color="#f87171" />
+            <MetricCard icon="flash" label="Daily Target" value={userProfile?.macroTargets?.calories || "--"} unit="kcal" color="#facc15" />
+            <MetricCard 
+              icon="flag" 
+              label="Mission" 
+              value={userProfile?.goal?.replace('_', ' ')?.toUpperCase()?.split(' ')[0] || "FIT"} 
+              unit="" 
+              color={colors.primary} 
+            />
+            <MetricCard icon="scale" label="Current" value={metrics[0]?.weight || userProfile?.weight || "--"} unit="kg" color="#fbbf24" />
+          </View>
+
+          <View style={styles.card}>
+            <View style={styles.cardHeader}>
+              <Typography variant="h2">Health & Habits</Typography>
+              <Ionicons name="heart-outline" size={18} color="#ff4444" />
+            </View>
+            <View style={styles.habitGrid}>
+              <HabitItem label="Sleep" value={`${userProfile?.lifestyle?.sleepHours || "--"}h`} icon="moon" color="#60a5fa" />
+              <HabitItem label="Coffee" value={`${userProfile?.lifestyle?.coffeePerDay || "--"}`} icon="cafe" color="#fbbf24" />
+              <HabitItem label="Smoker" value={userProfile?.lifestyle?.smoker ? "Yes" : "No"} icon="flash" color="#f87171" />
+              <HabitItem label="Activity" value={userProfile?.activityLevel || "Mod"} icon="walk" color="#4ade80" />
+            </View>
           </View>
 
           {weightChartData.length > 1 && (
             <View style={styles.card}>
-              <Text style={styles.cardTitle}>Weight Trend</Text>
+              <View style={styles.cardHeader}>
+                <Typography variant="h2">Weight Tracking</Typography>
+                <Ionicons name="stats-chart" size={16} color={colors.primary} />
+              </View>
               <View style={styles.chartBox}>
                 <LineChart
                   data={weightChartData}
@@ -469,16 +492,16 @@ export function ProgressScreen() {
 
           <View style={styles.card}>
             <View style={styles.cardHeader}>
-              <Text style={styles.cardTitle}>Log Metrics</Text>
+              <Typography variant="h2">Log Metrics</Typography>
               <Pressable onPress={() => setIsBFModalVisible(true)} hitSlop={10}>
-                <Text style={styles.helpText}>Estimate Body Fat</Text>
+                <Typography variant="label" color={colors.primary} style={{ textDecorationLine: 'underline' }}>Estimate Body Fat</Typography>
               </Pressable>
             </View>
 
             <View style={styles.metricInputRow}>
               <View style={styles.stepperContainer}>
-                <Text style={styles.inputLabel}>Weight (kg)</Text>
-                <View style={styles.stepper}>
+                <Typography variant="label" color="#8c8c8c" style={{ marginLeft: 4, marginBottom: 4 }}>Daily Weight (kg)</Typography>
+                <View style={[styles.stepper, { backgroundColor: '#161616' }]}>
                   <Pressable style={styles.stepBtn} onPress={() => setNewWeight(prev => (Math.max(0, (Number(prev) || 70) - 0.5)).toString())}>
                     <Ionicons name="remove" size={18} color="#fff" />
                   </Pressable>
@@ -496,29 +519,29 @@ export function ProgressScreen() {
                 </View>
               </View>
 
-              <View style={styles.stepperContainer}>
-                <Text style={styles.inputLabel}>Body Fat (%)</Text>
-                <View style={styles.stepper}>
-                  <Pressable style={styles.stepBtn} onPress={() => setNewBodyFat(prev => (Math.max(0, (Number(prev) || 15) - 0.5)).toString())}>
-                    <Ionicons name="remove" size={18} color="#fff" />
-                  </Pressable>
-                  <TextInput
-                    style={styles.stepInput}
-                    keyboardType="decimal-pad"
-                    value={newBodyFat}
-                    onChangeText={setNewBodyFat}
-                    placeholder="0.0"
-                    placeholderTextColor="#444"
-                  />
-                  <Pressable style={styles.stepBtn} onPress={() => setNewBodyFat(prev => ((Number(prev) || 15) + 0.5).toString())}>
-                    <Ionicons name="add" size={18} color="#fff" />
-                  </Pressable>
-                </View>
-              </View>
-
               <Pressable style={[styles.mainSaveBtn, isSaving && { opacity: 0.6 }]} onPress={handleLogMetric} disabled={isSaving}>
                 <Ionicons name="checkmark" size={24} color={colors.primaryText} />
               </Pressable>
+            </View>
+
+            <View style={styles.secondaryInputRow}>
+              <Typography variant="label" color="#444">BODY FAT UPDATE (OPTIONAL)</Typography>
+              <View style={styles.smallStepper}>
+                <Pressable onPress={() => setNewBodyFat(prev => (Math.max(0, (Number(prev) || 15) - 0.5)).toString())}>
+                  <Ionicons name="remove-circle-outline" size={20} color="#666" />
+                </Pressable>
+                <TextInput
+                  style={styles.smallStepInput}
+                  keyboardType="decimal-pad"
+                  value={newBodyFat}
+                  onChangeText={setNewBodyFat}
+                  placeholder="0.0%"
+                  placeholderTextColor="#333"
+                />
+                <Pressable onPress={() => setNewBodyFat(prev => ((Number(prev) || 15) + 0.5).toString())}>
+                  <Ionicons name="add-circle-outline" size={20} color="#666" />
+                </Pressable>
+              </View>
             </View>
           </View>
 
@@ -552,9 +575,25 @@ export function ProgressScreen() {
 function MetricCard({ icon, label, value, unit, color }: any) {
   return (
     <View style={styles.metricCard}>
-      <View style={[styles.iconBox, { backgroundColor: `${color}20` }]}><Ionicons name={icon} size={20} color={color} /></View>
-      <Text style={styles.metricLabel}>{label}</Text>
-      <Text style={styles.metricValue}>{value} <Text style={styles.metricUnit}>{unit}</Text></Text>
+      <View style={[styles.iconBox, { backgroundColor: `${color}15` }]}>
+        <Ionicons name={icon} size={18} color={color} />
+      </View>
+      <View>
+        <Typography variant="label" color="#8c8c8c">{label}</Typography>
+        <Typography variant="metric" color="#fff" style={{ fontSize: 20 }}>
+          {value} <Typography style={{ fontSize: 10, color: '#444' }}>{unit}</Typography>
+        </Typography>
+      </View>
+    </View>
+  );
+}
+
+function HabitItem({ label, value, icon, color }: any) {
+  return (
+    <View style={styles.habitItem}>
+      <Ionicons name={icon} size={16} color={color} />
+      <Typography variant="h2" style={{ fontSize: 16, marginTop: 4 }}>{value}</Typography>
+      <Typography variant="label" color="#444" style={{ fontSize: 8 }}>{label}</Typography>
     </View>
   );
 }
@@ -581,6 +620,11 @@ const styles = StyleSheet.create({
   inputLabel: { color: "#8c8c8c", fontSize: 11, fontWeight: "800", textTransform: "uppercase", marginLeft: 4 },
   helpText: { color: colors.primary, fontSize: 11, fontWeight: "700", textDecorationLine: "underline" },
   addBtn: { width: 36, height: 36, borderRadius: 12, backgroundColor: colors.primary, alignItems: "center", justifyContent: "center" },
+  habitGrid: { flexDirection: 'row', gap: 12, marginTop: 10 },
+  secondaryInputRow: { marginTop: 15, paddingTop: 15, borderTopWidth: 1, borderTopColor: '#1c1c1e', flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  smallStepper: { flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: '#000', paddingHorizontal: 10, paddingVertical: 6, borderRadius: 12, borderWidth: 1, borderColor: '#222' },
+  smallStepInput: { color: '#fff', fontSize: 13, fontWeight: '800', textAlign: 'center', width: 40 },
+  habitItem: { flex: 1, backgroundColor: '#000', borderRadius: 16, padding: 12, alignItems: 'center', borderWidth: 1, borderColor: '#222' },
   smallActionBtn: { width: 36, height: 36, borderRadius: 12, backgroundColor: "#1c1c1e", alignItems: "center", justifyContent: "center", borderWidth: 1, borderColor: "#2c2c2e" },
   photoWidget: { height: 160, borderRadius: 20, overflow: "hidden", backgroundColor: "#1c1c1e", borderWidth: 1, borderColor: "#2c2c2e" },
   widgetEmpty: { flex: 1, alignItems: "center", justifyContent: "center" },

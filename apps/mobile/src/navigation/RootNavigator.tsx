@@ -32,6 +32,7 @@ import {
   saveCompleteProfile,
   saveCoachProfile,
 } from "../services/userSession";
+import { calculateNutritionPlan } from '../utils/calculators';
 
 export type RootStackParamList = {
   Welcome: undefined;
@@ -202,8 +203,20 @@ export function RootNavigator() {
                         if (!user) {
                           throw new Error("Please login again to continue.");
                         }
+                        // Calculate expert-level nutrition plan
+                        const nutritionPlan = calculateNutritionPlan(payload);
+
                         // Transition payload into saving service
-                        await saveCompleteProfile(user.uid, payload);
+                        await saveCompleteProfile(user.uid, {
+                          ...payload,
+                          goal: payload.goal || '',
+                          macroTargets: {
+                            calories: nutritionPlan.calories,
+                            protein: nutritionPlan.protein,
+                            carbs: nutritionPlan.carbs,
+                            fats: nutritionPlan.fats
+                          }
+                        });
                         setSession((prev) => ({ ...prev, profileCompleted: true }));
                       }}
                       onExit={() => {

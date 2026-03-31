@@ -1,4 +1,4 @@
-export type OnboardingStep = 'GENDER' | 'BIRTHDAY' | 'METRICS' | 'GOAL' | 'LEVEL';
+export type OnboardingStep = 'GENDER' | 'BIRTHDAY' | 'METRICS' | 'GOAL' | 'LEVEL' | 'SUCCESS';
 
 export interface OnboardingData {
   gender: 'male' | 'female' | null;

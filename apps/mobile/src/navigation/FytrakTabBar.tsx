@@ -1,7 +1,7 @@
-import { useEffect, useRef } from "react";
-import { BottomTabBarProps } from "@react-navigation/bottom-tabs";
+import { useEffect, useRef, useState } from "react";
+import { MaterialTopTabBarProps } from "@react-navigation/material-top-tabs";
 import { Ionicons } from "@expo/vector-icons";
-import { Animated, Pressable, StyleSheet, useWindowDimensions, View } from "react-native";
+import { Animated, Pressable, StyleSheet, useWindowDimensions, View, Keyboard } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { colors } from "../theme/colors";
 
@@ -18,12 +18,22 @@ const iconByRoute: Record<string, keyof typeof Ionicons.glyphMap> = {
   CoachProfile: "person-outline",
 };
 
-export function FytrakTabBar({ state, descriptors, navigation }: BottomTabBarProps) {
+export function FytrakTabBar({ state, descriptors, navigation }: MaterialTopTabBarProps) {
   const insets = useSafeAreaInsets();
   const { width } = useWindowDimensions();
   const tabWidth = (width - 40) / state.routes.length; // Adjusted for paddingHorizontal 20
 
   const translateX = useRef(new Animated.Value(0)).current;
+  const [isKeyboardVisible, setKeyboardVisible] = useState(false);
+
+  useEffect(() => {
+    const showSubscription = Keyboard.addListener('keyboardDidShow', () => setKeyboardVisible(true));
+    const hideSubscription = Keyboard.addListener('keyboardDidHide', () => setKeyboardVisible(false));
+    return () => {
+      showSubscription.remove();
+      hideSubscription.remove();
+    };
+  }, []);
 
   useEffect(() => {
     Animated.spring(translateX, {
@@ -33,6 +43,8 @@ export function FytrakTabBar({ state, descriptors, navigation }: BottomTabBarPro
       tension: 50,
     }).start();
   }, [state.index, tabWidth]);
+
+  if (isKeyboardVisible) return null;
 
   return (
     <View style={[styles.wrapper, { paddingBottom: Math.max(insets.bottom, 15) }]}>

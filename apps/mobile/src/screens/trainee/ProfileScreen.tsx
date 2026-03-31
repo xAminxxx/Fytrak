@@ -1,13 +1,14 @@
 import { useEffect, useState } from "react";
-import { Pressable, StyleSheet, Text, TextInput, View, Alert, ActivityIndicator } from "react-native";
+import { Pressable, StyleSheet, TextInput, View, Alert, ActivityIndicator, Image, ScrollView } from "react-native";
+import * as ImagePicker from 'expo-image-picker';
 import { ScreenShell } from "../../components/ScreenShell";
 import { colors } from "../../theme/colors";
 import { Ionicons } from "@expo/vector-icons";
 import { logOut } from "../../services/auth";
 
 import { auth } from "../../config/firebase";
-import { saveUserRole, subscribeToUserProfile, type UserProfile, saveAssignmentStatus, saveUserProfile } from "../../services/userSession";
-
+import { saveUserRole, subscribeToUserProfile, type UserProfile, saveAssignmentStatus, saveUserProfile, uploadProfileImage } from "../../services/userSession";
+import { Typography } from "../../components/Typography";
 import { SessionState } from "../../state/types";
 
 export function ProfileScreen({ session }: { session: SessionState }) {
@@ -93,10 +94,30 @@ export function ProfileScreen({ session }: { session: SessionState }) {
     ]);
   };
 
+  const handlePickImage = async () => {
+    try {
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ['images'],
+        allowsEditing: true,
+        aspect: [1, 1],
+        quality: 0.5,
+      });
+
+      if (!result.canceled && auth.currentUser) {
+        setIsLoading(true);
+        await uploadProfileImage(auth.currentUser.uid, result.assets[0].uri);
+        setIsLoading(false);
+      }
+    } catch (e) {
+      setIsLoading(false);
+      Alert.alert("Upload Failed", "Could not update your profile photo.");
+    }
+  };
+
   return (
     <ScreenShell
       title="Profile"
-      subtitle="Goals, notifications, and account settings"
+      subtitle="Identity & Account Control"
       contentStyle={styles.shellContent}
     >
       {isLoading ? (
@@ -104,12 +125,43 @@ export function ProfileScreen({ session }: { session: SessionState }) {
           <ActivityIndicator color={colors.primary} />
         </View>
       ) : (
-        <View style={styles.card}>
+        <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollContainer}>
+          <View style={styles.card}>
+          <View style={styles.profileHeader}>
+            <Pressable onPress={handlePickImage}>
+              <View style={styles.avatarLarge}>
+                 {profile?.profileImageUrl ? (
+                   <Image source={{ uri: profile.profileImageUrl }} style={styles.avatarImage} />
+                 ) : (
+                   <Typography style={{ color: '#000', fontSize: 24, fontWeight: '900' }}>
+                     {profile?.name?.[0]?.toUpperCase() || "U"}
+                   </Typography>
+                 )}
+                 <View style={styles.cameraOverlay}>
+                    <Ionicons name="camera" size={12} color="#fff" />
+                 </View>
+              </View>
+            </Pressable>
+            <View style={{ flex: 1, gap: 4 }}>
+              <Typography variant="h2">{profile?.name || "User Profile"}</Typography>
+              <Typography variant="label" color="#8c8c8c">ACTIVE TRAINEE ID: #{auth.currentUser?.uid.slice(0, 8).toUpperCase()}</Typography>
+            </View>
+          </View>
+
+          <View style={styles.bioGrid}>
+             <BioTile label="Body Weight" value={`${profile?.weight || "--"} kg`} icon="body-outline" color={colors.primary} />
+             <BioTile label="Body Height" value={`${profile?.height || "--"} cm`} icon="resize-outline" color="#60a5fa" />
+             <BioTile label="Work Hours" value={profile?.work?.timing?.split('|')[0]?.trim() || "Not set"} icon="briefcase-outline" color="#fbbf24" />
+             <BioTile label="Sleep Timing" value={profile?.lifestyle?.sleepTiming?.split('-')[0]?.trim() || "Not set"} icon="moon-outline" color="#a78bfa" />
+          </View>
+
+          <View style={styles.divider} />
+
           <View style={styles.inputGroup}>
             <View style={styles.inputHeader}>
-              <Text style={styles.label}>Training Goal</Text>
+              <Typography variant="label" color="#444">CURRENT GOAL</Typography>
               <Pressable onPress={() => isEditingGoal ? handleUpdateGoal() : setIsEditingGoal(true)}>
-                <Text style={styles.editBtnText}>{isEditingGoal ? "SAVE" : "EDIT"}</Text>
+                <Typography style={{ color: colors.primary, fontSize: 11, fontWeight: '900' }}>{isEditingGoal ? "SAVE" : "EDIT"}</Typography>
               </Pressable>
             </View>
             <View style={styles.goalDisplay}>
@@ -121,7 +173,7 @@ export function ProfileScreen({ session }: { session: SessionState }) {
                   autoFocus
                 />
               ) : (
-                <Text style={styles.goalText}>{profile?.goal || "Not set"}</Text>
+                <Typography variant="h2" style={{ fontSize: 16 }}>{profile?.goal?.replace('_', ' ') || "GENERAL FITNESS"}</Typography>
               )}
             </View>
           </View>
@@ -130,23 +182,15 @@ export function ProfileScreen({ session }: { session: SessionState }) {
 
           <Pressable
             style={styles.actionRow}
-            onPress={() => setNotificationsEnabled((prev) => !prev)}
+            onPress={() => setNotificationsEnabled((prev: boolean) => !prev)}
           >
             <View style={styles.iconWrap}>
-              <Ionicons name="notifications" size={20} color={colors.primary} />
-              <Text style={styles.rowLabel}>Coach notifications</Text>
+              <View style={styles.miniIconBox}><Ionicons name="notifications" size={16} color={colors.primary} /></View>
+              <Typography variant="h2" style={{ fontSize: 15 }}>Coach Notifications</Typography>
             </View>
             <View style={[styles.toggle, notificationsEnabled && styles.toggleActive]}>
               <View style={[styles.toggleCircle, notificationsEnabled && styles.toggleCircleActive]} />
             </View>
-          </Pressable>
-
-          <Pressable style={styles.actionRow}>
-            <View style={styles.iconWrap}>
-              <Ionicons name="lock-closed" size={20} color="#8c8c8c" />
-              <Text style={styles.rowLabel}>Privacy Policy</Text>
-            </View>
-            <Ionicons name="chevron-forward" size={18} color="#444" />
           </Pressable>
 
           <View style={styles.divider} />
@@ -154,18 +198,18 @@ export function ProfileScreen({ session }: { session: SessionState }) {
           {session.role === "trainee" && (
             <>
               <View style={styles.coachSection}>
-                <Text style={styles.sectionLabel}>YOUR COACH</Text>
+                <Typography variant="label" color="#444" style={{ marginBottom: 12 }}>YOUR COACH</Typography>
                 {session.selectedCoachId ? (
                   <View style={styles.coachRow}>
                     <View style={styles.coachAvatar}>
-                      <Text style={styles.avatarText}>{session.selectedCoachName?.[0] || "C"}</Text>
+                      <Typography style={{ color: colors.primaryText, fontWeight: '900' }}>{session.selectedCoachName?.[0] || "C"}</Typography>
                     </View>
                     <View style={styles.coachInfo}>
-                      <Text style={styles.coachName}>{session.selectedCoachName}</Text>
-                      <Text style={styles.coachStatus}>Assigned</Text>
+                      <Typography variant="h2" style={{ fontSize: 15 }}>{session.selectedCoachName}</Typography>
+                      <Typography style={{ color: colors.primary, fontSize: 11, fontWeight: '900' }}>CERTIFIED COACH</Typography>
                     </View>
                     <Pressable style={styles.disconnectBtn} onPress={handleDisconnect}>
-                      <Text style={styles.disconnectText}>End Relation</Text>
+                      <Typography style={{ color: "#ff4444", fontSize: 11, fontWeight: '900' }}>END RELATION</Typography>
                     </Pressable>
                   </View>
                 ) : (
@@ -173,7 +217,7 @@ export function ProfileScreen({ session }: { session: SessionState }) {
                     style={styles.noCoachBtn}
                     onPress={() => Alert.alert("No Coach", "Go to the Coaching tab to find a professional coach.")}
                   >
-                    <Text style={styles.noCoachText}>No coach assigned yet</Text>
+                    <Typography variant="label" color="#8c8c8c">No coach assigned yet</Typography>
                     <Ionicons name="search" size={16} color={colors.primary} />
                   </Pressable>
                 )}
@@ -185,20 +229,17 @@ export function ProfileScreen({ session }: { session: SessionState }) {
           {session.role === "coach" && profile?.coachProfile && (
             <>
               <View style={styles.coachSection}>
-                <Text style={styles.sectionLabel}>PROFESSIONAL PROFILE</Text>
+                <Typography variant="label" color="#444" style={{ marginBottom: 12 }}>PROFESSIONAL PROFILE</Typography>
                 <View style={styles.coachProfileBox}>
-                  <Text style={styles.bioText} numberOfLines={3}>{profile.coachProfile.bio}</Text>
+                  <Typography style={{ color: '#fff' }} numberOfLines={3}>{profile.coachProfile.bio}</Typography>
                   <View style={styles.specRow}>
-                    {profile.coachProfile.specialties.slice(0, 3).map(s => (
+                    {profile.coachProfile.specialties.slice(0, 3).map((s: string) => (
                       <View key={s} style={styles.specPill}>
-                        <Text style={styles.specPillText}>{s}</Text>
+                        <Typography style={{ color: colors.primary, fontSize: 11, fontWeight: '700' }}>{s}</Typography>
                       </View>
                     ))}
-                    {profile.coachProfile.specialties.length > 3 && (
-                      <Text style={styles.plusMore}>+{profile.coachProfile.specialties.length - 3} more</Text>
-                    )}
                   </View>
-                  <Text style={styles.expText}>Exp: {profile.coachProfile.experience}</Text>
+                  <Typography variant="label" color="#8c8c8c">Exp: {profile.coachProfile.experience}</Typography>
                 </View>
               </View>
               <View style={styles.divider} />
@@ -206,7 +247,7 @@ export function ProfileScreen({ session }: { session: SessionState }) {
           )}
 
           <View style={styles.roleSection}>
-            <Text style={styles.sectionLabel}>ACCOUNT TYPE</Text>
+            <Typography variant="label" color="#444" style={{ marginBottom: 12 }}>ACCOUNT TYPE</Typography>
             <Pressable
               style={[styles.roleCard, isSwitching && { opacity: 0.6 }]}
               onPress={() => handleSwitchRole(session.role)}
@@ -214,33 +255,47 @@ export function ProfileScreen({ session }: { session: SessionState }) {
             >
               <View style={styles.roleInfo}>
                 <View style={styles.roleIconBox}>
-                  <Ionicons name={session.role === "trainee" ? "person" : "fitness"} size={22} color={colors.primary} />
+                  <Ionicons name={session.role === "trainee" ? "person" : "fitness"} size={20} color={colors.primary} />
                 </View>
                 <View>
-                  <Text style={styles.roleName}>
-                    {session.role === "trainee" ? "Trainee Mode" : "Coach Mode"}
-                  </Text>
-                  <Text style={styles.roleSub}>Tap to switch account type</Text>
+                  <Typography variant="h2" style={{ fontSize: 15 }}>{session.role === "trainee" ? "Trainee Mode" : "Coach Mode"}</Typography>
+                  <Typography variant="label" color="#8c8c8c">Tap to switch account type</Typography>
                 </View>
               </View>
-              <Ionicons name="swap-horizontal" size={20} color="#444" />
+              <Ionicons name="swap-horizontal" size={18} color="#444" />
             </Pressable>
           </View>
 
           <View style={styles.divider} />
 
           <Pressable style={styles.logoutButton} onPress={handleLogout}>
-            <Text style={styles.logoutText}>Log Out</Text>
+             <Typography style={{ color: "#ff4444", fontWeight: "900", fontSize: 14 }}>SIGN OUT</Typography>
           </Pressable>
         </View>
+        </ScrollView>
       )}
     </ScreenShell>
   );
 }
 
+function BioTile({ label, value, icon, color }: any) {
+  return (
+    <View style={styles.bioTile}>
+      <View style={[styles.bioIconBox, { backgroundColor: `${color}15` }]}>
+        <Ionicons name={icon} size={14} color={color} />
+      </View>
+      <Typography variant="label" color="#444" style={{ fontSize: 9 }}>{label.toUpperCase()}</Typography>
+      <Typography variant="h2" style={{ fontSize: 14, marginTop: 2 }}>{value}</Typography>
+    </View>
+  );
+}
+
 const styles = StyleSheet.create({
   shellContent: {
-    paddingBottom: 100,
+    paddingBottom: 0,
+  },
+  scrollContainer: {
+    paddingBottom: 140,
   },
   loader: {
     padding: 40,
@@ -255,6 +310,48 @@ const styles = StyleSheet.create({
     gap: 16,
     marginTop: 10,
   },
+  profileHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 16,
+    marginBottom: 10,
+  },
+  avatarLarge: {
+    width: 60,
+    height: 60,
+    borderRadius: 30,
+    backgroundColor: colors.primary,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  bioGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+    marginTop: 10,
+  },
+  bioTile: {
+    flex: 1,
+    minWidth: '45%',
+    backgroundColor: '#000',
+    borderRadius: 16,
+    padding: 12,
+    borderWidth: 1,
+    borderColor: '#1c1c1e',
+  },
+  bioIconBox: {
+    width: 24,
+    height: 24,
+    borderRadius: 6,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 8,
+  },
+  divider: {
+    height: 1,
+    backgroundColor: "#1c1c1e",
+    marginVertical: 4,
+  },
   inputGroup: {
     gap: 8,
   },
@@ -262,18 +359,6 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-  },
-  label: {
-    color: "#8c8c8c",
-    fontSize: 12,
-    fontWeight: "800",
-    textTransform: "uppercase",
-    letterSpacing: 0.5,
-  },
-  editBtnText: {
-    color: colors.primary,
-    fontSize: 12,
-    fontWeight: "900",
   },
   goalDisplay: {
     backgroundColor: "#1c1c1e",
@@ -285,21 +370,11 @@ const styles = StyleSheet.create({
     minHeight: 54,
     justifyContent: "center",
   },
-  goalText: {
-    color: "#ffffff",
-    fontSize: 16,
-    fontWeight: "600",
-  },
   goalInput: {
     color: "#ffffff",
     fontSize: 16,
     fontWeight: "600",
     padding: 0,
-  },
-  divider: {
-    height: 1,
-    backgroundColor: "#333",
-    marginVertical: 4,
   },
   actionRow: {
     flexDirection: "row",
@@ -312,10 +387,13 @@ const styles = StyleSheet.create({
     alignItems: "center",
     gap: 12,
   },
-  rowLabel: {
-    color: "#ffffff",
-    fontSize: 16,
-    fontWeight: "600",
+  miniIconBox: {
+    width: 32,
+    height: 32,
+    borderRadius: 8,
+    backgroundColor: '#1c1c1e',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   toggle: {
     width: 44,
@@ -337,28 +415,8 @@ const styles = StyleSheet.create({
   toggleCircleActive: {
     alignSelf: "flex-end",
   },
-  logoutButton: {
-    marginTop: 10,
-    borderWidth: 1,
-    borderColor: "#444",
-    borderRadius: 14,
-    paddingVertical: 14,
-    alignItems: "center",
-  },
-  logoutText: {
-    color: "#ff4444",
-    fontWeight: "700",
-    fontSize: 16,
-  },
   coachSection: {
     paddingVertical: 10,
-  },
-  sectionLabel: {
-    color: "#8c8c8c",
-    fontSize: 12,
-    fontWeight: "800",
-    letterSpacing: 1,
-    marginBottom: 12,
   },
   coachRow: {
     flexDirection: "row",
@@ -377,36 +435,15 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
-  avatarText: {
-    color: colors.primaryText,
-    fontWeight: "800",
-    fontSize: 16,
-  },
   coachInfo: {
     flex: 1,
     marginLeft: 12,
-  },
-  coachName: {
-    color: "#ffffff",
-    fontSize: 15,
-    fontWeight: "700",
-  },
-  coachStatus: {
-    color: colors.primary,
-    fontSize: 12,
-    fontWeight: "600",
-    marginTop: 2,
   },
   disconnectBtn: {
     paddingHorizontal: 12,
     paddingVertical: 8,
     borderRadius: 8,
     backgroundColor: "#2c2c2e",
-  },
-  disconnectText: {
-    color: "#ff4444",
-    fontSize: 12,
-    fontWeight: "700",
   },
   noCoachBtn: {
     flexDirection: "row",
@@ -417,11 +454,6 @@ const styles = StyleSheet.create({
     padding: 16,
     borderWidth: 1,
     borderColor: "#2c2c2e",
-  },
-  noCoachText: {
-    color: "#8c8c8c",
-    fontSize: 14,
-    fontWeight: "600",
   },
   roleSection: {
     paddingVertical: 10,
@@ -449,17 +481,6 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
-  roleName: {
-    color: "#ffffff",
-    fontSize: 16,
-    fontWeight: "800",
-  },
-  roleSub: {
-    color: "#8c8c8c",
-    fontSize: 12,
-    fontWeight: "500",
-    marginTop: 2,
-  },
   coachProfileBox: {
     backgroundColor: "#1c1c1e",
     borderRadius: 16,
@@ -467,12 +488,6 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: "#2c2c2e",
     gap: 12,
-  },
-  bioText: {
-    color: "#ffffff",
-    fontSize: 14,
-    lineHeight: 20,
-    fontWeight: "500",
   },
   specRow: {
     flexDirection: "row",
@@ -486,19 +501,31 @@ const styles = StyleSheet.create({
     paddingVertical: 4,
     paddingHorizontal: 10,
   },
-  specPillText: {
-    color: colors.primary,
-    fontSize: 11,
-    fontWeight: "700",
+  logoutButton: {
+    marginTop: 10,
+    borderWidth: 1,
+    borderColor: "#444",
+    borderRadius: 14,
+    paddingVertical: 14,
+    alignItems: "center",
   },
-  plusMore: {
-    color: "#8c8c8c",
-    fontSize: 11,
-    fontWeight: "600",
+  avatarImage: {
+    width: 60,
+    height: 60,
+    borderRadius: 30,
   },
-  expText: {
-    color: "#8c8c8c",
-    fontSize: 12,
-    fontWeight: "700",
+  cameraOverlay: {
+    position: 'absolute',
+    bottom: 0,
+    right: 0,
+    backgroundColor: '#000',
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+    borderWidth: 2,
+    borderColor: '#161616',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
 });
+

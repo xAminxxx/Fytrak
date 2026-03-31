@@ -81,7 +81,7 @@ const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#000' },
   content: { flex: 1, paddingHorizontal: 24, paddingTop: 20 },
   sub: { marginTop: 5 },
-  stage: { flex: 1, marginTop: 20, backgroundColor: '#050505', borderRadius: 30, borderWidth: 1, borderColor: '#111', overflow: 'hidden', alignItems: 'center' },
+  stage: { flex: 1, marginTop: 20, backgroundColor: '#161616', borderRadius: 24, borderWidth: 1, borderColor: '#333', overflow: 'hidden', alignItems: 'center' },
   labels: { width: '100%', flexDirection: 'row', justifyContent: 'space-between', padding: 24 },
   lBox: { alignItems: 'center' },
   stickmanCenter: { flex: 1, width: '100%', alignItems: 'center', justifyContent: 'center', paddingBottom: 40 },

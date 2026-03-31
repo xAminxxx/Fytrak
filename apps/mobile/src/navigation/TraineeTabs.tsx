@@ -1,4 +1,4 @@
-import { createBottomTabNavigator } from "@react-navigation/bottom-tabs";
+import { createMaterialTopTabNavigator } from "@react-navigation/material-top-tabs";
 import { useNavigation } from "@react-navigation/native";
 import { FytrakTabBar } from "./FytrakTabBar";
 import { CoachChatScreen } from "../screens/trainee/CoachChatScreen";
@@ -18,7 +18,7 @@ export type TraineeTabsParamList = {
   Chat: undefined;
 };
 
-const Tab = createBottomTabNavigator<TraineeTabsParamList>();
+const Tab = createMaterialTopTabNavigator<TraineeTabsParamList>();
 
 export function TraineeTabs({ session }: { session: SessionState }) {
   const navigation = useNavigation();
@@ -26,7 +26,11 @@ export function TraineeTabs({ session }: { session: SessionState }) {
   return (
     <Tab.Navigator
       initialRouteName="Home"
-      screenOptions={{ headerShown: false }}
+      tabBarPosition="bottom"
+      screenOptions={{
+        lazy: true,
+        swipeEnabled: true,
+      }}
       tabBar={(props) => <FytrakTabBar {...props} />}
     >
       <Tab.Screen name="Workouts" component={WorkoutLogScreen} />

@@ -19,19 +19,19 @@ export function Typography({
   const getVariantStyle = () => {
     switch (variant) {
       case 'h1':
-        return { fontSize: 36, fontWeight: '900' as const, fontFamily: 'Adcure' };
+        return { fontSize: 32, fontWeight: '900' as const, fontFamily: 'Adcure' };
       case 'h2':
-        return { fontSize: 24, fontWeight: '800' as const };
+        return { fontSize: 18, fontWeight: '800' as const, letterSpacing: 0.5 };
       case 'subtitle':
-        return { fontSize: 16, color: '#8c8c8c', fontWeight: '500' as const, lineHeight: 24 };
+        return { fontSize: 15, color: '#8c8c8c', fontWeight: '600' as const };
       case 'body':
         return { fontSize: 14, color: '#fff' };
       case 'label':
-        return { fontSize: 11, fontWeight: '900' as const, textTransform: 'uppercase' as const, letterSpacing: 1.5 };
+        return { fontSize: 12, fontWeight: '900' as const, textTransform: 'uppercase' as const, letterSpacing: 1 };
       case 'metric':
         return { fontSize: 28, fontWeight: '900' as const, color: '#ffcc00' };
       case 'button':
-        return { fontSize: 18, fontWeight: '900' as const, color: '#000' };
+        return { fontSize: 14, fontWeight: '900' as const, textTransform: 'uppercase' as const };
       default:
         return {};
     }

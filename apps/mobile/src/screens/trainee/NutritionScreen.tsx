@@ -1,9 +1,12 @@
 import * as Haptics from "expo-haptics";
 import { useEffect, useMemo, useState } from "react";
 import { Pressable, ScrollView, StyleSheet, Text, TextInput, View, ActivityIndicator, Alert } from "react-native";
+import DateTimePicker, { DateTimePickerEvent } from "@react-native-community/datetimepicker";
 import { ScreenShell } from "../../components/ScreenShell";
 import { colors } from "../../theme/colors";
 import { Ionicons } from "@expo/vector-icons";
+import { Typography } from "../../components/Typography";
+import { PrimaryButton } from "../../components/Button";
 import { auth } from "../../config/firebase";
 import {
   saveMealLog,
@@ -40,7 +43,11 @@ export function NutritionScreen() {
   const [sleepTiming, setSleepTiming] = useState("");
   const [dishes, setDishes] = useState("");
   const [supps, setSupps] = useState("");
+  const [bedtime, setBedtime] = useState(new Date(new Date().setHours(23, 0, 0)));
+  const [wakeUpTime, setWakeUpTime] = useState(new Date(new Date().setHours(7, 0, 0)));
   const [isSavingIntake, setIsSavingIntake] = useState(false);
+  const [showBedtimePicker, setShowBedtimePicker] = useState(false);
+  const [showWakeUpPicker, setShowWakeUpPicker] = useState(false);
 
   useEffect(() => {
     if (profile && profile.nutritionProfileCompleted !== true) {
@@ -55,9 +62,23 @@ export function NutritionScreen() {
       const { saveNutritionIntake } = require("../../services/userSession");
       await saveNutritionIntake(auth.currentUser.uid, {
         activityLevel,
-        medical: { allergies, medications: meds },
-        lifestyle: { smoker, cigarettesPerDay: cigs, coffeePerDay: coffee, alcoholPerDay: alcohol, sleepHours: sleep, sleepTiming },
-        nutrition: { specificDishes: dishes, supplements: supps, regularEating: true }
+        medical: { 
+          allergies: allergies.trim() || "None", 
+          medications: meds.trim() || "None" 
+        },
+        lifestyle: { 
+          smoker, 
+          cigarettesPerDay: Number(cigs), 
+          coffeePerDay: Number(coffee), 
+          alcoholPerDay: Number(alcohol), 
+          sleepHours: Number(sleep), 
+          sleepTiming: `${bedtime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} - ${wakeUpTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`
+        },
+        nutrition: { 
+          specificDishes: dishes.trim() || "No specific preferences", 
+          supplements: supps.trim() || "None", 
+          regularEating: true 
+        }
       });
       setShowIntake(false);
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
@@ -201,8 +222,34 @@ export function NutritionScreen() {
             </View>
 
             <View style={styles.inputGroup}>
-              <Text style={styles.label}>Sleep Quality & Timing</Text>
-              <TextInput style={styles.input} placeholder="e.g. 11pm - 7am, restless..." placeholderTextColor="#666" value={sleepTiming} onChangeText={setSleepTiming} />
+              <Text style={styles.label}>Average Bedtime & Wake-up</Text>
+              <View style={styles.row}>
+                <Pressable style={[styles.input, { flex: 1 }]} onPress={() => setShowBedtimePicker(true)}>
+                  <Text style={{ color: '#fff', fontSize: 13 }}>{bedtime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</Text>
+                  <Text style={{ color: '#444', fontSize: 9, fontWeight: '900' }}>BEDTIME</Text>
+                </Pressable>
+                <Pressable style={[styles.input, { flex: 1 }]} onPress={() => setShowWakeUpPicker(true)}>
+                  <Text style={{ color: '#fff', fontSize: 13 }}>{wakeUpTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</Text>
+                  <Text style={{ color: '#444', fontSize: 9, fontWeight: '900' }}>WAKE-UP</Text>
+                </Pressable>
+              </View>
+
+              {showBedtimePicker && (
+                <DateTimePicker 
+                  value={bedtime} 
+                  mode="time" 
+                  display="spinner" 
+                  onChange={(event: DateTimePickerEvent, d?: Date) => { setShowBedtimePicker(false); if(d) setBedtime(d); }} 
+                />
+              )}
+              {showWakeUpPicker && (
+                <DateTimePicker 
+                  value={wakeUpTime} 
+                  mode="time" 
+                  display="spinner" 
+                  onChange={(event: DateTimePickerEvent, d?: Date) => { setShowWakeUpPicker(false); if(d) setWakeUpTime(d); }} 
+                />
+              )}
             </View>
 
             <SectionTitle title="HABITS" icon="cafe" />
@@ -249,18 +296,18 @@ export function NutritionScreen() {
           <View style={styles.summaryCard}>
             <View style={styles.summaryHeader}>
               <View>
-                <Text style={styles.summaryTitle}>Calories</Text>
-                <Text style={styles.summaryValue}>
-                  {totals.calories} <Text style={styles.summaryTarget}>/ {targets.calories} kcal</Text>
-                </Text>
+                <Typography variant="label" color="#8c8c8c">CALORIE TARGET</Typography>
+                <Typography variant="metric" style={{ fontSize: 32, marginTop: 4 }}>
+                  {totals.calories} <Typography style={{ fontSize: 18, color: '#444' }}>/ {targets.calories} kcal</Typography>
+                </Typography>
               </View>
               <View style={styles.burnRing}>
-                <Text style={styles.ringText}>{Math.round((totals.calories / targets.calories) * 100)}%</Text>
+                <Typography variant="label" style={{ fontSize: 14 }}>{Math.round((totals.calories / targets.calories) * 100)}%</Typography>
               </View>
             </View>
 
             <View style={styles.macrosRow}>
-              <MacroItem label="Protein" current={totals.protein} target={targets.protein} color="#4ade80" icon="barbell" />
+              <MacroItem label="Protein" current={totals.protein} target={targets.protein} color="#4ade80" icon="flash" />
               <MacroItem label="Carbs" current={Math.round(totals.calories * 0.4 / 4)} target={targets.carbs} color={colors.primary} icon="restaurant" />
               <MacroItem label="Fats" current={Math.round(totals.calories * 0.25 / 9)} target={targets.fats} color="#f87171" icon="water" />
             </View>

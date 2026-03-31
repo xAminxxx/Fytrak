@@ -42,7 +42,7 @@ export function CompleteProfileScreen({ onComplete }: CompleteProfileScreenProps
         goal,
         weight,
         height,
-        birthDate: birthDate.toISOString().split('T')[0],
+        birthday: birthDate.toISOString().split('T')[0],
         city,
         country,
       });

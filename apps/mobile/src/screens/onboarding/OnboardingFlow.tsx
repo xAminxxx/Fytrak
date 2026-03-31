@@ -5,7 +5,9 @@ import { BirthdayStep } from './steps/BirthdayStep';
 import { BodyMetricsStep } from './steps/BodyMetricsStep';
 import { GoalStep } from './steps/GoalStep';
 import { LevelStep } from './steps/LevelStep';
+import { SuccessStep } from './steps/SuccessStep';
 import { OnboardingData, OnboardingStep } from '../../types/onboarding';
+import { calculateNutritionPlan } from '../../utils/calculators';
 
 const { width } = Dimensions.get('window');
 
@@ -58,7 +60,8 @@ export function OnboardingFlow({ onComplete, onExit }: OnboardingFlowProps) {
       case 'BIRTHDAY': return handleTransition('METRICS',  { ...updated, birthday: data }, true);
       case 'METRICS':  return handleTransition('GOAL',     { ...updated, ...data }, true);
       case 'GOAL':     return handleTransition('LEVEL',    { ...updated, goal: data }, true);
-      case 'LEVEL':    return handleTransition(null,       { ...updated, level: data }, true);
+      case 'LEVEL':    return handleTransition('SUCCESS',  { ...updated, level: data }, true);
+      case 'SUCCESS':  return onComplete(formData);
     }
   };
 
@@ -69,6 +72,7 @@ export function OnboardingFlow({ onComplete, onExit }: OnboardingFlowProps) {
       case 'METRICS':  return handleTransition('BIRTHDAY', formData, false);
       case 'GOAL':     return handleTransition('METRICS',  formData, false);
       case 'LEVEL':    return handleTransition('GOAL',     formData, false);
+      case 'SUCCESS':  return handleTransition('LEVEL',    formData, false);
     }
   };
 
@@ -80,6 +84,7 @@ export function OnboardingFlow({ onComplete, onExit }: OnboardingFlowProps) {
       case 'METRICS':  return <BodyMetricsStep {...props} />;
       case 'GOAL':     return <GoalStep {...props} />;
       case 'LEVEL':    return <LevelStep {...props} />;
+      case 'SUCCESS':  return <SuccessStep plan={calculateNutritionPlan(formData)} onFinish={() => handleNext()} />;
     }
   };
 

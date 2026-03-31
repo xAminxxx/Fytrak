@@ -1,7 +1,7 @@
 import * as Haptics from "expo-haptics";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Pressable, ScrollView, StyleSheet, Text, TextInput, View, Alert, ActivityIndicator, Platform } from "react-native";
-import DateTimePicker from "@react-native-community/datetimepicker";
+import DateTimePicker, { DateTimePickerEvent } from "@react-native-community/datetimepicker";
 import { ScreenShell } from "../../components/ScreenShell";
 import { colors } from "../../theme/colors";
 import { Ionicons } from "@expo/vector-icons";
@@ -79,7 +79,12 @@ export function WorkoutLogScreen() {
   const [workStress, setWorkStress] = useState(5);
   const [workToughness, setWorkToughness] = useState(5);
   const [workTiming, setWorkTiming] = useState("");
+  const [workStart, setWorkStart] = useState(new Date(new Date().setHours(9, 0, 0)));
+  const [workEnd, setWorkEnd] = useState(new Date(new Date().setHours(17, 0, 0)));
+  const [isRotatingShift, setIsRotatingShift] = useState(false);
   const [showDatePicker, setShowDatePicker] = useState(false);
+  const [showWorkStartPicker, setShowWorkStartPicker] = useState(false);
+  const [showWorkEndPicker, setShowWorkEndPicker] = useState(false);
   const [isSavingIntake, setIsSavingIntake] = useState(false);
 
   useEffect(() => {
@@ -96,14 +101,14 @@ export function WorkoutLogScreen() {
       await saveWorkoutIntake(auth.currentUser.uid, {
         level,
         lastTrainedDate: lastTrainedDate.toISOString().split('T')[0],
-        trainingExperience: trainingExp,
-        healthIssues,
+        trainingExperience: trainingExp.trim() || "None",
+        healthIssues: healthIssues.trim() || "None",
         flexibility,
-        injuries,
+        injuries: injuries.trim() || "None",
         work: {
-          stress: workStress,
-          toughness: workToughness,
-          timing: workTiming
+          stress: Number(workStress),
+          toughness: Number(workToughness),
+          timing: `${workStart.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} - ${workEnd.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} | ${isRotatingShift ? "Rotating" : "Fixed"}`
         }
       });
       setShowIntake(false);
@@ -317,8 +322,45 @@ export function WorkoutLogScreen() {
 
             <SectionTitle title="WORK LIFE" icon="briefcase" />
             <View style={styles.inputGroup}>
-              <Text style={styles.label}>Work Schedule / Timing</Text>
-              <TextInput style={styles.input} placeholder="e.g. 9-5 or Rotating shifts" placeholderTextColor="#666" value={workTiming} onChangeText={setWorkTiming} />
+              <Text style={styles.label}>Average Work Hours</Text>
+              <View style={styles.row}>
+                <Pressable style={[styles.input, { flex: 1, padding: 8 }]} onPress={() => setShowWorkStartPicker(true)}>
+                  <Text style={{ color: '#fff', fontSize: 13 }}>{workStart.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</Text>
+                  <Text style={{ color: '#444', fontSize: 8, fontWeight: '900' }}>START</Text>
+                </Pressable>
+                <Pressable style={[styles.input, { flex: 1, padding: 8 }]} onPress={() => setShowWorkEndPicker(true)}>
+                  <Text style={{ color: '#fff', fontSize: 13 }}>{workEnd.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</Text>
+                  <Text style={{ color: '#444', fontSize: 8, fontWeight: '900' }}>END</Text>
+                </Pressable>
+              </View>
+
+              <View style={[styles.row, { marginTop: 8 }]}>
+                <Pressable 
+                  style={[styles.pill, isRotatingShift && styles.pillActive]} 
+                  onPress={() => setIsRotatingShift(!isRotatingShift)}
+                >
+                  <Text style={[styles.pillText, isRotatingShift && styles.pillTextActive]}>
+                    {isRotatingShift ? "ROTATING SHIFTS: YES" : "FIXED SCHEDULE: YES"}
+                  </Text>
+                </Pressable>
+              </View>
+
+              {showWorkStartPicker && (
+                <DateTimePicker 
+                  value={workStart} 
+                  mode="time" 
+                  display="spinner" 
+                  onChange={(event: DateTimePickerEvent, d?: Date) => { setShowWorkStartPicker(false); if(d) setWorkStart(d); }} 
+                />
+              )}
+              {showWorkEndPicker && (
+                <DateTimePicker 
+                  value={workEnd} 
+                  mode="time" 
+                  display="spinner" 
+                  onChange={(event: DateTimePickerEvent, d?: Date) => { setShowWorkEndPicker(false); if(d) setWorkEnd(d); }} 
+                />
+              )}
             </View>
             <View style={styles.row}>
               <MetricStepper label="Work Stress" value={workStress} onAdjust={(d) => setWorkStress(Math.max(1, Math.min(10, workStress + d)))} />

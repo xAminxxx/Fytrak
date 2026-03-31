@@ -11,6 +11,7 @@ import {
   View,
   KeyboardAvoidingView,
   Platform,
+  Keyboard,
 } from "react-native";
 import { ScreenShell } from "../../components/ScreenShell";
 import { uploadChatImage } from "../../services/cloudinaryUpload";
@@ -47,6 +48,18 @@ export function CoachChatScreen({ traineeId, coachId, traineeName }: CoachChatSc
   const [draft, setDraft] = useState("");
   const [isUploading, setIsUploading] = useState(false);
   const [errorText, setErrorText] = useState<string | null>(null);
+  const [isKeyboardVisible, setKeyboardVisible] = useState(false);
+
+  useEffect(() => {
+    const showEvent = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow';
+    const hideEvent = Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide';
+    const showSub = Keyboard.addListener(showEvent, () => setKeyboardVisible(true));
+    const hideSub = Keyboard.addListener(hideEvent, () => setKeyboardVisible(false));
+    return () => {
+      showSub.remove();
+      hideSub.remove();
+    };
+  }, []);
 
   const threadId = useMemo(() => {
     return [traineeId, coachId].sort().join("_");
@@ -204,7 +217,7 @@ export function CoachChatScreen({ traineeId, coachId, traineeName }: CoachChatSc
 
         {errorText ? <Text style={styles.errorText}>{errorText}</Text> : null}
 
-        <View style={styles.composerWrapper}>
+        <View style={[styles.composerWrapper, { bottom: isKeyboardVisible ? 0 : 80 }]}>
           <View style={styles.composerRow}>
             <Pressable
               style={styles.attachButton}
@@ -313,7 +326,7 @@ const styles = StyleSheet.create({
   },
   composerWrapper: {
     position: "absolute",
-    bottom: 80, // Above floating tab bar
+    bottom: 80,
     left: 0,
     right: 0,
     paddingHorizontal: 20,
