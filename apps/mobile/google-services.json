@@ -1,0 +1,47 @@
+{
+  "project_info": {
+    "project_number": "314272170712",
+    "project_id": "fytrak-d754f",
+    "storage_bucket": "fytrak-d754f.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:314272170712:android:dc3673d04e0a3c438ecdad",
+        "android_client_info": {
+          "package_name": "com.fytrak"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "314272170712-pmp56i0epsuc93n9vb4uf73n8u8kcki2.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.fytrak",
+            "certificate_hash": "97a1c731ddadbca12f426cc915c6c675e78ba51e"
+          }
+        },
+        {
+          "client_id": "314272170712-ijipvvv29lee7hicb7lb1rhp8e4klvrr.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAR0UmhV5swF9TIcKfm1kSyqZHayko3O0A"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "314272170712-ijipvvv29lee7hicb7lb1rhp8e4klvrr.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
