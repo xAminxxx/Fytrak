@@ -22,8 +22,8 @@ export function PrimaryButton({ onPress, title, icon, disabled, style }: ButtonP
         style
       ]}
     >
-      <Text style={styles.text}>{title}</Text>
-      {icon && <Ionicons name={icon as any} size={20} color="#000" />}
+      <Text style={[styles.text, disabled && styles.textDisabled]}>{title}</Text>
+      {icon && <Ionicons name={icon as any} size={20} color={disabled ? "#666" : "#000"} />}
     </Pressable>
   );
 }
@@ -39,8 +39,9 @@ const styles = StyleSheet.create({
     gap: 10,
   },
   buttonDisabled: {
-    backgroundColor: '#161616',
-    opacity: 0.5,
+    backgroundColor: '#1a1a1a', // Increased contrast from #111
+    borderColor: '#333',       // Sharper border
+    borderWidth: 1.5,
   },
   text: {
     color: '#000',
@@ -48,5 +49,8 @@ const styles = StyleSheet.create({
     fontWeight: '900',
     textTransform: 'uppercase',
     letterSpacing: 0.5,
+  },
+  textDisabled: {
+    color: '#666', // Much clearer than #333
   },
 });

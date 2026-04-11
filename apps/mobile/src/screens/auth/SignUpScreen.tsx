@@ -95,6 +95,8 @@ export function SignUpScreen({ onSignUp, onGoogleLogin }: SignUpScreenProps) {
     <ScreenShell
       title="FYTRAK"
       subtitle="Create your account"
+      titleStyle={styles.centeredHeader}
+      subtitleStyle={styles.centeredHeader}
       contentStyle={styles.contentTight}
     >
       <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 40 }}>
@@ -104,7 +106,7 @@ export function SignUpScreen({ onSignUp, onGoogleLogin }: SignUpScreenProps) {
             <TextInput
               value={name}
               onChangeText={setName}
-              placeholder="Nidhal"
+              placeholder="Name"
               placeholderTextColor="#8C93A3"
               style={styles.input}
             />
@@ -117,7 +119,7 @@ export function SignUpScreen({ onSignUp, onGoogleLogin }: SignUpScreenProps) {
               onChangeText={setEmail}
               autoCapitalize="none"
               keyboardType="email-address"
-              placeholder="ex:gymrat@gmail.com"
+              placeholder="ex: Name@gmail.com"
               placeholderTextColor="#8C93A3"
               style={styles.input}
             />
@@ -129,7 +131,7 @@ export function SignUpScreen({ onSignUp, onGoogleLogin }: SignUpScreenProps) {
               value={phone}
               onChangeText={setPhone}
               keyboardType="phone-pad"
-              placeholder="ex:+216 99 000 555"
+              placeholder="ex: 99 000 555"
               placeholderTextColor="#8C93A3"
               style={styles.input}
             />
@@ -212,11 +214,11 @@ export function SignUpScreen({ onSignUp, onGoogleLogin }: SignUpScreenProps) {
             </Text>
           </Pressable>
 
-          <PrimaryButton 
-            title="Sign up" 
-            disabled={!canSubmit || isSubmitting} 
-            onPress={() => void handleSignUp()} 
-            style={styles.signupBtn} 
+          <PrimaryButton
+            title="Sign up"
+            disabled={!canSubmit || isSubmitting}
+            onPress={() => void handleSignUp()}
+            style={styles.signupBtn}
           />
 
           {errorText ? <Typography color={colors.danger} style={styles.errorText}>{errorText}</Typography> : null}
@@ -239,6 +241,10 @@ export function SignUpScreen({ onSignUp, onGoogleLogin }: SignUpScreenProps) {
 const styles = StyleSheet.create({
   contentTight: {
     marginTop: 0,
+  },
+  centeredHeader: {
+    textAlign: "center",
+    width: "100%",
   },
 
   form: {

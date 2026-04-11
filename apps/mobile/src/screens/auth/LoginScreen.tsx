@@ -60,6 +60,7 @@ export function LoginScreen({ onLogin, onGoogleLogin }: LoginScreenProps) {
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errorText, setErrorText] = useState<string | null>(null);
 
@@ -125,13 +126,15 @@ export function LoginScreen({ onLogin, onGoogleLogin }: LoginScreenProps) {
       centered
       title="FYTRAK"
       subtitle="Sign in to continue"
+      titleStyle={styles.centeredHeader}
+      subtitleStyle={styles.centeredHeader}
       contentStyle={styles.contentTight}
     >
       <View style={styles.form}>
         <TextInput
           autoCapitalize="none"
           keyboardType="email-address"
-          placeholder="Phone, email, or username"
+          placeholder="enter your email"
           placeholderTextColor="#8C93A3"
           style={styles.input}
           value={email}
@@ -140,14 +143,23 @@ export function LoginScreen({ onLogin, onGoogleLogin }: LoginScreenProps) {
 
         <View style={styles.passwordWrap}>
           <TextInput
-            secureTextEntry
+            secureTextEntry={!showPassword}
             placeholder="Password..."
             placeholderTextColor="#8C93A3"
             style={styles.inputPassword}
             value={password}
             onChangeText={setPassword}
           />
-          <Ionicons name="eye-outline" size={20} color="#8C93A3" style={styles.eyeIcon} />
+          <Pressable
+            style={styles.eyeIcon}
+            onPress={() => setShowPassword(!showPassword)}
+          >
+            <Ionicons
+              name={showPassword ? "eye-off-outline" : "eye-outline"}
+              size={20}
+              color="#8C93A3"
+            />
+          </Pressable>
         </View>
 
         <Pressable style={styles.forgotWrap}>
@@ -199,6 +211,10 @@ const styles = StyleSheet.create({
   },
   contentTight: {
     marginTop: 0,
+  },
+  centeredHeader: {
+    textAlign: 'center',
+    width: '100%',
   },
 
   socialButton: {
