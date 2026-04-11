@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { ActivityIndicator, Pressable, StyleSheet, Text, TextInput, View } from "react-native";
+import { ActivityIndicator, Pressable, StyleSheet, Text, TextInput, View, ScrollView } from "react-native";
 import { ScreenShell } from "../../components/ScreenShell";
 import { colors } from "../../theme/colors";
 import { Ionicons } from "@expo/vector-icons";
@@ -97,130 +97,141 @@ export function SignUpScreen({ onSignUp, onGoogleLogin }: SignUpScreenProps) {
       subtitle="Create your account"
       contentStyle={styles.contentTight}
     >
-      <View style={styles.form}>
-        <View style={styles.inputGroup}>
-          <Typography variant="label">Name</Typography>
-          <TextInput
-            value={name}
-            onChangeText={setName}
-            placeholder="Nidhal"
-            placeholderTextColor="#8C93A3"
-            style={styles.input}
-          />
-        </View>
+      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 40 }}>
+        <View style={styles.form}>
+          <View style={styles.inputGroup}>
+            <Typography variant="label">Name</Typography>
+            <TextInput
+              value={name}
+              onChangeText={setName}
+              placeholder="Nidhal"
+              placeholderTextColor="#8C93A3"
+              style={styles.input}
+            />
+          </View>
 
-        <View style={styles.inputGroup}>
-          <Text style={styles.label}>Email</Text>
-          <TextInput
-            value={email}
-            onChangeText={setEmail}
-            autoCapitalize="none"
-            keyboardType="email-address"
-            placeholder="ex:gymrat@gmail.com"
-            placeholderTextColor="#8C93A3"
-            style={styles.input}
-          />
-        </View>
+          <View style={styles.inputGroup}>
+            <Text style={styles.label}>Email</Text>
+            <TextInput
+              value={email}
+              onChangeText={setEmail}
+              autoCapitalize="none"
+              keyboardType="email-address"
+              placeholder="ex:gymrat@gmail.com"
+              placeholderTextColor="#8C93A3"
+              style={styles.input}
+            />
+          </View>
 
-        <View style={styles.inputGroup}>
-          <Text style={styles.label}>Phone (Optional)</Text>
-          <TextInput
-            value={phone}
-            onChangeText={setPhone}
-            keyboardType="phone-pad"
-            placeholder="ex:+216 99 000 555"
-            placeholderTextColor="#8C93A3"
-            style={styles.input}
-          />
-        </View>
+          <View style={styles.inputGroup}>
+            <Text style={styles.label}>Phone (Optional)</Text>
+            <TextInput
+              value={phone}
+              onChangeText={setPhone}
+              keyboardType="phone-pad"
+              placeholder="ex:+216 99 000 555"
+              placeholderTextColor="#8C93A3"
+              style={styles.input}
+            />
+          </View>
 
-        <View style={styles.inputGroup}>
-          <Text style={styles.label}>Password</Text>
-          <TextInput
-            value={password}
-            onChangeText={setPassword}
-            secureTextEntry
-            placeholder="***********"
-            placeholderTextColor="#8C93A3"
-            style={styles.input}
-          />
-        </View>
+          <View style={styles.inputGroup}>
+            <Text style={styles.label}>Password</Text>
+            <TextInput
+              value={password}
+              onChangeText={setPassword}
+              secureTextEntry
+              placeholder="Min 6 characters"
+              placeholderTextColor="#8C93A3"
+              style={styles.input}
+            />
+            {password.length > 0 && password.length < 6 && (
+              <Text style={{ color: colors.danger, fontSize: 10, marginLeft: 4 }}>Must be at least 6 characters</Text>
+            )}
+          </View>
 
-        <View style={styles.inputGroup}>
-          <Text style={styles.label}>Confirm password</Text>
-          <TextInput
-            value={confirmPassword}
-            onChangeText={setConfirmPassword}
-            secureTextEntry
-            placeholder="***********"
-            placeholderTextColor="#8C93A3"
-            style={styles.input}
-          />
-        </View>
+          <View style={styles.inputGroup}>
+            <Text style={styles.label}>Confirm password</Text>
+            <TextInput
+              value={confirmPassword}
+              onChangeText={setConfirmPassword}
+              secureTextEntry
+              placeholder="Re-type password"
+              placeholderTextColor="#8C93A3"
+              style={styles.input}
+            />
+            {confirmPassword.length > 0 && confirmPassword !== password && (
+              <Text style={{ color: colors.danger, fontSize: 10, marginLeft: 4 }}>Passwords do not match</Text>
+            )}
+            {confirmPassword.length > 0 && confirmPassword === password && password.length >= 6 && (
+              <Text style={{ color: colors.primary, fontSize: 10, marginLeft: 4 }}>Passwords match!</Text>
+            )}
+          </View>
 
-        <View style={styles.inputGroup}>
-          <Text style={styles.label}>I want to join as a...</Text>
-          <View style={styles.roleGrid}>
-            <Pressable
-              style={[styles.roleCard, role === "trainee" && styles.roleCardActive]}
-              onPress={() => setRole("trainee")}
-            >
-              <View style={[styles.roleIconContainer, role === "trainee" && styles.roleIconActive]}>
-                <Ionicons
-                  name="fitness-outline"
-                  size={24}
-                  color={role === "trainee" ? colors.primary : "#8c8c8c"}
-                />
-              </View>
-              <Text style={[styles.roleLabel, role === "trainee" && styles.roleLabelActive]}>Trainee</Text>
-              <Text style={styles.roleSub}>I want to be coached</Text>
+          <View style={styles.inputGroup}>
+            <Text style={styles.label}>I want to join as a...</Text>
+            <View style={styles.roleGrid}>
+              <Pressable
+                style={[styles.roleCard, role === "trainee" && styles.roleCardActive]}
+                onPress={() => setRole("trainee")}
+              >
+                <View style={[styles.roleIconContainer, role === "trainee" && styles.roleIconActive]}>
+                  <Ionicons
+                    name="fitness-outline"
+                    size={24}
+                    color={role === "trainee" ? colors.primary : "#8c8c8c"}
+                  />
+                </View>
+                <Text style={[styles.roleLabel, role === "trainee" && styles.roleLabelActive]}>Trainee</Text>
+                <Text style={styles.roleSub}>I want to be coached</Text>
+              </Pressable>
+
+              <Pressable
+                style={[styles.roleCard, role === "coach" && styles.roleCardActive]}
+                onPress={() => setRole("coach")}
+              >
+                <View style={[styles.roleIconContainer, role === "coach" && styles.roleIconActive]}>
+                  <Ionicons
+                    name="trophy-outline"
+                    size={24}
+                    color={role === "coach" ? colors.primary : "#8c8c8c"}
+                  />
+                </View>
+                <Text style={[styles.roleLabel, role === "coach" && styles.roleLabelActive]}>Coach</Text>
+                <Text style={styles.roleSub}>I want to manage clients</Text>
+              </Pressable>
+            </View>
+          </View>
+
+          <Pressable style={styles.termsRow} onPress={() => setAcceptedTerms((prev) => !prev)}>
+            <View style={[styles.checkbox, acceptedTerms && styles.checkboxActive]}>
+              {acceptedTerms && <Ionicons name="checkmark" size={10} color={colors.primaryText} />}
+            </View>
+            <Text style={styles.termsText}>
+              I understood the <Text style={styles.termsLink}>terms & policy</Text>
+            </Text>
+          </Pressable>
+
+          <PrimaryButton 
+            title="Sign up" 
+            disabled={!canSubmit || isSubmitting} 
+            onPress={() => void handleSignUp()} 
+            style={styles.signupBtn} 
+          />
+
+          {errorText ? <Typography color={colors.danger} style={styles.errorText}>{errorText}</Typography> : null}
+
+          <Text style={styles.socialLabel}>or sign up with</Text>
+          <View style={styles.socialRow}>
+            <Pressable style={styles.socialIconBtn} onPress={() => void handleGoogleLogin()}>
+              <Ionicons name="logo-google" size={24} color="#4285F4" />
             </Pressable>
-
-            <Pressable
-              style={[styles.roleCard, role === "coach" && styles.roleCardActive]}
-              onPress={() => setRole("coach")}
-            >
-              <View style={[styles.roleIconContainer, role === "coach" && styles.roleIconActive]}>
-                <Ionicons
-                  name="trophy-outline"
-                  size={24}
-                  color={role === "coach" ? colors.primary : "#8c8c8c"}
-                />
-              </View>
-              <Text style={[styles.roleLabel, role === "coach" && styles.roleLabelActive]}>Coach</Text>
-              <Text style={styles.roleSub}>I want to manage clients</Text>
+            <Pressable style={styles.socialIconBtn} disabled>
+              <Ionicons name="logo-facebook" size={24} color="#1877F2" />
             </Pressable>
           </View>
         </View>
-
-        <Pressable style={styles.termsRow} onPress={() => setAcceptedTerms((prev) => !prev)}>
-          <View style={[styles.checkbox, acceptedTerms && styles.checkboxActive]}>
-            {acceptedTerms && <Ionicons name="checkmark" size={10} color={colors.primaryText} />}
-          </View>
-          <Text style={styles.termsText}>
-            I understood the <Text style={styles.termsLink}>terms & policy</Text>
-          </Text>
-        </Pressable>
-
-        <PrimaryButton 
-          title="Sign up" 
-          disabled={!canSubmit || isSubmitting} 
-          onPress={() => void handleSignUp()} 
-          style={styles.signupBtn} 
-        />
-
-        {errorText ? <Typography color={colors.danger} style={styles.errorText}>{errorText}</Typography> : null}
-
-        <Text style={styles.socialLabel}>or sign up with</Text>
-        <View style={styles.socialRow}>
-          <Pressable style={styles.socialIconBtn} onPress={() => void handleGoogleLogin()}>
-            <Ionicons name="logo-google" size={24} color="#4285F4" />
-          </Pressable>
-          <Pressable style={styles.socialIconBtn} disabled>
-            <Ionicons name="logo-facebook" size={24} color="#1877F2" />
-          </Pressable>
-        </View>
-      </View>
+      </ScrollView>
     </ScreenShell>
   );
 }
