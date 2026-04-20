@@ -2,6 +2,8 @@ import { StatusBar } from "expo-status-bar";
 import { View, StyleSheet } from "react-native";
 import "./src/i18n";
 import { RootNavigator } from "./src/navigation/RootNavigator";
+import { Toast } from "./src/components/Toast";
+import { SafeAreaProvider } from "react-native-safe-area-context";
 import { useFonts } from 'expo-font';
 import * as SplashScreenNative from 'expo-splash-screen';
 import { useCallback, useState, useEffect } from "react";
@@ -64,10 +66,13 @@ export default function App() {
 
   // Once video finishes, show the actual app content
   return (
-    <View style={styles.container}>
-      <RootNavigator />
-      <StatusBar style="light" />
-    </View>
+    <SafeAreaProvider>
+      <View style={styles.container}>
+        <RootNavigator />
+        <Toast />
+        <StatusBar style="light" />
+      </View>
+    </SafeAreaProvider>
   );
 }
 

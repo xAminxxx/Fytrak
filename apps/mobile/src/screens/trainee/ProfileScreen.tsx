@@ -5,9 +5,10 @@ import { ScreenShell } from "../../components/ScreenShell";
 import { colors } from "../../theme/colors";
 import { Ionicons } from "@expo/vector-icons";
 import { logOut } from "../../services/auth";
+import { useNavigation } from "@react-navigation/native";
 
 import { auth } from "../../config/firebase";
-import { saveUserRole, subscribeToUserProfile, type UserProfile, saveAssignmentStatus, saveUserProfile, uploadProfileImage } from "../../services/userSession";
+import { subscribeToUserProfile, type UserProfile, saveAssignmentStatus, saveUserProfile, uploadProfileImage } from "../../services/userSession";
 import { Typography } from "../../components/Typography";
 import { SessionState } from "../../state/types";
 
@@ -15,9 +16,11 @@ export function ProfileScreen({ session }: { session: SessionState }) {
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [isEditingGoal, setIsEditingGoal] = useState(false);
   const [tempGoal, setTempGoal] = useState("");
+  const [isEditingName, setIsEditingName] = useState(false);
+  const [tempName, setTempName] = useState("");
   const [notificationsEnabled, setNotificationsEnabled] = useState(true);
-  const [isSwitching, setIsSwitching] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
+  const navigation = useNavigation<any>();
 
   useEffect(() => {
     const user = auth.currentUser;
@@ -26,6 +29,7 @@ export function ProfileScreen({ session }: { session: SessionState }) {
     const unsubscribe = subscribeToUserProfile(user.uid, (data) => {
       setProfile(data);
       setTempGoal(data.goal || "");
+      setTempName(data.name || auth.currentUser?.displayName || "");
       setIsLoading(false);
     });
 
@@ -49,6 +53,16 @@ export function ProfileScreen({ session }: { session: SessionState }) {
     }
   };
 
+  const handleUpdateName = async () => {
+    if (!auth.currentUser || !tempName.trim()) return;
+    try {
+      await saveUserProfile(auth.currentUser.uid, { name: tempName.trim() });
+      setIsEditingName(false);
+    } catch (e) {
+      Alert.alert("Error", "Could not update name.");
+    }
+  };
+
   const handleDisconnect = () => {
     Alert.alert(
       "End Relation",
@@ -68,31 +82,6 @@ export function ProfileScreen({ session }: { session: SessionState }) {
     );
   };
 
-  const handleSwitchRole = async (currentRole: string) => {
-    const newRole = currentRole === "trainee" ? "coach" : "trainee";
-    const title = currentRole === "trainee" ? "Become a Coach?" : "Back to Trainee?";
-    const msg = currentRole === "trainee"
-      ? "You will be able to manage clients and review their logs."
-      : "You will be able to log your own workouts and find a coach.";
-
-    Alert.alert(title, msg, [
-      { text: "Cancel", style: "cancel" },
-      {
-        text: "Switch",
-        onPress: async () => {
-          if (!auth.currentUser) return;
-          try {
-            setIsSwitching(true);
-            await saveUserRole(auth.currentUser.uid, newRole);
-          } catch (e) {
-            Alert.alert("Error", "Failed to switch role.");
-          } finally {
-            setIsSwitching(false);
-          }
-        }
-      },
-    ]);
-  };
 
   const handlePickImage = async () => {
     try {
@@ -143,8 +132,27 @@ export function ProfileScreen({ session }: { session: SessionState }) {
               </View>
             </Pressable>
             <View style={{ flex: 1, gap: 4 }}>
-              <Typography variant="h2">{profile?.name || "User Profile"}</Typography>
-              <Typography variant="label" color="#8c8c8c">ACTIVE TRAINEE ID: #{auth.currentUser?.uid.slice(0, 8).toUpperCase()}</Typography>
+              {isEditingName ? (
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                  <TextInput
+                    style={{ flex: 1, color: '#fff', fontSize: 20, fontWeight: '700', borderBottomWidth: 1, borderBottomColor: colors.primary, paddingVertical: 2 }}
+                    value={tempName}
+                    onChangeText={setTempName}
+                    autoFocus
+                  />
+                  <Pressable onPress={handleUpdateName}>
+                    <Ionicons name="checkmark-circle" size={24} color={colors.primary} />
+                  </Pressable>
+                </View>
+              ) : (
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                  <Typography variant="h2">{profile?.name || "User Profile"}</Typography>
+                  <Pressable onPress={() => setIsEditingName(true)} style={{ padding: 4 }}>
+                    <Ionicons name="pencil" size={18} color="#8c8c8c" />
+                  </Pressable>
+                </View>
+              )}
+              <Typography variant="label" color="#8c8c8c">ACTIVE ID: #{auth.currentUser?.uid.slice(0, 8).toUpperCase()}</Typography>
             </View>
           </View>
 
@@ -215,10 +223,13 @@ export function ProfileScreen({ session }: { session: SessionState }) {
                 ) : (
                   <Pressable
                     style={styles.noCoachBtn}
-                    onPress={() => Alert.alert("No Coach", "Go to the Coaching tab to find a professional coach.")}
+                    onPress={() => navigation.navigate("CoachAssignment")}
                   >
-                    <Typography variant="label" color="#8c8c8c">No coach assigned yet</Typography>
-                    <Ionicons name="search" size={16} color={colors.primary} />
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+                      <Ionicons name="sparkles" size={16} color={colors.primary} />
+                      <Typography variant="label" color="#8c8c8c">Find your coach</Typography>
+                    </View>
+                    <Ionicons name="arrow-forward" size={16} color={colors.primary} />
                   </Pressable>
                 )}
               </View>
@@ -246,27 +257,6 @@ export function ProfileScreen({ session }: { session: SessionState }) {
             </>
           )}
 
-          <View style={styles.roleSection}>
-            <Typography variant="label" color="#444" style={{ marginBottom: 12 }}>ACCOUNT TYPE</Typography>
-            <Pressable
-              style={[styles.roleCard, isSwitching && { opacity: 0.6 }]}
-              onPress={() => handleSwitchRole(session.role)}
-              disabled={isSwitching}
-            >
-              <View style={styles.roleInfo}>
-                <View style={styles.roleIconBox}>
-                  <Ionicons name={session.role === "trainee" ? "person" : "fitness"} size={20} color={colors.primary} />
-                </View>
-                <View>
-                  <Typography variant="h2" style={{ fontSize: 15 }}>{session.role === "trainee" ? "Trainee Mode" : "Coach Mode"}</Typography>
-                  <Typography variant="label" color="#8c8c8c">Tap to switch account type</Typography>
-                </View>
-              </View>
-              <Ionicons name="swap-horizontal" size={18} color="#444" />
-            </Pressable>
-          </View>
-
-          <View style={styles.divider} />
 
           <Pressable style={styles.logoutButton} onPress={handleLogout}>
              <Typography style={{ color: "#ff4444", fontWeight: "900", fontSize: 14 }}>SIGN OUT</Typography>
@@ -302,24 +292,24 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   card: {
-    backgroundColor: "#161616",
-    borderRadius: 24,
-    padding: 20,
+    backgroundColor: "#0a0a0a",
+    borderRadius: 32,
+    padding: 24,
     borderWidth: 1,
-    borderColor: "#333333",
-    gap: 16,
+    borderColor: "#1c1c1e",
+    gap: 20,
     marginTop: 10,
   },
   profileHeader: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 16,
-    marginBottom: 10,
+    marginBottom: 4,
   },
   avatarLarge: {
-    width: 60,
-    height: 60,
-    borderRadius: 30,
+    width: 68,
+    height: 68,
+    borderRadius: 34,
     backgroundColor: colors.primary,
     alignItems: 'center',
     justifyContent: 'center',
@@ -327,22 +317,22 @@ const styles = StyleSheet.create({
   bioGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: 8,
-    marginTop: 10,
+    gap: 12,
+    marginTop: 4,
   },
   bioTile: {
     flex: 1,
     minWidth: '45%',
-    backgroundColor: '#000',
-    borderRadius: 16,
-    padding: 12,
+    backgroundColor: '#161616',
+    borderRadius: 20,
+    padding: 14,
     borderWidth: 1,
     borderColor: '#1c1c1e',
   },
   bioIconBox: {
-    width: 24,
-    height: 24,
-    borderRadius: 6,
+    width: 28,
+    height: 28,
+    borderRadius: 8,
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: 8,
@@ -353,7 +343,7 @@ const styles = StyleSheet.create({
     marginVertical: 4,
   },
   inputGroup: {
-    gap: 8,
+    gap: 10,
   },
   inputHeader: {
     flexDirection: "row",
@@ -361,12 +351,12 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   goalDisplay: {
-    backgroundColor: "#1c1c1e",
-    borderRadius: 14,
+    backgroundColor: "#000",
+    borderRadius: 16,
     paddingHorizontal: 16,
     paddingVertical: 14,
     borderWidth: 1,
-    borderColor: "#2c2c2e",
+    borderColor: "#1c1c1e",
     minHeight: 54,
     justifyContent: "center",
   },
@@ -380,26 +370,28 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    paddingVertical: 4,
+    paddingVertical: 8,
   },
   iconWrap: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 12,
+    gap: 14,
   },
   miniIconBox: {
-    width: 32,
-    height: 32,
-    borderRadius: 8,
-    backgroundColor: '#1c1c1e',
+    width: 36,
+    height: 36,
+    borderRadius: 10,
+    backgroundColor: '#161616',
     alignItems: 'center',
     justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: '#1c1c1e'
   },
   toggle: {
     width: 44,
     height: 24,
     borderRadius: 12,
-    backgroundColor: "#333",
+    backgroundColor: "#2c2c2e",
     padding: 2,
     justifyContent: "center",
   },
@@ -416,44 +408,46 @@ const styles = StyleSheet.create({
     alignSelf: "flex-end",
   },
   coachSection: {
-    paddingVertical: 10,
+    paddingVertical: 4,
   },
   coachRow: {
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: "#1c1c1e",
-    borderRadius: 16,
-    padding: 12,
+    backgroundColor: "#101010",
+    borderRadius: 20,
+    padding: 14,
     borderWidth: 1,
-    borderColor: "#2c2c2e",
+    borderColor: "#222",
   },
   coachAvatar: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
+    width: 48,
+    height: 48,
+    borderRadius: 24,
     backgroundColor: colors.primary,
     alignItems: "center",
     justifyContent: "center",
   },
   coachInfo: {
     flex: 1,
-    marginLeft: 12,
+    marginLeft: 14,
   },
   disconnectBtn: {
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 8,
-    backgroundColor: "#2c2c2e",
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    borderRadius: 12,
+    backgroundColor: "#ff444415",
+    borderWidth: 1,
+    borderColor: "#ff444430",
   },
   noCoachBtn: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    backgroundColor: "#1c1c1e",
-    borderRadius: 16,
-    padding: 16,
+    backgroundColor: "#101010",
+    borderRadius: 20,
+    padding: 18,
     borderWidth: 1,
-    borderColor: "#2c2c2e",
+    borderColor: "#222",
   },
   roleSection: {
     paddingVertical: 10,
@@ -482,12 +476,12 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   coachProfileBox: {
-    backgroundColor: "#1c1c1e",
-    borderRadius: 16,
-    padding: 16,
+    backgroundColor: "#101010",
+    borderRadius: 20,
+    padding: 18,
     borderWidth: 1,
-    borderColor: "#2c2c2e",
-    gap: 12,
+    borderColor: "#222",
+    gap: 14,
   },
   specRow: {
     flexDirection: "row",
@@ -496,17 +490,20 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   specPill: {
-    backgroundColor: "#2c2c2e",
-    borderRadius: 8,
-    paddingVertical: 4,
-    paddingHorizontal: 10,
+    backgroundColor: "#161616",
+    borderRadius: 10,
+    paddingVertical: 6,
+    paddingHorizontal: 12,
+    borderWidth: 1,
+    borderColor: '#1c1c1e'
   },
   logoutButton: {
     marginTop: 10,
     borderWidth: 1,
-    borderColor: "#444",
-    borderRadius: 14,
-    paddingVertical: 14,
+    borderColor: "#ff444450",
+    backgroundColor: "#ff444410",
+    borderRadius: 16,
+    paddingVertical: 16,
     alignItems: "center",
   },
   avatarImage: {

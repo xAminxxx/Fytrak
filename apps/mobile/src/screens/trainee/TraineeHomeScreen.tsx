@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { Alert, Pressable, StyleSheet, View, ActivityIndicator, ScrollView } from "react-native";
+import { Alert, Pressable, StyleSheet, View, ActivityIndicator, ScrollView, Text, Modal } from "react-native";
 import { ScreenShell } from "../../components/ScreenShell";
 import { colors } from "../../theme/colors";
 import { Ionicons } from "@expo/vector-icons";
@@ -9,21 +9,70 @@ import { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import { RootStackParamList } from "../../navigation/RootNavigator";
 import { auth } from "../../config/firebase";
 import { Typography } from "../../components/Typography";
+import Svg, { Circle, G, Defs, LinearGradient as SvgLinearGradient, Stop } from "react-native-svg";
 import {
   subscribeToDailyMeals,
   subscribeToWorkouts,
   subscribeToUserProfile,
   subscribeToPrescribedWorkouts,
   subscribeToPrescribedMeals,
+  subscribeToLatestMetrics,
   type Meal,
   type WorkoutLog,
   type UserProfile,
   type PrescribedWorkout,
-  type PrescribedMeal
+  type PrescribedMeal,
+  type BodyMetric
 } from "../../services/userSession";
 
 type TraineeHomeScreenProps = {
   onQuickAskCoach: () => void;
+};
+
+// 💎 PREMIUM MACRO RING COMPONENT
+const MacroRing = ({ current, target, label }: { current: number, target: number, label: string }) => {
+  const size = 120;
+  const strokeWidth = 12;
+  const radius = (size - strokeWidth) / 2;
+  const circumference = radius * 2 * Math.PI;
+  const safeTarget = target > 0 ? target : 2000;
+  const progress = Math.min(current / safeTarget, 1);
+  const strokeDashoffset = circumference - progress * circumference;
+
+  return (
+    <View style={{ alignItems: 'center' }}>
+      <View style={{ width: size, height: size, alignItems: 'center', justifyContent: 'center' }}>
+        <Svg width={size} height={size}>
+          <Defs>
+            <SvgLinearGradient id="grad" x1="0" y1="0" x2="1" y2="1">
+              <Stop offset="0" stopColor={colors.primary} stopOpacity="1" />
+              <Stop offset="1" stopColor="#d97706" stopOpacity="1" />
+            </SvgLinearGradient>
+          </Defs>
+          <Circle stroke="#1c1c1e" cx={size / 2} cy={size / 2} r={radius} strokeWidth={strokeWidth} fill="none" />
+          <Circle
+            stroke="url(#grad)"
+            cx={size / 2}
+            cy={size / 2}
+            r={radius}
+            strokeWidth={strokeWidth}
+            fill="none"
+            strokeDasharray={circumference}
+            strokeDashoffset={strokeDashoffset}
+            strokeLinecap="round"
+            rotation="-90"
+            originX={size / 2}
+            originY={size / 2}
+          />
+        </Svg>
+        <View style={{ position: 'absolute', alignItems: 'center' }}>
+          <Typography variant="h2" style={{ fontSize: 24, lineHeight: 28 }}>{current}</Typography>
+          <Typography variant="label" style={{ color: '#888', fontSize: 10 }}>/ {target} kcal</Typography>
+        </View>
+      </View>
+      <Typography variant="label" style={{ color: '#fff', fontSize: 14, marginTop: 8, fontWeight: '700' }}>{label}</Typography>
+    </View>
+  );
 };
 
 export function TraineeHomeScreen({ onQuickAskCoach }: TraineeHomeScreenProps) {
@@ -33,7 +82,9 @@ export function TraineeHomeScreen({ onQuickAskCoach }: TraineeHomeScreenProps) {
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [prescribed, setPrescribed] = useState<PrescribedWorkout[]>([]);
   const [prescribedMeals, setPrescribedMeals] = useState<PrescribedMeal[]>([]);
+  const [metrics, setMetrics] = useState<BodyMetric[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [showLogoutModal, setShowLogoutModal] = useState(false);
 
   useEffect(() => {
     const user = auth.currentUser;
@@ -57,12 +108,15 @@ export function TraineeHomeScreen({ onQuickAskCoach }: TraineeHomeScreenProps) {
       setIsLoading(false);
     });
 
+    const unsubMetrics = subscribeToLatestMetrics(user.uid, setMetrics);
+
     return () => {
       unsubMeals();
       unsubWorkouts();
       unsubPrescribed();
       unsubPrescribedMeals();
       unsubProfile();
+      unsubMetrics();
     };
   }, []);
 
@@ -78,12 +132,20 @@ export function TraineeHomeScreen({ onQuickAskCoach }: TraineeHomeScreenProps) {
     return workouts.length > 0 ? "Completed" : "Pending";
   }, [workouts]);
 
+  const greeting = useMemo(() => {
+    const hour = new Date().getHours();
+    if (hour < 12) return "Good Morning";
+    if (hour < 18) return "Good Afternoon";
+    return "Good Evening";
+  }, []);
+
   return (
     <ScreenShell
-      title="Home"
-      subtitle={isPremium ? "Premium Access Active" : "Your daily training tracking"}
+      title="FYTRAK"
+      subtitle=""
       contentStyle={styles.shellContent}
-      rightActionIcon="person-circle-outline"
+      rightActionIcon={!profile?.profileImageUrl ? "person-circle-outline" : undefined}
+      rightActionImageUri={profile?.profileImageUrl}
       onRightAction={() => navigation.navigate("Profile")}
     >
       {isLoading ? (
@@ -126,37 +188,47 @@ export function TraineeHomeScreen({ onQuickAskCoach }: TraineeHomeScreenProps) {
               </Pressable>
             )}
 
+            {/* PERSONALIZED GREETING HEADER */}
+            <View style={styles.greetingHeader}>
+              <View>
+                <Typography variant="label" style={{ color: colors.primary, fontWeight: '800', letterSpacing: 1 }}>{greeting.toUpperCase()}</Typography>
+                <Typography variant="h1" style={{ fontSize: 32, marginTop: 4 }}>{profile?.name?.split(' ')[0] || "Athlete"} 🏃‍♂️</Typography>
+              </View>
+              {isPremium && <PremiumBadge />}
+            </View>
+
             <View style={styles.card}>
               <View style={styles.cardHeader}>
                 <Ionicons name="stats-chart" size={18} color={colors.primary} />
                 <Typography variant="h2">Today Status</Typography>
-                {isPremium && <PremiumBadge />}
               </View>
+              
               <View style={styles.statsGrid}>
-                <View style={styles.mainStatsRow}>
-                  <View style={styles.mainStat}>
-                    <Typography variant="label" color="#444">CURRENT MISSION</Typography>
-                    <Typography variant="h2" style={{ color: colors.primary, fontSize: 22 }}>{profile?.goal?.replace('_', ' ') || "FITNESS"}</Typography>
-                  </View>
-                  <View style={[styles.statDivider, { height: 40 }]} />
-                  <View style={styles.mainStat}>
-                    <Typography variant="label" color="#444">BODY WEIGHT</Typography>
-                    <Typography variant="h2" style={{ fontSize: 22 }}>{profile?.weight || "--"} <Typography style={{ fontSize: 10, color: '#444' }}>kg</Typography></Typography>
+                {/* 💎 PREMIUM SVG MACRO RING */}
+                <View style={styles.ringContainer}>
+                  <MacroRing 
+                    current={nutritionStats.current} 
+                    target={nutritionStats.target} 
+                    label="Nutrition Intake" 
+                  />
+                  <View style={styles.ringSideStats}>
+                    <View style={styles.sideStatBox}>
+                       <Ionicons name="body-outline" size={16} color="#8c8c8c" />
+                       <View>
+                         <Typography variant="label" color="#8c8c8c" style={{ fontSize: 10 }}>BODY WEIGHT</Typography>
+                         <Typography variant="h2" style={{ fontSize: 16 }}>{metrics[0]?.weight || profile?.weight || "--"} <Typography style={{ fontSize: 10, color: '#888' }}>kg</Typography></Typography>
+                       </View>
+                    </View>
+                    <View style={styles.sideStatBox}>
+                       <Ionicons name={workouts.length > 0 ? "checkmark-circle" : "time-outline"} size={16} color={workouts.length > 0 ? colors.primary : "#8c8c8c"} />
+                       <View>
+                         <Typography variant="label" color="#8c8c8c" style={{ fontSize: 10 }}>WORKOUT</Typography>
+                         <Typography variant="h2" style={{ fontSize: 16, color: workouts.length > 0 ? colors.primary : '#fff' }}>{workoutStatus}</Typography>
+                       </View>
+                    </View>
                   </View>
                 </View>
 
-                <View style={styles.progressSeparator} />
-
-                <StatusLine
-                  label="Daily Nutrition"
-                  status={`${nutritionStats.current} / ${nutritionStats.target} kcal`}
-                  color={nutritionStats.current >= nutritionStats.target ? "#f87171" : "#fff"}
-                />
-                <StatusLine
-                  label="Workout"
-                  status={workoutStatus}
-                  color={workouts.length > 0 ? colors.primary : "#ff4444"}
-                />
               </View>
             </View>
 
@@ -252,12 +324,7 @@ export function TraineeHomeScreen({ onQuickAskCoach }: TraineeHomeScreenProps) {
 
                 <Pressable
                   style={[styles.actionButton, { backgroundColor: "#1a1a1a", borderWidth: 1, borderColor: "#333" }]}
-                  onPress={() => {
-                    Alert.alert("Logout", "Are you sure you want to sign out?", [
-                      { text: "Cancel", style: "cancel" },
-                      { text: "Logout", style: "destructive", onPress: () => void logOut() },
-                    ]);
-                  }}
+                  onPress={() => setShowLogoutModal(true)}
                 >
                   <Ionicons name="log-out-outline" size={20} color="#ff4444" />
                   <Typography style={[styles.actionButtonText, { color: "#ff4444" }] as any}>Log Out</Typography>
@@ -267,6 +334,27 @@ export function TraineeHomeScreen({ onQuickAskCoach }: TraineeHomeScreenProps) {
           </View>
         </ScrollView>
       )}
+
+      {/* CUSTOM LOGOUT OVERLAY */}
+      <Modal transparent={true} visible={showLogoutModal} animationType="fade" onRequestClose={() => setShowLogoutModal(false)}>
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <View style={styles.modalIconBg}>
+              <Ionicons name="log-out-outline" size={28} color="#ff4444" />
+            </View>
+            <Typography variant="h2" style={styles.modalTitle}>Log Out</Typography>
+            <Typography style={styles.modalDesc as any}>Are you sure you want to sign out?</Typography>
+            <View style={styles.modalActions}>
+              <Pressable style={styles.modalCancelBtn} onPress={() => setShowLogoutModal(false)}>
+                <Typography style={styles.modalBtnText as any}>CANCEL</Typography>
+              </Pressable>
+              <Pressable style={styles.modalConfirmBtn} onPress={() => { setShowLogoutModal(false); void logOut(); }}>
+                <Typography style={styles.modalBtnText as any}>LOGOUT</Typography>
+              </Pressable>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </ScreenShell>
   );
 }
@@ -280,14 +368,6 @@ function PremiumBadge() {
   );
 }
 
-function StatusLine({ label, status, color }: { label: string; status: string; color?: string }) {
-  return (
-    <View style={styles.statusLine}>
-      <Typography variant="label" color="#8c8c8c">{label}</Typography>
-      <Typography style={{ color: color || '#fff', fontSize: 15, fontWeight: '700' }}>{status}</Typography>
-    </View>
-  );
-}
 
 const styles = StyleSheet.create({
   shellContent: { paddingBottom: 0 },
@@ -381,9 +461,17 @@ const styles = StyleSheet.create({
     gap: 10,
     marginTop: 10,
   },
-  mainStatsRow: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#000', padding: 16, borderRadius: 20, borderWidth: 1, borderColor: '#1c1c1e', marginBottom: 8 },
-  mainStat: { flex: 1, gap: 4 },
-  statDivider: { width: 1, height: 30, backgroundColor: '#1c1c1e', marginHorizontal: 16 },
-  statusLine: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 4 },
-  progressSeparator: { height: 1, backgroundColor: '#1c1c1e', marginVertical: 8 },
+  greetingHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 6 },
+  ringContainer: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#0a0a0a', padding: 20, borderRadius: 24, borderWidth: 1, borderColor: '#1c1c1e' },
+  ringSideStats: { flex: 1, marginLeft: 24, gap: 16 },
+  sideStatBox: { flexDirection: 'row', alignItems: 'flex-start', gap: 10 },
+  modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.75)', justifyContent: 'center', alignItems: 'center', padding: 20 },
+  modalContent: { width: '100%', backgroundColor: '#111', borderRadius: 32, padding: 32, alignItems: 'center', borderWidth: 1, borderColor: '#2c2c2e' },
+  modalIconBg: { width: 64, height: 64, borderRadius: 32, backgroundColor: 'rgba(255, 68, 68, 0.1)', justifyContent: 'center', alignItems: 'center', marginBottom: 20 },
+  modalTitle: { fontSize: 24, marginBottom: 8 },
+  modalDesc: { color: '#8c8c8c', fontSize: 16, textAlign: 'center', marginBottom: 32, fontWeight: '600' },
+  modalActions: { flexDirection: 'row', gap: 12, width: '100%' },
+  modalCancelBtn: { flex: 1, padding: 18, borderRadius: 16, backgroundColor: '#222', alignItems: 'center' },
+  modalConfirmBtn: { flex: 1, padding: 18, borderRadius: 16, backgroundColor: '#ff4444', alignItems: 'center' },
+  modalBtnText: { color: '#fff', fontWeight: '900', fontSize: 14, textTransform: 'uppercase' },
 });

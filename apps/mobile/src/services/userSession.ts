@@ -164,6 +164,7 @@ export type Meal = {
   protein: number;
   time: string;
   date: string;
+  imageUrl?: string;
   createdAt?: any;
 };
 
@@ -499,7 +500,7 @@ export const respondToTraineeRequest = async (traineeId: string, accept: boolean
   );
 };
 
-export const saveMealLog = async (uid: string, meal: Omit<Meal, "id" | "date">): Promise<void> => {
+export const saveMealLog = async (uid: string, meal: Omit<Meal, "id" | "date" | "createdAt">): Promise<void> => {
   const today = new Date().toISOString().split("T")[0];
   const ref = collection(db, usersCollection, uid, "meals");
 
@@ -560,7 +561,8 @@ export const subscribeToWorkouts = (uid: string, callback: (workouts: WorkoutLog
 
 export const saveBodyMetric = async (uid: string, metric: { weight: number; bodyFat?: number }): Promise<void> => {
   const today = new Date().toISOString().split("T")[0];
-  const ref = collection(db, usersCollection, uid, "metrics");
+  const collRef = collection(db, usersCollection, uid, "metrics");
+  const userRef = doc(db, usersCollection, uid);
   
   // SANITIZE: Prevent 'undefined' from crashing Firebase addDoc
   const data: any = { 
@@ -568,11 +570,32 @@ export const saveBodyMetric = async (uid: string, metric: { weight: number; body
     date: today, 
     createdAt: serverTimestamp() 
   };
+  
+  const profileUpdates: any = {
+    weight: Number(metric.weight),
+    updatedAt: serverTimestamp()
+  };
+
   if (metric.bodyFat !== undefined && metric.bodyFat !== null) {
-    data.bodyFat = Number(metric.bodyFat);
+    const bf = Number(metric.bodyFat);
+    data.bodyFat = bf;
+    profileUpdates.bodyFat = bf;
   }
 
-  await addDoc(ref, data);
+  // Check if a metric already exists for today — upsert instead of duplicating
+  const todayQuery = query(collRef, where("date", "==", today));
+  const existing = await getDocs(todayQuery);
+
+  if (!existing.empty) {
+    // Overwrite the latest entry for today
+    const existingDoc = existing.docs[0];
+    await setDoc(doc(db, usersCollection, uid, "metrics", existingDoc.id), data);
+  } else {
+    await addDoc(collRef, data);
+  }
+
+  // Synchronize top-level user profile state
+  await setDoc(userRef, { profile: profileUpdates }, { merge: true });
 };
 
 export const subscribeToLatestMetrics = (uid: string, callback: (metrics: BodyMetric[]) => void) => {

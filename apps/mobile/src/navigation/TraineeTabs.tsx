@@ -7,6 +7,10 @@ import { ProgressScreen } from "../screens/trainee/ProgressScreen";
 import { TraineeHomeScreen } from "../screens/trainee/TraineeHomeScreen";
 import { WorkoutLogScreen } from "../screens/trainee/WorkoutLogScreen";
 import { auth } from "../config/firebase";
+import { View, Text, StyleSheet, Pressable } from "react-native";
+import { Ionicons } from "@expo/vector-icons";
+import { colors } from "../theme/colors";
+import { ScreenShell } from "../components/ScreenShell";
 
 import { SessionState } from "../state/types";
 
@@ -21,7 +25,7 @@ export type TraineeTabsParamList = {
 const Tab = createMaterialTopTabNavigator<TraineeTabsParamList>();
 
 export function TraineeTabs({ session }: { session: SessionState }) {
-  const navigation = useNavigation();
+  const navigation = useNavigation<any>();
 
   return (
     <Tab.Navigator
@@ -45,13 +49,59 @@ export function TraineeTabs({ session }: { session: SessionState }) {
       <Tab.Screen name="Progress" component={ProgressScreen} />
       <Tab.Screen
         name="Chat"
-        children={() => (
-          <CoachChatScreen
-            traineeId={auth.currentUser?.uid || "unknown"}
-            coachId={session.selectedCoachId || "unknown"}
-          />
-        )}
+        children={() =>
+          session.selectedCoachId ? (
+            <CoachChatScreen
+              traineeId={auth.currentUser?.uid || "unknown"}
+              coachId={session.selectedCoachId || "unknown"}
+            />
+          ) : (
+            <ChatLockedScreen onUnlock={() => navigation.navigate("CoachAssignment")} />
+          )
+        }
       />
     </Tab.Navigator>
   );
 }
+
+function ChatLockedScreen({ onUnlock }: { onUnlock: () => void }) {
+  return (
+    <ScreenShell title="Messages" subtitle="Coach communication" contentStyle={{ paddingBottom: 0 }}>
+      <View style={lockedStyles.container}>
+        <View style={lockedStyles.iconCircle}>
+          <Ionicons name="lock-closed" size={40} color={colors.primary} />
+        </View>
+        <Text style={lockedStyles.title}>Premium Feature</Text>
+        <Text style={lockedStyles.desc}>
+          Connect with a certified coach to unlock direct messaging, personalized plans, and real-time feedback.
+        </Text>
+        <Pressable style={lockedStyles.ctaBtn} onPress={onUnlock}>
+          <Ionicons name="sparkles" size={18} color="#000" />
+          <Text style={lockedStyles.ctaText}>FIND A COACH</Text>
+          <Ionicons name="arrow-forward" size={18} color="#000" />
+        </Pressable>
+        <View style={lockedStyles.features}>
+          {["Personalized workout plans", "Direct messaging with your coach", "Real-time form corrections", "Custom nutrition guidance"].map((f, i) => (
+            <View key={i} style={lockedStyles.featureRow}>
+              <View style={lockedStyles.checkCircle}><Ionicons name="checkmark" size={12} color="#000" /></View>
+              <Text style={lockedStyles.featureText}>{f}</Text>
+            </View>
+          ))}
+        </View>
+      </View>
+    </ScreenShell>
+  );
+}
+
+const lockedStyles = StyleSheet.create({
+  container: { flex: 1, alignItems: "center", justifyContent: "center", paddingHorizontal: 30, paddingBottom: 120, gap: 16 },
+  iconCircle: { width: 90, height: 90, borderRadius: 45, backgroundColor: "#161616", alignItems: "center", justifyContent: "center", borderWidth: 2, borderColor: "#1c1c1e", marginBottom: 8 },
+  title: { color: "#fff", fontSize: 24, fontWeight: "900", letterSpacing: 0.5 },
+  desc: { color: "#8c8c8c", fontSize: 14, fontWeight: "500", textAlign: "center", lineHeight: 20 },
+  ctaBtn: { backgroundColor: colors.primary, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 10, paddingVertical: 18, paddingHorizontal: 36, borderRadius: 20, marginTop: 8, shadowColor: colors.primary, shadowOffset: { width: 0, height: 8 }, shadowOpacity: 0.4, shadowRadius: 16, elevation: 10 },
+  ctaText: { color: "#000", fontWeight: "900", fontSize: 16, letterSpacing: 1 },
+  features: { marginTop: 20, gap: 12, alignSelf: "stretch" },
+  featureRow: { flexDirection: "row", alignItems: "center", gap: 12 },
+  checkCircle: { width: 24, height: 24, borderRadius: 12, backgroundColor: colors.primary, alignItems: "center", justifyContent: "center" },
+  featureText: { color: "#aaa", fontSize: 13, fontWeight: "600" },
+});

@@ -1,11 +1,11 @@
 import React from 'react';
-import { Text, StyleSheet, TextStyle } from 'react-native';
+import { Text, StyleSheet, TextStyle, StyleProp } from 'react-native';
 
 interface TypographyProps {
   children: React.ReactNode;
   variant?: 'h1' | 'h2' | 'subtitle' | 'body' | 'label' | 'button' | 'metric';
   color?: string;
-  style?: TextStyle;
+  style?: StyleProp<TextStyle>;
   numberOfLines?: number;
 }
 

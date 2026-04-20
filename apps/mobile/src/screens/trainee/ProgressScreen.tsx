@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState, useCallback, memo } from "react";
+import React, { useEffect, useMemo, useState, useCallback } from "react";
 import {
   ScrollView,
   StyleSheet,
@@ -28,109 +28,32 @@ import {
   saveProgressPhoto,
   deleteProgressPhoto,
   subscribeToUserProfile,
+  subscribeToDailyMeals,
   type WorkoutLog,
   type BodyMetric,
   type ProgressPhoto,
-  type UserProfile
+  type UserProfile,
+  type Meal
 } from "../../services/userSession";
 import { uploadProgressPhoto } from "../../services/cloudinaryUpload";
 import { ProgressCamera } from "../../components/ProgressCamera";
 import { CompareSlider } from "../../components/CompareSlider";
+import { useNavigation } from "@react-navigation/native";
 
-// SMART GRID CONSTANTS
+// Clean Components extracted for modularity
+import { MetricCard } from "../../components/MetricCard";
+import { PhotoGridItem } from "../../components/PhotoGridItem";
+import { BFRow } from "../../components/BFRow";
+
 const GAP = 8;
-
-const HighPerfImage = memo(({ url }: { url: string }) => (
-  <Image
-    source={{ uri: url }}
-    style={styles.gridPhoto}
-    resizeMode="cover"
-    fadeDuration={0}
-  />
-), (prev, next) => prev.url === next.url);
-
-const PhotoGridItem = memo(({
-  photo,
-  isSelected,
-  isSelectionMode,
-  isCompareMode,
-  isCompareSelected,
-  onSelect,
-  onView,
-  onLongPress,
-  width
-}: {
-  photo: ProgressPhoto;
-  isSelected: boolean;
-  isSelectionMode: boolean;
-  isCompareMode: boolean;
-  isCompareSelected: boolean;
-  onSelect: (p: ProgressPhoto) => void;
-  onView: (url: string) => void;
-  onLongPress: (p: ProgressPhoto) => void;
-  width: number;
-}) => {
-  return (
-    <Pressable
-      style={[styles.gridPhotoBox, { width, height: width }]}
-      onPress={() => (isSelectionMode || isCompareMode) ? onSelect(photo) : onView(photo.url)}
-      onLongPress={() => onLongPress(photo)}
-      delayLongPress={300}
-    >
-      <HighPerfImage url={photo.url} />
-      
-      {(isSelected || isCompareSelected) && (
-        <View style={[styles.selectionBorderOverlay, isCompareSelected && { borderColor: colors.primary }]}>
-          <View style={styles.deleteOverlay}>
-            <Ionicons name={isCompareSelected ? "checkmark-circle" : "trash"} size={24} color="#fff" />
-          </View>
-        </View>
-      )}
-
-      {isCompareSelected && (
-        <View style={styles.badgeLabel}>
-          <Text style={styles.badgeText}>{isCompareSelected ? "COMPARE" : ""}</Text>
-        </View>
-      )}
-
-      {!isSelectionMode && !isCompareMode && (
-        <View style={styles.gridDateTag}>
-          <Text style={styles.gridDateText}>
-            {new Date(photo.date).toLocaleDateString([], { month: "short", day: "numeric" })}
-          </Text>
-        </View>
-      )}
-    </Pressable>
-  );
-}, (prev, next) => {
-  return prev.isSelected === next.isSelected &&
-    prev.isSelectionMode === next.isSelectionMode &&
-    prev.isCompareMode === next.isCompareMode &&
-    prev.isCompareSelected === next.isCompareSelected &&
-    prev.photo.url === next.photo.url &&
-    prev.width === next.width;
-});
-
-function BFRow({ label, male, female, desc, onSelect }: any) {
-  return (
-    <Pressable style={styles.bfRow} onPress={onSelect}>
-      <View style={styles.bfRowHeader}>
-        <Text style={styles.bfRowLabel}>{label}</Text>
-        <View style={{ flexDirection: "row", gap: 8 }}>
-          <View style={[styles.genderTag, { backgroundColor: "#3b82f640" }]}><Text style={styles.genderTagText}>M: {male}</Text></View>
-          <View style={[styles.genderTag, { backgroundColor: "#ec489940" }]}><Text style={styles.genderTagText}>F: {female}</Text></View>
-        </View>
-      </View>
-      <Text style={styles.bfRowDesc}>{desc}</Text>
-    </Pressable>
-  );
-}
 
 export function ProgressScreen() {
   const { width: windowWidth } = useWindowDimensions();
+  const navigation = useNavigation<any>();
   const [workouts, setWorkouts] = useState<WorkoutLog[]>([]);
   const [metrics, setMetrics] = useState<BodyMetric[]>([]);
   const [photos, setPhotos] = useState<ProgressPhoto[]>([]);
+  const [meals, setMeals] = useState<Meal[]>([]);
   const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
@@ -147,8 +70,9 @@ export function ProgressScreen() {
   const [isBFModalVisible, setIsBFModalVisible] = useState(false);
   const [isCameraVisible, setIsCameraVisible] = useState(false);
   const [activeComparePair, setActiveComparePair] = useState<[ProgressPhoto, ProgressPhoto] | null>(null);
+  const [chartFilter, setChartFilter] = useState<'1W' | '1M' | '3M' | '1Y' | 'ALL'>('1M');
 
-  // HELPERS
+  // Computed Values
   const calculateBMI = useMemo(() => {
     if (!metrics[0]?.weight || !userProfile?.height) return "--";
     const heightInM = userProfile.height / 100;
@@ -161,26 +85,52 @@ export function ProgressScreen() {
     startOfWeek.setDate(today.getDate() - today.getDay());
     startOfWeek.setHours(0, 0, 0, 0);
 
-    const completedThisWeek = workouts.filter(w => {
+    return workouts.filter(w => {
       if (!w.createdAt) return false;
       const d = w.createdAt.toDate ? w.createdAt.toDate() : new Date(w.createdAt);
       return d >= startOfWeek;
     }).length;
-
-    return completedThisWeek;
   }, [workouts]);
 
   const weightChartData = useMemo(() => {
-    return [...metrics].reverse().map(m => ({
-      value: m.weight,
-      label: new Date(m.date).toLocaleDateString([], { month: 'short', day: 'numeric' }),
-      dataPointText: m.weight.toString(),
-    }));
-  }, [metrics]);
+    if (!metrics.length) return { data: [], yAxisOffset: 0 };
+    const now = new Date();
+    let cutoff = new Date(0); // ALL
+    if (chartFilter === '1W') { const d = new Date(); d.setDate(d.getDate() - 7); cutoff = d; }
+    else if (chartFilter === '1M') { const d = new Date(); d.setMonth(d.getMonth() - 1); cutoff = d; }
+    else if (chartFilter === '3M') { const d = new Date(); d.setMonth(d.getMonth() - 3); cutoff = d; }
+    else if (chartFilter === '1Y') { const d = new Date(); d.setFullYear(d.getFullYear() - 1); cutoff = d; }
 
-  const itemWidth = useMemo(() => {
-    return (windowWidth - 40 - (GAP * 2)) / 3;
-  }, [windowWidth]);
+    const filtered = [...metrics].filter(m => new Date(m.createdAt?.toDate ? m.createdAt.toDate() : m.date) >= cutoff).reverse();
+    if (filtered.length === 0) return { data: [], yAxisOffset: 0 };
+
+    const weights = filtered.map(m => m.weight);
+    const minW = Math.min(...weights);
+    const yAxisOffset = Math.floor(minW - 2);
+
+    return {
+      yAxisOffset,
+      data: filtered.map(m => ({
+        value: m.weight,
+        label: new Date(m.date).toLocaleDateString([], { month: 'numeric', day: 'numeric' }),
+        dataPointText: m.weight.toFixed(1),
+        dataPointColor: colors.primary,
+        dataPointRadius: 5,
+        textColor: '#aaa',
+        textFontSize: 10,
+        textShiftY: -14,
+      }))
+    };
+  }, [metrics, chartFilter]);
+
+  const itemWidth = useMemo(() => (windowWidth - 40 - (GAP * 2)) / 3, [windowWidth]);
+
+  const macroAdherence = useMemo(() => {
+    const totalCals = meals.reduce((sum, m) => sum + (m.calories || 0), 0);
+    const targetCals = userProfile?.macroTargets?.calories || 2000;
+    if (totalCals === 0) return 0;
+    return Math.min(Math.round((totalCals / targetCals) * 100), 100);
+  }, [meals, userProfile]);
 
   useEffect(() => {
     const user = auth.currentUser;
@@ -192,31 +142,30 @@ export function ProgressScreen() {
     });
     const unsubPhotos = subscribeToProgressPhotos(user.uid, setPhotos);
     const unsubProfile = subscribeToUserProfile(user.uid, setUserProfile);
+    const unsubMeals = subscribeToDailyMeals(user.uid, setMeals);
 
     return () => {
       unsubWorkouts();
       unsubMetrics();
       unsubPhotos();
       unsubProfile();
+      unsubMeals();
     };
   }, []);
 
+  // Handlers
   const handleCapture = async (uri: string) => {
     const user = auth.currentUser;
     if (!user) return;
-
     try {
       setIsCameraVisible(false);
       setIsSaving(true);
-      
       const result = await uploadProgressPhoto(uri);
-
       await saveProgressPhoto(user.uid, {
         url: result.secureUrl,
         date: new Date().toISOString().split("T")[0],
         type: "front"
       });
-      
       Alert.alert("Success", "Transformation photo saved!");
     } catch (error) {
       console.error(error);
@@ -229,13 +178,11 @@ export function ProgressScreen() {
   const handlePickPhotoFromLibrary = async () => {
     const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (status !== 'granted') return;
-    
     const result = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ImagePicker.MediaTypeOptions.Images,
       allowsEditing: false,
       quality: 0.8
     });
-
     if (!result.canceled && result.assets[0].uri) {
       handleCapture(result.assets[0].uri);
     }
@@ -243,14 +190,8 @@ export function ProgressScreen() {
 
   const handlePickPhoto = () => {
     Alert.alert("Track Progress", "Select capture mode", [
-      {
-        text: "Camera (Ghost Overlay)",
-        onPress: () => setIsCameraVisible(true)
-      },
-      {
-        text: "Import from Gallery",
-        onPress: handlePickPhotoFromLibrary
-      },
+      { text: "Camera (Ghost Overlay)", onPress: () => setIsCameraVisible(true) },
+      { text: "Import from Gallery", onPress: handlePickPhotoFromLibrary },
       { text: "Cancel", style: "cancel" }
     ]);
   };
@@ -268,7 +209,6 @@ export function ProgressScreen() {
       });
       return;
     }
-
     setSelection(prev => {
       const next = prev.includes(p.id) ? prev.filter(id => id !== p.id) : [...prev, p.id];
       if (next.length === 0) setIsSelectionMode(false);
@@ -318,7 +258,6 @@ export function ProgressScreen() {
 
   const startComparison = () => {
     if (compareSelection.length !== 2) return;
-    // Sort by date so earlier is "before"
     const sorted = [...compareSelection].sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
     setActiveComparePair([sorted[0], sorted[1]]);
   };
@@ -328,10 +267,10 @@ export function ProgressScreen() {
       {isLoading ? <View style={styles.loader}><ActivityIndicator color={colors.primary} /></View> : (
         <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scroll}>
 
-          {/* COMPARE SLIDER OVERLAY */}
+          {/* OVERLAYS & MODALS */}
           <Modal visible={!!activeComparePair} transparent={false} animationType="slide">
             {activeComparePair && (
-              <CompareSlider 
+              <CompareSlider
                 beforeUri={activeComparePair[0].url}
                 afterUri={activeComparePair[1].url}
                 beforeDate={`${new Date(activeComparePair[0].date).toLocaleDateString()} (Before)`}
@@ -341,16 +280,14 @@ export function ProgressScreen() {
             )}
           </Modal>
 
-          {/* CAMERA OVERLAY */}
           <Modal visible={isCameraVisible} transparent={false} animationType="slide">
-            <ProgressCamera 
+            <ProgressCamera
               onClose={() => setIsCameraVisible(false)}
               onCapture={handleCapture}
-              overlayUri={photos.length > 0 ? photos[0].url : undefined} // Overlay first photo (baseline)
+              overlayUri={photos.length > 0 ? photos[0].url : undefined}
             />
           </Modal>
 
-          {/* VIEW MODAL */}
           <Modal visible={!!selectedPhoto} transparent={true} animationType="fade">
             <View style={styles.viewerOverlay}>
               <Pressable style={styles.viewerClose} onPress={() => setSelectedPhoto(null)}>
@@ -366,11 +303,11 @@ export function ProgressScreen() {
               title={isCompareMode ? "SELECT 2 PHOTOS" : isSelectionMode ? `${selection.length} SELECTED` : "GALLERY"}
               subtitle={isCompareMode ? "Pick two snapshots to compare" : isSelectionMode ? "Tap to select more" : "Tap photo to open, hold to delete"}
               leftActionIcon="close"
-              onLeftAction={() => { 
-                setIsGalleryVisible(false); 
-                setIsSelectionMode(false); 
+              onLeftAction={() => {
+                setIsGalleryVisible(false);
+                setIsSelectionMode(false);
                 setIsCompareMode(false);
-                setSelection([]); 
+                setSelection([]);
                 setCompareSelection([]);
               }}
               rightActionIcon={isCompareMode ? "swap-horizontal" : isSelectionMode ? "trash" : "git-compare-outline"}
@@ -401,8 +338,8 @@ export function ProgressScreen() {
               />
               {isCompareMode && compareSelection.length === 2 && (
                 <Pressable style={styles.floatingCompareBtn} onPress={startComparison}>
-                   <Ionicons name="swap-horizontal" size={24} color="#000" />
-                   <Text style={styles.floatingCompareText}>COMPARE NOW</Text>
+                  <Ionicons name="swap-horizontal" size={24} color="#000" />
+                  <Text style={styles.floatingCompareText}>COMPARE NOW</Text>
                 </Pressable>
               )}
             </ScreenShell>
@@ -417,7 +354,6 @@ export function ProgressScreen() {
                   <Pressable onPress={() => setIsBFModalVisible(false)}><Ionicons name="close" size={24} color="#8c8c8c" /></Pressable>
                 </View>
                 <Text style={styles.modalDesc}>Most people can't measure BF exactly. Select the category that best describes your look:</Text>
-
                 <ScrollView style={{ maxHeight: 400 }}>
                   <BFRow label="Athletic" male="6-13%" female="14-20%" desc="Abs are very visible, muscle definition is sharp." onSelect={() => { setNewBodyFat("10"); setIsBFModalVisible(false); }} />
                   <BFRow label="Fit" male="14-17%" female="21-24%" desc="Abs are faint or visible in right light. Athletic look." onSelect={() => { setNewBodyFat("15"); setIsBFModalVisible(false); }} />
@@ -428,81 +364,26 @@ export function ProgressScreen() {
             </View>
           </Modal>
 
+          {/* DASHBOARD CONTENT */}
           <View style={styles.grid}>
-            <MetricCard icon="calendar" label="This Week" value={weeklyConsistency} unit="Sessions" color="#FF9500" />
-            <MetricCard icon="flash" label="Daily Target" value={userProfile?.macroTargets?.calories || "--"} unit="kcal" color="#facc15" />
-            <MetricCard 
-              icon="flag" 
-              label="Mission" 
-              value={userProfile?.goal?.replace('_', ' ')?.toUpperCase()?.split(' ')[0] || "FIT"} 
-              unit="" 
-              color={colors.primary} 
-            />
-            <MetricCard icon="scale" label="Current" value={metrics[0]?.weight || userProfile?.weight || "--"} unit="kg" color="#fbbf24" />
+             <MetricCard icon="calendar" label="Weekly Flow" value={weeklyConsistency} unit="Days" color="#60a5fa" />
+             <MetricCard icon="flash" label="Daily Fuel" value={macroAdherence} unit="%" color={colors.primary} />
+             <MetricCard icon="scale" label="Weight" value={metrics[0]?.weight || "--"} unit="kg" color="#a78bfa" />
+             <MetricCard icon="body" label="BMI Index" value={calculateBMI} unit="" color="#4ade80" />
           </View>
 
           <View style={styles.card}>
             <View style={styles.cardHeader}>
-              <Typography variant="h2">Health & Habits</Typography>
-              <Ionicons name="heart-outline" size={18} color="#ff4444" />
-            </View>
-            <View style={styles.habitGrid}>
-              <HabitItem label="Sleep" value={`${userProfile?.lifestyle?.sleepHours || "--"}h`} icon="moon" color="#60a5fa" />
-              <HabitItem label="Coffee" value={`${userProfile?.lifestyle?.coffeePerDay || "--"}`} icon="cafe" color="#fbbf24" />
-              <HabitItem label="Smoker" value={userProfile?.lifestyle?.smoker ? "Yes" : "No"} icon="flash" color="#f87171" />
-              <HabitItem label="Activity" value={userProfile?.activityLevel || "Mod"} icon="walk" color="#4ade80" />
-            </View>
-          </View>
-
-          {weightChartData.length > 1 && (
-            <View style={styles.card}>
-              <View style={styles.cardHeader}>
-                <Typography variant="h2">Weight Tracking</Typography>
-                <Ionicons name="stats-chart" size={16} color={colors.primary} />
-              </View>
-              <View style={styles.chartBox}>
-                <LineChart
-                  data={weightChartData}
-                  height={150}
-                  width={windowWidth - 80}
-                  initialSpacing={20}
-                  color={colors.primary}
-                  thickness={3}
-                  hideRules
-                  hideYAxisText
-                  yAxisColor="transparent"
-                  xAxisColor="#2c2c2e"
-                  dataPointsColor={colors.primary}
-                  focusedDataPointColor="#fff"
-                  pointerConfig={{
-                    pointerStripColor: '#444',
-                    pointerStripWidth: 2,
-                    pointerColor: colors.primary,
-                    radius: 6,
-                    pointerLabelComponent: (items: any) => (
-                      <View style={styles.chartPointerLabel}>
-                        <Text style={styles.chartPointerText}>{items[0].value}kg</Text>
-                      </View>
-                    ),
-                  }}
-                />
-              </View>
-            </View>
-          )}
-
-          <View style={styles.card}>
-            <View style={styles.cardHeader}>
-              <Typography variant="h2">Log Metrics</Typography>
+              <Typography variant="h2">Log Today's Entry</Typography>
               <Pressable onPress={() => setIsBFModalVisible(true)} hitSlop={10}>
-                <Typography variant="label" color={colors.primary} style={{ textDecorationLine: 'underline' }}>Estimate Body Fat</Typography>
+                <Typography variant="label" color={colors.primary} style={styles.helpLink}>Estimate BF%</Typography>
               </Pressable>
             </View>
-
             <View style={styles.metricInputRow}>
               <View style={styles.stepperContainer}>
-                <Typography variant="label" color="#8c8c8c" style={{ marginLeft: 4, marginBottom: 4 }}>Daily Weight (kg)</Typography>
-                <View style={[styles.stepper, { backgroundColor: '#161616' }]}>
-                  <Pressable style={styles.stepBtn} onPress={() => setNewWeight(prev => (Math.max(0, (Number(prev) || 70) - 0.5)).toString())}>
+                <Typography variant="label" color="#8c8c8c" style={styles.inputLabel}>Weight (kg)</Typography>
+                <View style={styles.stepper}>
+                  <Pressable style={styles.stepBtn} onPress={() => setNewWeight(prev => (Math.max(0, (Number(prev) || Number(metrics[0]?.weight) || 70) - 0.5)).toString())}>
                     <Ionicons name="remove" size={18} color="#fff" />
                   </Pressable>
                   <TextInput
@@ -510,15 +391,14 @@ export function ProgressScreen() {
                     keyboardType="decimal-pad"
                     value={newWeight}
                     onChangeText={setNewWeight}
-                    placeholder="0.0"
+                    placeholder={metrics[0]?.weight?.toString() || "0.0"}
                     placeholderTextColor="#444"
                   />
-                  <Pressable style={styles.stepBtn} onPress={() => setNewWeight(prev => ((Number(prev) || 70) + 0.5).toString())}>
+                  <Pressable style={styles.stepBtn} onPress={() => setNewWeight(prev => ((Number(prev) || Number(metrics[0]?.weight) || 70) + 0.5).toString())}>
                     <Ionicons name="add" size={18} color="#fff" />
                   </Pressable>
                 </View>
               </View>
-
               <Pressable style={[styles.mainSaveBtn, isSaving && { opacity: 0.6 }]} onPress={handleLogMetric} disabled={isSaving}>
                 <Ionicons name="checkmark" size={24} color={colors.primaryText} />
               </Pressable>
@@ -547,54 +427,144 @@ export function ProgressScreen() {
 
           <View style={styles.card}>
             <View style={styles.cardHeader}>
-              <Text style={styles.cardTitle}>Photos</Text>
-              <View style={{ flexDirection: "row", gap: 10 }}>
-                <Pressable style={styles.smallActionBtn} onPress={() => setIsGalleryVisible(true)}><Ionicons name="images-outline" size={18} color={colors.primary} /></Pressable>
-                <Pressable style={styles.addBtn} onPress={handlePickPhoto}><Ionicons name="camera" size={20} color={colors.primaryText} /></Pressable>
-              </View>
-            </View>
-            <Pressable style={styles.photoWidget} onPress={() => setIsGalleryVisible(true)}>
-              {photos.length === 0 ? <View style={styles.widgetEmpty}><Text style={styles.widgetEmptyText}>Tap to add</Text></View> : (
-                <View style={styles.widgetGird}>
-                  <View style={[styles.widgetMain, photos.length === 1 && { flex: 1 }]}><Image source={{ uri: photos[0].url }} style={styles.widgetMainImg} /></View>
-                  {photos.length > 1 && (
-                    <View style={[styles.widgetSide, photos.length === 2 && { flex: 1 }]}>
-                      {photos.slice(1, 3).map((p, idx) => <Image key={p.id} source={{ uri: p.url }} style={[styles.widgetSideImg, idx > 0 && { marginTop: 4 }]} />)}
-                    </View>
-                  )}
+              <Typography variant="h2">Transformation Vault</Typography>
+              {userProfile?.isPremium ? (
+                <View style={styles.headerActions}>
+                  <Pressable style={styles.smallActionBtn} onPress={() => setIsGalleryVisible(true)}><Ionicons name="images-outline" size={18} color={colors.primary} /></Pressable>
+                  <Pressable style={styles.addBtn} onPress={handlePickPhoto}><Ionicons name="camera" size={20} color={colors.primaryText} /></Pressable>
+                </View>
+              ) : (
+                <View style={styles.premiumPill}>
+                  <Ionicons name="lock-closed" size={12} color={colors.primary} />
+                  <Text style={styles.premiumPillText}>PREMIUM</Text>
                 </View>
               )}
-            </Pressable>
+            </View>
+            {userProfile?.isPremium ? (
+              <Pressable style={styles.photoWidget} onPress={() => setIsGalleryVisible(true)}>
+                {photos.length === 0 ? <View style={styles.widgetEmpty}><Text style={styles.widgetEmptyText}>Tap to add snapshots</Text></View> : (
+                  <View style={styles.widgetGird}>
+                    <View style={[styles.widgetMain, photos.length === 1 && { flex: 1 }]}><Image source={{ uri: photos[0].url }} style={styles.widgetMainImg} /></View>
+                    {photos.length > 1 && (
+                      <View style={[styles.widgetSide, photos.length === 2 && { flex: 1 }]}>
+                        {photos.slice(1, 3).map((p, idx) => <Image key={p.id} source={{ uri: p.url }} style={[styles.widgetSideImg, idx > 0 && { marginTop: 4 }]} />)}
+                      </View>
+                    )}
+                  </View>
+                )}
+              </Pressable>
+            ) : (
+              <Pressable style={styles.vaultLocked} onPress={() => navigation.navigate("CoachAssignment")}>
+                <View style={styles.vaultLockedIcon}>
+                  <Ionicons name="images" size={28} color="#333" />
+                </View>
+                <Text style={styles.vaultLockedTitle}>Track your transformation</Text>
+                <Text style={styles.vaultLockedDesc}>Get a coach to unlock progress photos, before/after comparisons, and body composition tracking.</Text>
+                <View style={styles.vaultLockedCta}>
+                  <Ionicons name="sparkles" size={14} color="#000" />
+                  <Text style={styles.vaultLockedCtaText}>UNLOCK WITH COACH</Text>
+                </View>
+              </Pressable>
+            )}
           </View>
+
+          {/* 5. TREND ANALYSIS */}
+          <View style={styles.trendCard}>
+            <View style={styles.trendHeader}>
+              <View style={styles.trendTitleRow}>
+                 <View style={styles.accentBar} />
+                 <Typography variant="h2" style={{ fontSize: 18 }}>Weight Trend</Typography>
+              </View>
+              <View style={{ alignItems: 'flex-end' }}>
+                <Typography variant="metric" style={{ fontSize: 22 }}>{metrics[0]?.weight || '--'} <Typography variant="label" color="#444">kg</Typography></Typography>
+                <Typography variant="label" color="#4ade80" style={{ fontSize: 9 }}>Tracking active</Typography>
+              </View>
+            </View>
+
+            <View style={styles.chartBox}>
+              {weightChartData.data.length > 0 ? (
+                <LineChart
+                  areaChart
+                  data={weightChartData.data}
+                  curved
+                  height={200}
+                  width={windowWidth - 90}
+                  initialSpacing={15}
+                  endSpacing={20}
+                  spacing={weightChartData.data.length <= 3 ? 80 : weightChartData.data.length <= 7 ? 50 : 35}
+                  color={colors.primary}
+                  thickness={3}
+                  startFillColor="rgba(255, 204, 0, 0.25)"
+                  endFillColor="rgba(255, 204, 0, 0.02)"
+                  startOpacity={0.5}
+                  endOpacity={0.05}
+                  yAxisOffset={weightChartData.yAxisOffset}
+                  noOfSections={4}
+                  rulesType="dashed"
+                  rulesColor="#1c1c1e"
+                  dashWidth={4}
+                  dashGap={6}
+                  xAxisThickness={0}
+                  yAxisThickness={0}
+                  yAxisTextStyle={{ color: '#555', fontSize: 10, fontWeight: '600' }}
+                  yAxisTextNumberOfLines={1}
+                  xAxisLabelTextStyle={{ color: '#555', fontSize: 9, fontWeight: '500' }}
+                  showVerticalLines
+                  verticalLinesColor="#1a1a1a"
+                  verticalLinesThickness={1}
+                  hideDataPoints={false}
+                  dataPointsColor={colors.primary}
+                  dataPointsRadius={5}
+                  focusEnabled
+                  showStripOnFocus
+                  stripColor="rgba(255,204,0,0.15)"
+                  stripWidth={2}
+                  showTextOnFocus
+                  unFocusOnPressOut
+                  focusedDataPointColor="#fff"
+                  focusedDataPointRadius={7}
+                  textColor="#aaa"
+                  textFontSize={10}
+                  textShiftY={-14}
+                  pointerConfig={{
+                    pointerStripColor: 'rgba(255,204,0,0.4)',
+                    pointerStripWidth: 1,
+                    pointerColor: '#fff',
+                    radius: 7,
+                    pointerLabelWidth: 80,
+                    pointerLabelHeight: 32,
+                    activatePointersOnLongPress: false,
+                    autoAdjustPointerLabelPosition: true,
+                    pointerLabelComponent: (items: any) => (
+                      <View style={styles.pointerBadge}>
+                        <Text style={styles.pointerText}>{items[0].value} kg</Text>
+                      </View>
+                    ),
+                  }}
+                />
+              ) : (
+                <View style={styles.chartEmpty}>
+                  <Typography variant="label" color="#444">Insufficient tracking data</Typography>
+                </View>
+              )}
+            </View>
+
+            <View style={styles.filterContainer}>
+              {(['1W', '1M', '3M', '1Y', 'ALL'] as const).map(f => (
+                <Pressable
+                  key={f}
+                  onPress={() => setChartFilter(f)}
+                  style={[styles.filterBtn, chartFilter === f && styles.filterBtnActive]}
+                >
+                   <Typography style={[styles.filterText, chartFilter === f && styles.filterTextActive]}>{f.toUpperCase()}</Typography>
+                </Pressable>
+              ))}
+            </View>
+          </View>
+
         </ScrollView>
       )}
     </ScreenShell>
-  );
-}
-
-function MetricCard({ icon, label, value, unit, color }: any) {
-  return (
-    <View style={styles.metricCard}>
-      <View style={[styles.iconBox, { backgroundColor: `${color}15` }]}>
-        <Ionicons name={icon} size={18} color={color} />
-      </View>
-      <View>
-        <Typography variant="label" color="#8c8c8c">{label}</Typography>
-        <Typography variant="metric" color="#fff" style={{ fontSize: 20 }}>
-          {value} <Typography style={{ fontSize: 10, color: '#444' }}>{unit}</Typography>
-        </Typography>
-      </View>
-    </View>
-  );
-}
-
-function HabitItem({ label, value, icon, color }: any) {
-  return (
-    <View style={styles.habitItem}>
-      <Ionicons name={icon} size={16} color={color} />
-      <Typography variant="h2" style={{ fontSize: 16, marginTop: 4 }}>{value}</Typography>
-      <Typography variant="label" color="#444" style={{ fontSize: 8 }}>{label}</Typography>
-    </View>
   );
 }
 
@@ -602,13 +572,9 @@ const styles = StyleSheet.create({
   shellContent: { paddingBottom: 0 },
   loader: { padding: 100, alignItems: "center" },
   scroll: { paddingBottom: 120, gap: 20 },
-  grid: { flexDirection: "row", flexWrap: "wrap", gap: 12, marginTop: 10 },
-  metricCard: { flex: 1, minWidth: "45%", backgroundColor: "#161616", borderRadius: 24, padding: 16, borderWidth: 1, borderColor: "#2c2c2e", gap: 8 },
-  iconBox: { width: 40, height: 40, borderRadius: 12, alignItems: "center", justifyContent: "center" },
-  metricLabel: { color: "#8c8c8c", fontSize: 13, fontWeight: "700" },
-  metricValue: { color: "#ffffff", fontSize: 22, fontWeight: "900" },
-  metricUnit: { fontSize: 12, color: "#444" },
-  card: { backgroundColor: "#161616", borderRadius: 28, padding: 20, borderWidth: 1, borderColor: "#2c2c2e", gap: 16 },
+  grid: { flexDirection: "row", flexWrap: "wrap", gap: 12, marginTop: 10, paddingHorizontal: 4 },
+  card: { backgroundColor: "#111", borderRadius: 32, padding: 24, borderWidth: 1, borderColor: "#1c1c1e", gap: 16 },
+  headerActions: { flexDirection: "row", gap: 10 },
   cardHeader: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
   cardTitle: { color: "#ffffff", fontSize: 16, fontWeight: "800" },
   metricInputRow: { flexDirection: "row", gap: 8, alignItems: "flex-end", marginTop: 4 },
@@ -617,14 +583,12 @@ const styles = StyleSheet.create({
   stepBtn: { width: 40, height: "100%", alignItems: "center", justifyContent: "center", backgroundColor: "#2c2c2e50" },
   stepInput: { flex: 1, color: "#fff", fontSize: 16, fontWeight: "800", textAlign: "center", padding: 0 },
   mainSaveBtn: { width: 50, height: 50, borderRadius: 14, backgroundColor: colors.primary, alignItems: "center", justifyContent: "center" },
-  inputLabel: { color: "#8c8c8c", fontSize: 11, fontWeight: "800", textTransform: "uppercase", marginLeft: 4 },
-  helpText: { color: colors.primary, fontSize: 11, fontWeight: "700", textDecorationLine: "underline" },
+  inputLabel: { marginLeft: 4, marginBottom: 4 },
+  helpLink: { textDecorationLine: 'underline' },
   addBtn: { width: 36, height: 36, borderRadius: 12, backgroundColor: colors.primary, alignItems: "center", justifyContent: "center" },
-  habitGrid: { flexDirection: 'row', gap: 12, marginTop: 10 },
   secondaryInputRow: { marginTop: 15, paddingTop: 15, borderTopWidth: 1, borderTopColor: '#1c1c1e', flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   smallStepper: { flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: '#000', paddingHorizontal: 10, paddingVertical: 6, borderRadius: 12, borderWidth: 1, borderColor: '#222' },
   smallStepInput: { color: '#fff', fontSize: 13, fontWeight: '800', textAlign: 'center', width: 40 },
-  habitItem: { flex: 1, backgroundColor: '#000', borderRadius: 16, padding: 12, alignItems: 'center', borderWidth: 1, borderColor: '#222' },
   smallActionBtn: { width: 36, height: 36, borderRadius: 12, backgroundColor: "#1c1c1e", alignItems: "center", justifyContent: "center", borderWidth: 1, borderColor: "#2c2c2e" },
   photoWidget: { height: 160, borderRadius: 20, overflow: "hidden", backgroundColor: "#1c1c1e", borderWidth: 1, borderColor: "#2c2c2e" },
   widgetEmpty: { flex: 1, alignItems: "center", justifyContent: "center" },
@@ -636,12 +600,6 @@ const styles = StyleSheet.create({
   widgetSideImg: { flex: 1, width: "100%" },
   galleryScroll: { paddingHorizontal: 0, paddingTop: 16, paddingBottom: 100 },
   columnWrapper: { justifyContent: "space-between", marginBottom: GAP },
-  gridPhotoBox: { borderRadius: 12, overflow: "hidden", backgroundColor: "#1c1c1e" },
-  gridPhoto: { width: "100%", height: "100%" },
-  gridDateTag: { position: "absolute", bottom: 0, left: 0, right: 0, backgroundColor: "rgba(0,0,0,0.7)", paddingVertical: 4 },
-  gridDateText: { color: "#fff", fontSize: 8, fontWeight: "900", textAlign: "center" },
-  selectionBorderOverlay: { ...StyleSheet.absoluteFillObject, borderColor: "#ff4444", borderWidth: 3, borderRadius: 12, backgroundColor: "rgba(255, 68, 68, 0.2)" },
-  deleteOverlay: { flex: 1, alignItems: "center", justifyContent: "center" },
   viewerOverlay: { flex: 1, backgroundColor: "rgba(0,0,0,0.95)", justifyContent: "center", alignItems: "center" },
   viewerClose: { position: "absolute", top: 60, right: 30, zIndex: 10 },
   viewerContent: { width: "100%", height: "80%" },
@@ -650,21 +608,27 @@ const styles = StyleSheet.create({
   estimateBox: { backgroundColor: "#161616", borderRadius: 28, padding: 20, width: "100%", borderWidth: 1, borderColor: "#2c2c2e", gap: 16 },
   modalHeader: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
   modalDesc: { color: "#8c8c8c", fontSize: 13, fontWeight: "500", lineHeight: 18 },
-  bfRow: { backgroundColor: "#1c1c1e", borderRadius: 16, padding: 16, marginBottom: 12, borderWidth: 1, borderColor: "#2c2c2e" },
-  bfRowHeader: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 8 },
-  bfRowLabel: { color: "#fff", fontSize: 15, fontWeight: "800" },
-  bfRowDesc: { color: "#8c8c8c", fontSize: 12, fontWeight: "500" },
-  genderTag: { paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4 },
-  genderTagText: { color: "#fff", fontSize: 9, fontWeight: "900" },
-  chartBox: { marginTop: 10, alignItems: 'center' },
-  chartPointerLabel: {
-    backgroundColor: colors.primary,
-    padding: 6,
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: '#000',
-  },
-  chartPointerText: { color: '#000', fontWeight: '900', fontSize: 10 },
+  trendCard: { backgroundColor: '#101010', borderRadius: 32, padding: 24, borderWidth: 1, borderColor: '#1c1c1e', marginBottom: 20, overflow: 'hidden' },
+  trendHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 },
+  trendTitleRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  accentBar: { width: 4, height: 18, backgroundColor: colors.primary, borderRadius: 2 },
+  chartBox: { marginTop: 4, marginLeft: -10, alignItems: 'center' },
+  chartEmpty: { height: 200, justifyContent: 'center', alignItems: 'center' },
+  pointerBadge: { backgroundColor: colors.primary, paddingHorizontal: 10, paddingVertical: 6, borderRadius: 10, marginBottom: 8, alignSelf: 'center' },
+  pointerText: { color: '#000', fontWeight: '900', fontSize: 12 },
+  filterContainer: { flexDirection: 'row', justifyContent: 'space-between', marginTop: 20, backgroundColor: '#0a0a0a', borderRadius: 24, padding: 4, borderWidth: 1, borderColor: '#1c1c1e' },
+  filterBtn: { flex: 1, paddingVertical: 10, borderRadius: 20, alignItems: 'center' },
+  filterBtnActive: { backgroundColor: colors.primary },
+  filterText: { color: '#555', fontSize: 10, fontWeight: '900', letterSpacing: 0.5 },
+  filterTextActive: { color: '#000' },
+  premiumPill: { flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: '#161616', paddingHorizontal: 10, paddingVertical: 6, borderRadius: 10, borderWidth: 1, borderColor: '#1c1c1e' },
+  premiumPillText: { color: colors.primary, fontSize: 9, fontWeight: '900', letterSpacing: 0.5 },
+  vaultLocked: { height: 160, borderRadius: 20, backgroundColor: '#0a0a0a', borderWidth: 1, borderColor: '#1c1c1e', alignItems: 'center', justifyContent: 'center', padding: 20, gap: 8 },
+  vaultLockedIcon: { width: 48, height: 48, borderRadius: 24, backgroundColor: '#161616', alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: '#1c1c1e' },
+  vaultLockedTitle: { color: '#fff', fontSize: 14, fontWeight: '800' },
+  vaultLockedDesc: { color: '#555', fontSize: 11, fontWeight: '500', textAlign: 'center', lineHeight: 16 },
+  vaultLockedCta: { flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: colors.primary, paddingHorizontal: 16, paddingVertical: 8, borderRadius: 12, marginTop: 4 },
+  vaultLockedCtaText: { color: '#000', fontSize: 11, fontWeight: '900', letterSpacing: 0.5 },
   floatingCompareBtn: {
     position: 'absolute',
     bottom: 40,
@@ -684,6 +648,4 @@ const styles = StyleSheet.create({
     elevation: 8,
   },
   floatingCompareText: { color: '#000', fontWeight: '900', fontSize: 16, letterSpacing: 1 },
-  badgeLabel: { position: 'absolute', top: 10, right: 10, backgroundColor: colors.primary, paddingHorizontal: 8, paddingVertical: 4, borderRadius: 6 },
-  badgeText: { color: '#000', fontSize: 8, fontWeight: '900' },
 });

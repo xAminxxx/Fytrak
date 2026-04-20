@@ -1,5 +1,5 @@
 import { PropsWithChildren } from "react";
-import { Pressable, StyleProp, StyleSheet, Text, TextStyle, View, ViewStyle } from "react-native";
+import { Pressable, StyleProp, StyleSheet, Text, TextStyle, View, ViewStyle, Image } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { colors } from "../theme/colors";
 import { Ionicons } from "@expo/vector-icons";
@@ -14,6 +14,7 @@ type ScreenShellProps = PropsWithChildren<{
   leftActionIcon?: keyof typeof Ionicons.glyphMap;
   onLeftAction?: () => void;
   rightActionIcon?: keyof typeof Ionicons.glyphMap;
+  rightActionImageUri?: string;
   onRightAction?: () => void;
 }>;
 
@@ -27,6 +28,7 @@ export function ScreenShell({
   leftActionIcon,
   onLeftAction,
   rightActionIcon,
+  rightActionImageUri,
   onRightAction,
   children,
 }: ScreenShellProps) {
@@ -46,9 +48,13 @@ export function ScreenShell({
             >
               {title.toUpperCase()}
             </Text>
-            {rightActionIcon && onRightAction && (
-              <Pressable onPress={onRightAction} style={styles.headerButton}>
-                <Ionicons name={rightActionIcon} size={28} color={colors.primary} />
+            {(rightActionIcon || rightActionImageUri) && onRightAction && (
+              <Pressable onPress={onRightAction} style={[styles.headerButton, rightActionImageUri && { borderWidth: 0, padding: 0 }]}>
+                {rightActionImageUri ? (
+                  <Image source={{ uri: rightActionImageUri }} style={{ width: 44, height: 44, borderRadius: 22, borderWidth: 2, borderColor: colors.primary }} />
+                ) : (
+                  <Ionicons name={rightActionIcon!} size={28} color={colors.primary} />
+                )}
               </Pressable>
             )}
           </View>
