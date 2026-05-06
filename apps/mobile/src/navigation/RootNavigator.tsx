@@ -19,6 +19,7 @@ import { CoachTabs } from "./CoachTabs";
 import { ProfileScreen } from "../screens/trainee/ProfileScreen";
 import { TraineeDetailScreen } from "../screens/coach/TraineeDetailScreen";
 import { PrescribeWorkoutScreen } from "../screens/coach/PrescribeWorkoutScreen";
+import { CreateProgramScreen } from "../screens/coach/CreateProgramScreen";
 import { CoachChatScreen } from "../screens/trainee/CoachChatScreen";
 import { auth } from "../config/firebase";
 import { onAuthStateChanged } from "firebase/auth";
@@ -46,6 +47,7 @@ export type RootStackParamList = {
   Profile: undefined;
   TraineeDetail: { traineeId: string; traineeName: string };
   PrescribeWorkout: { traineeId: string; traineeName: string };
+  CreateProgram: { traineeId: string; traineeName: string };
   PrescribeMeal: { traineeId: string; traineeName: string };
   CoachChat: { traineeId: string; traineeName?: string; coachId: string };
   CreateTemplate: { type: "workout" | "meal" };
@@ -274,6 +276,7 @@ export function RootNavigator() {
             </Stack.Screen>
             <Stack.Screen name="TraineeDetail" component={TraineeDetailScreen} />
             <Stack.Screen name="PrescribeWorkout" component={PrescribeWorkoutScreen} />
+            <Stack.Screen name="CreateProgram" component={CreateProgramScreen} />
             <Stack.Screen name="PrescribeMeal" component={require("../screens/coach/PrescribeMealScreen").PrescribeMealScreen} />
             <Stack.Screen name="CoachChat">
               {({ route }) => (

@@ -1,6 +1,6 @@
 import * as Haptics from "expo-haptics";
 import { useEffect, useRef, useState, useCallback } from "react";
-import { Pressable, ScrollView, StyleSheet, Text, TextInput, View, Alert, ActivityIndicator, Platform, KeyboardAvoidingView } from "react-native";
+import { Pressable, ScrollView, StyleSheet, Text, TextInput, View, Alert, ActivityIndicator, Platform, KeyboardAvoidingView, Modal } from "react-native";
 import DateTimePicker from "@react-native-community/datetimepicker";
 import { ScreenShell } from "../../components/ScreenShell";
 import { colors } from "../../theme/colors";
@@ -16,8 +16,11 @@ import {
   type WorkoutLog,
   type PrescribedWorkout,
   type UserProfile,
-  type ProfileLevel
+  type ProfileLevel,
+  type WorkoutSet,
+  type WorkoutSetType
 } from "../../services/userSession";
+import { EXERCISE_LIBRARY, ExerciseLibraryItem, t as tEx } from "../../constants/exercises";
 import { useNavigation, useRoute, useFocusEffect } from "@react-navigation/native";
 
 // Shared Components
@@ -28,16 +31,27 @@ import { Typography } from "../../components/Typography";
 
 type ExerciseLog = {
   name: string;
-  sets: { reps: string; weight: string; rpe: string; isCompleted: boolean; }[];
+  type: WorkoutSetType;
+  sets: WorkoutSet[];
 };
 
 export function WorkoutLogScreen() {
   const [workoutName, setWorkoutName] = useState("Today's Session");
-  const [exercises, setExercises] = useState<ExerciseLog[]>([{ name: "", sets: [{ reps: "", weight: "", rpe: "", isCompleted: false }] }]);
+  const [exercises, setExercises] = useState<ExerciseLog[]>([{ name: "", type: "WEIGHT_REPS", sets: [{ type: "WEIGHT_REPS", isCompleted: false }] }]);
   const [prescribed, setPrescribed] = useState<PrescribedWorkout[]>([]);
   const [activePrescriptionId, setActivePrescriptionId] = useState<string | null>(null);
   const [workouts, setWorkouts] = useState<WorkoutLog[]>([]);
   const [profile, setProfile] = useState<UserProfile | null>(null);
+
+  // EXERCISE INFO MODAL
+  const [selectedExerciseInfo, setSelectedExerciseInfo] = useState<ExerciseLibraryItem | null>(null);
+  const [isExerciseModalVisible, setIsExerciseModalVisible] = useState(false);
+  const [exerciseSearchQuery, setExerciseSearchQuery] = useState("");
+
+  const filteredExercises = EXERCISE_LIBRARY.filter(ex => 
+    tEx(ex.name).toLowerCase().includes(exerciseSearchQuery.toLowerCase()) ||
+    ex.muscleGroup.toLowerCase().includes(exerciseSearchQuery.toLowerCase())
+  );
 
   // REST TIMER
   const [restTimeLeft, setRestTimeLeft] = useState(0);
@@ -51,7 +65,7 @@ export function WorkoutLogScreen() {
   // COMPUTED LIVE STATS
   const totalSetsCompleted = exercises.reduce((sum, ex) => sum + ex.sets.filter(s => s.isCompleted).length, 0);
   const totalVolume = exercises.reduce((sum, ex) => {
-    return sum + ex.sets.filter(s => s.isCompleted).reduce((setSum, s) => setSum + ((Number(s.weight) || 0) * (Number(s.reps) || 0)), 0);
+    return sum + ex.sets.filter(s => s.isCompleted && s.type === "WEIGHT_REPS").reduce((setSum, s) => setSum + ((Number(s.weight) || 0) * (Number(s.reps) || 0)), 0);
   }, 0);
 
   // INTAKE STATES
@@ -149,10 +163,19 @@ export function WorkoutLogScreen() {
   const initFromPrescribed = (p: PrescribedWorkout) => {
     setWorkoutName(p.title);
     setActivePrescriptionId(p.id);
-    setExercises(p.exercises.map(ex => ({
-      name: ex.name,
-      sets: Array(ex.targetSets).fill(0).map(() => ({ reps: ex.targetReps, weight: "", rpe: "", isCompleted: false }))
-    })));
+    setExercises(p.exercises.map(ex => {
+      const exType = ex.type || "WEIGHT_REPS";
+      return {
+        name: ex.name,
+        type: exType,
+        sets: Array(ex.targetSets).fill(0).map(() => ({ 
+          type: exType, 
+          reps: exType === "TIME" ? undefined : Number(ex.targetReps) || 0, 
+          durationSec: exType === "TIME" ? parseInt(ex.targetReps) || 60 : undefined,
+          isCompleted: false 
+        }))
+      };
+    }));
   };
 
   const handleSaveIntake = async () => {
@@ -197,9 +220,12 @@ export function WorkoutLogScreen() {
     const user = auth.currentUser;
     if (!user) return;
     try {
+      const completedExercises = exercises.map(ex => ({ name: ex.name.trim() || "Untitled", sets: ex.sets.filter(s => s.isCompleted) })).filter(ex => ex.sets.length > 0);
+      const totalVolume = completedExercises.reduce((sum, ex) => sum + ex.sets.reduce((s, set) => s + ((set.weight || 0) * (set.reps || 0)), 0), 0);
       await saveWorkoutLog(user.uid, {
         name: workoutName.trim() || "Today's Session",
-        exercises: exercises.map(ex => ({ name: ex.name.trim() || "Untitled", sets: ex.sets.filter(s => s.isCompleted) })).filter(ex => ex.sets.length > 0),
+        exercises: completedExercises,
+        totalVolume,
         checkIn: { energy, soreness, mood }
       });
       if (activePrescriptionId) await completePrescribedWorkout(user.uid, activePrescriptionId);
@@ -311,18 +337,68 @@ export function WorkoutLogScreen() {
             exercises.map((ex, exIdx) => (
               <View key={exIdx} style={styles.exerciseCard}>
                 <View style={styles.exerciseHeader}>
-                  <TextInput style={styles.exerciseNameInput} value={ex.name} onChangeText={(v) => { const n = [...exercises]; n[exIdx].name = v; setExercises(n); }} placeholder="Exercise Name" placeholderTextColor="#444" />
-                  <Pressable onPress={() => setExercises(exercises.filter((_, i) => i !== exIdx))}><Ionicons name="close-circle-outline" size={22} color="#ff4444" /></Pressable>
+                  <View style={{ flex: 1, gap: 12 }}>
+                    <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+                      <TextInput style={styles.exerciseNameInput} value={ex.name} onChangeText={(v) => { const n = [...exercises]; n[exIdx].name = v; setExercises(n); }} placeholder="Exercise Name" placeholderTextColor="#444" />
+                      <Pressable onPress={() => {
+                        const info = EXERCISE_LIBRARY.find(e => tEx(e.name).toLowerCase() === ex.name.toLowerCase());
+                        if (info) setSelectedExerciseInfo(info);
+                        else ToastService.info("Not Found", "No detailed instructions available for this exercise.");
+                      }}>
+                        <Ionicons 
+                          name={EXERCISE_LIBRARY.some(e => tEx(e.name).toLowerCase() === ex.name.toLowerCase() && e.videoUrl) ? "videocam" : "information-circle-outline"} 
+                          size={24} 
+                          color={colors.primary} 
+                        />
+                      </Pressable>
+                    </View>
+                    <View style={styles.typeSelectorRow}>
+                      {(["WEIGHT_REPS", "TIME", "BODYWEIGHT"] as WorkoutSetType[]).map(t => (
+                        <Pressable key={t} style={[styles.typePill, ex.type === t && styles.typePillActive]} onPress={() => {
+                          const n = [...exercises];
+                          n[exIdx].type = t;
+                          n[exIdx].sets.forEach(s => s.type = t); // cascade to all sets
+                          setExercises(n);
+                        }}>
+                          <Text style={[styles.typePillText, ex.type === t && styles.typePillTextActive]}>{t.replace("_", " ")}</Text>
+                        </Pressable>
+                      ))}
+                    </View>
+                  </View>
+                  <Pressable style={{ padding: 8 }} onPress={() => setExercises(exercises.filter((_, i) => i !== exIdx))}><Ionicons name="close-circle-outline" size={26} color="#ff4444" /></Pressable>
                 </View>
-                <View style={styles.tableHeader}><Text style={[styles.columnLabel, { flex: 0.5 }]}>SET</Text><Text style={styles.columnLabel}>REPS</Text><Text style={styles.columnLabel}>KG</Text><Text style={styles.columnLabel}>RPE</Text><Text style={{ flex: 0.5 }} /></View>
+                
+                <View style={styles.tableHeader}>
+                  <Text style={[styles.columnLabel, { flex: 0.5 }]}>SET</Text>
+                  {ex.type === "TIME" ? (
+                    <Text style={styles.columnLabel}>SECONDS</Text>
+                  ) : ex.type === "BODYWEIGHT" || ex.type === "REPS_ONLY" ? (
+                    <Text style={styles.columnLabel}>REPS</Text>
+                  ) : (
+                    <>
+                      <Text style={styles.columnLabel}>KG</Text>
+                      <Text style={styles.columnLabel}>REPS</Text>
+                    </>
+                  )}
+                  <Text style={{ flex: 0.5 }} />
+                </View>
                 {ex.sets.map((set, sIdx) => (
                   <View key={sIdx} style={[styles.setRow, set.isCompleted && styles.setRowCompleted]}>
                     <Text style={[styles.setText, { flex: 0.5 }]}>{sIdx + 1}</Text>
-                    <TextInput style={styles.setInput} value={set.reps} keyboardType="number-pad" placeholder="-" placeholderTextColor="#444" onChangeText={(v) => { const n = [...exercises]; n[exIdx].sets[sIdx].reps = v; setExercises(n); }} editable={!set.isCompleted} />
-                    <TextInput style={styles.setInput} value={set.weight} keyboardType="decimal-pad" placeholder="-" placeholderTextColor="#444" onChangeText={(v) => { const n = [...exercises]; n[exIdx].sets[sIdx].weight = v; setExercises(n); }} editable={!set.isCompleted} />
-                    <TextInput style={styles.setInput} value={set.rpe} keyboardType="decimal-pad" placeholder="-" placeholderTextColor="#444" onChangeText={(v) => { const n = [...exercises]; n[exIdx].sets[sIdx].rpe = v; setExercises(n); }} editable={!set.isCompleted} />
+                    
+                    {ex.type === "TIME" ? (
+                      <TextInput style={styles.setInput} value={set.durationSec?.toString()} keyboardType="number-pad" placeholder="-" placeholderTextColor="#444" onChangeText={(v) => { const n = [...exercises]; n[exIdx].sets[sIdx].durationSec = Number(v); setExercises(n); }} editable={!set.isCompleted} />
+                    ) : ex.type === "BODYWEIGHT" || ex.type === "REPS_ONLY" ? (
+                      <TextInput style={styles.setInput} value={set.reps?.toString()} keyboardType="number-pad" placeholder="-" placeholderTextColor="#444" onChangeText={(v) => { const n = [...exercises]; n[exIdx].sets[sIdx].reps = Number(v); setExercises(n); }} editable={!set.isCompleted} />
+                    ) : (
+                      <>
+                        <TextInput style={styles.setInput} value={set.weight?.toString()} keyboardType="decimal-pad" placeholder="-" placeholderTextColor="#444" onChangeText={(v) => { const n = [...exercises]; n[exIdx].sets[sIdx].weight = Number(v); setExercises(n); }} editable={!set.isCompleted} />
+                        <TextInput style={styles.setInput} value={set.reps?.toString()} keyboardType="number-pad" placeholder="-" placeholderTextColor="#444" onChangeText={(v) => { const n = [...exercises]; n[exIdx].sets[sIdx].reps = Number(v); setExercises(n); }} editable={!set.isCompleted} />
+                      </>
+                    )}
+
                     <Pressable style={styles.checkBtn} onPress={() => {
-                      if (!set.isCompleted && (!set.reps || !set.weight)) {
+                      if (!set.isCompleted && ex.type === "WEIGHT_REPS" && (!set.reps || !set.weight)) {
                         ToastService.info("Missing Data", "Please enter weight and reps.");
                         return;
                       }
@@ -330,12 +406,12 @@ export function WorkoutLogScreen() {
                     }}><Ionicons name={set.isCompleted ? "checkmark-circle" : "ellipse-outline"} size={24} color={set.isCompleted ? colors.primary : "#333"} /></Pressable>
                   </View>
                 ))}
-                <Pressable style={styles.addSetBtn} onPress={() => { const n = [...exercises]; n[exIdx].sets.push({ reps: "", weight: "", rpe: "", isCompleted: false }); setExercises(n); }}><Ionicons name="add" size={18} color={colors.primary} /><Text style={styles.addSetText}>ADD SET</Text></Pressable>
+                <Pressable style={styles.addSetBtn} onPress={() => { const n = [...exercises]; n[exIdx].sets.push({ type: ex.type, isCompleted: false }); setExercises(n); }}><Ionicons name="add" size={18} color={colors.primary} /><Text style={styles.addSetText}>ADD SET</Text></Pressable>
               </View>
             ))
           )}
 
-          <Pressable style={styles.addExBtn} onPress={() => setExercises([...exercises, { name: "", sets: [{ reps: "", weight: "", rpe: "", isCompleted: false }] }])}><Ionicons name="add-circle" size={22} color={colors.primary} /><Text style={styles.addExText}>ADD EXERCISE</Text></Pressable>
+          <Pressable style={styles.addExBtn} onPress={() => setIsExerciseModalVisible(true)}><Ionicons name="search-circle" size={26} color={colors.primary} /><Text style={styles.addExText}>ADD EXERCISE</Text></Pressable>
           <Pressable style={styles.finishBtn} onPress={() => {
             if (totalSetsCompleted === 0) {
               ToastService.error("Empty Workout", "Please complete at least one set before checking in.");
@@ -346,6 +422,144 @@ export function WorkoutLogScreen() {
         </ScrollView>
       </KeyboardAvoidingView>
       {timerActive && restTimeLeft > 0 && <RestTimer value={restTimeLeft} onAdjust={(d: number) => setRestTimeLeft(prev => prev + d)} onSkip={() => { setTimerActive(false); setRestTimeLeft(0); }} />}
+      
+      {/* EXERCISE SELECTION MODAL */}
+      <Modal
+        visible={isExerciseModalVisible}
+        animationType="slide"
+        transparent={true}
+        onRequestClose={() => setIsExerciseModalVisible(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <View style={styles.modalHeader}>
+              <Typography variant="h2" style={{ color: "#fff" }}>Add Exercise</Typography>
+              <Pressable onPress={() => setIsExerciseModalVisible(false)} style={styles.closeBtn}>
+                <Ionicons name="close" size={24} color="#fff" />
+              </Pressable>
+            </View>
+
+            <TextInput 
+              style={[styles.input, { marginTop: 20, marginBottom: 10 }]} 
+              placeholder="Search exercise database..." 
+              placeholderTextColor="#666"
+              value={exerciseSearchQuery}
+              onChangeText={setExerciseSearchQuery}
+            />
+
+            <ScrollView style={{ flex: 1 }}>
+              {filteredExercises.length === 0 ? (
+                <View style={{ paddingVertical: 40, alignItems: "center" }}>
+                   <Typography variant="label" color="#444">No matches found</Typography>
+                   <Pressable 
+                    style={[styles.loadBtn, { marginTop: 12, backgroundColor: "#111" }]}
+                    onPress={() => {
+                      setExercises([...exercises, { name: exerciseSearchQuery || "Custom Exercise", type: "WEIGHT_REPS", sets: [{ type: "WEIGHT_REPS", isCompleted: false }] }]);
+                      setIsExerciseModalVisible(false);
+                      setExerciseSearchQuery("");
+                    }}
+                   >
+                     <Ionicons name="add" size={18} color={colors.primary} />
+                     <Text style={styles.loadBtnText}>ADD "{exerciseSearchQuery.toUpperCase() || "CUSTOM"}"</Text>
+                   </Pressable>
+                </View>
+              ) : (
+                filteredExercises.map((ex) => (
+                  <Pressable 
+                    key={ex.id} 
+                    style={styles.exerciseSelectItem}
+                    onPress={() => {
+                      setExercises([...exercises, { name: tEx(ex.name), type: ex.defaultType, sets: [{ type: ex.defaultType, isCompleted: false }] }]);
+                      setIsExerciseModalVisible(false);
+                      setExerciseSearchQuery("");
+                    }}
+                  >
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.modalItemTitle}>{tEx(ex.name)}</Text>
+                      <View style={{ flexDirection: "row", gap: 8, marginTop: 4 }}>
+                        <View style={styles.tag}><Text style={styles.tagText}>{ex.muscleGroup.toUpperCase()}</Text></View>
+                        <View style={styles.tag}><Text style={styles.tagText}>{ex.equipment.toUpperCase()}</Text></View>
+                      </View>
+                    </View>
+                    <View style={styles.addIconCircle}>
+                      <Ionicons name="add" size={20} color="#000" />
+                    </View>
+                  </Pressable>
+                ))
+              )}
+            </ScrollView>
+            
+            {!exerciseSearchQuery && (
+               <Pressable 
+                style={[styles.addExBtn, { marginTop: 10, borderStyle: "solid" }]}
+                onPress={() => {
+                  setExercises([...exercises, { name: "", type: "WEIGHT_REPS", sets: [{ type: "WEIGHT_REPS", isCompleted: false }] }]);
+                  setIsExerciseModalVisible(false);
+                }}
+              >
+                <Ionicons name="create-outline" size={20} color="#fff" />
+                <Text style={styles.addExText}>ADD CUSTOM EXERCISE</Text>
+              </Pressable>
+            )}
+          </View>
+        </View>
+      </Modal>
+
+      {/* EXERCISE INFO MODAL */}
+      <Modal
+        visible={!!selectedExerciseInfo}
+        animationType="slide"
+        transparent={true}
+        onRequestClose={() => setSelectedExerciseInfo(null)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>{selectedExerciseInfo ? tEx(selectedExerciseInfo.name) : ''}</Text>
+              <Pressable onPress={() => setSelectedExerciseInfo(null)} style={styles.closeBtn}>
+                <Ionicons name="close" size={24} color="#fff" />
+              </Pressable>
+            </View>
+            <ScrollView style={{ marginTop: 10 }}>
+              <View style={{ flexDirection: "row", gap: 10, marginBottom: 20 }}>
+                <View style={styles.tag}><Text style={styles.tagText}>{selectedExerciseInfo?.muscleGroup.toUpperCase()}</Text></View>
+                <View style={styles.tag}><Text style={styles.tagText}>{selectedExerciseInfo?.equipment.toUpperCase()}</Text></View>
+              </View>
+
+              {selectedExerciseInfo?.videoUrl && (
+                <Pressable 
+                  style={styles.videoCard} 
+                  onPress={() => {
+                    const { openBrowserAsync } = require("expo-web-browser");
+                    openBrowserAsync(selectedExerciseInfo.videoUrl!);
+                  }}
+                >
+                  <View style={styles.videoIconBg}>
+                    <Ionicons name="play" size={32} color="#000" />
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.videoTitle}>Watch Video Demonstration</Text>
+                    <Text style={styles.videoSub}>Professional form and execution</Text>
+                  </View>
+                  <Ionicons name="chevron-forward" size={20} color="#666" />
+                </Pressable>
+              )}
+
+              <SectionTitle title="INSTRUCTIONS" icon="book-outline" />
+              {selectedExerciseInfo?.instructions ? (
+                selectedExerciseInfo.instructions.map((step, i) => (
+                  <View key={i} style={styles.stepRow}>
+                    <View style={styles.stepCircle}><Text style={styles.stepNumber}>{i + 1}</Text></View>
+                    <Text style={styles.stepText}>{tEx(step)}</Text>
+                  </View>
+                ))
+              ) : (
+                <Text style={{ color: "#888", fontSize: 14 }}>No instructions provided yet.</Text>
+              )}
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
     </ScreenShell>
   );
 }
@@ -388,8 +602,13 @@ const styles = StyleSheet.create({
   emptyState: { alignItems: "center", justifyContent: "center", paddingVertical: 40, gap: 8, backgroundColor: "#111", borderRadius: 24, borderWidth: 1, borderColor: "#222", borderStyle: "dashed", marginBottom: 16 },
   workoutNameInput: { color: "#fff", fontSize: 26, fontWeight: "900", marginTop: 10, marginBottom: 10 },
   exerciseCard: { backgroundColor: "#111", borderRadius: 32, padding: 20, borderWidth: 1, borderColor: "#1c1c1e" },
-  exerciseHeader: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 20 },
+  exerciseHeader: { flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 20 },
   exerciseNameInput: { color: colors.primary, fontSize: 18, fontWeight: "800", flex: 1 },
+  typeSelectorRow: { flexDirection: "row", gap: 6 },
+  typePill: { paddingVertical: 6, paddingHorizontal: 12, borderRadius: 8, backgroundColor: "#1c1c1e", borderWidth: 1, borderColor: "#2c2c2e" },
+  typePillActive: { backgroundColor: colors.primary, borderColor: colors.primary },
+  typePillText: { color: "#8c8c8c", fontSize: 10, fontWeight: "900" },
+  typePillTextActive: { color: "#000" },
   tableHeader: { flexDirection: "row", marginBottom: 10 },
   columnLabel: { flex: 1, color: "#444", fontSize: 10, fontWeight: "900", textAlign: "center" },
   setRow: { flexDirection: "row", alignItems: "center", backgroundColor: "#1c1c1e", borderRadius: 12, paddingVertical: 4, paddingHorizontal: 10, marginBottom: 6 },
@@ -433,4 +652,67 @@ const styles = StyleSheet.create({
   timeLink: { flex: 1, padding: 12, backgroundColor: '#1c1c1e', borderRadius: 14, borderWidth: 1, borderColor: '#2c2c2e' },
   timeValue: { color: '#fff', fontSize: 13 },
   timerLabel: { color: '#444', fontSize: 8, fontWeight: '900' },
+  modalOverlay: { flex: 1, backgroundColor: "rgba(0,0,0,0.8)", justifyContent: "flex-end" },
+  modalContent: { backgroundColor: "#000", borderTopLeftRadius: 32, borderTopRightRadius: 32, height: "60%", padding: 24, borderWidth: 1, borderColor: "#2c2c2e" },
+  modalHeader: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
+  modalTitle: { color: "#fff", fontSize: 22, fontWeight: "900" },
+  closeBtn: { width: 40, height: 40, borderRadius: 20, backgroundColor: "#111", alignItems: "center", justifyContent: "center" },
+  tag: { backgroundColor: "#2c2c2e", paddingHorizontal: 10, paddingVertical: 6, borderRadius: 8 },
+  tagText: { color: "#aaa", fontSize: 10, fontWeight: "900" },
+  stepRow: { flexDirection: "row", gap: 12, marginBottom: 16, alignItems: "flex-start" },
+  stepCircle: { width: 24, height: 24, borderRadius: 12, backgroundColor: colors.primary, alignItems: "center", justifyContent: "center", marginTop: 2 },
+  stepNumber: { color: "#000", fontSize: 12, fontWeight: "900" },
+  stepText: { flex: 1, color: "#ccc", fontSize: 15, lineHeight: 22, fontWeight: "500" },
+  videoCard: { 
+    flexDirection: "row", 
+    alignItems: "center", 
+    backgroundColor: "#161616", 
+    borderRadius: 20, 
+    padding: 16, 
+    marginBottom: 24, 
+    borderWidth: 1, 
+    borderColor: "#2c2c2e",
+    gap: 16
+  },
+  videoIconBg: { 
+    width: 64, 
+    height: 64, 
+    borderRadius: 16, 
+    backgroundColor: colors.primary, 
+    alignItems: "center", 
+    justifyContent: "center" 
+  },
+  videoTitle: { color: "#fff", fontSize: 16, fontWeight: "800" },
+  videoSub: { color: "#666", fontSize: 12, fontWeight: "600", marginTop: 2 },
+  exerciseSelectItem: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#111",
+    padding: 16,
+    borderRadius: 20,
+    marginBottom: 10,
+    borderWidth: 1,
+    borderColor: "#1c1c1e",
+    gap: 12,
+  },
+  modalItemTitle: { color: "#fff", fontSize: 16, fontWeight: "800" },
+  addIconCircle: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: colors.primary,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  loadBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#161616",
+    padding: 16,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: "#2c2c2e",
+    gap: 12,
+  },
+  loadBtnText: { color: colors.primary, fontSize: 13, fontWeight: "900", letterSpacing: 0.5 },
 });

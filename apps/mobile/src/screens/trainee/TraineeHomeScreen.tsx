@@ -17,12 +17,14 @@ import {
   subscribeToPrescribedWorkouts,
   subscribeToPrescribedMeals,
   subscribeToLatestMetrics,
+  subscribeToTraineePrograms,
   type Meal,
   type WorkoutLog,
   type UserProfile,
   type PrescribedWorkout,
   type PrescribedMeal,
-  type BodyMetric
+  type BodyMetric,
+  type Program
 } from "../../services/userSession";
 
 type TraineeHomeScreenProps = {
@@ -83,6 +85,7 @@ export function TraineeHomeScreen({ onQuickAskCoach }: TraineeHomeScreenProps) {
   const [prescribed, setPrescribed] = useState<PrescribedWorkout[]>([]);
   const [prescribedMeals, setPrescribedMeals] = useState<PrescribedMeal[]>([]);
   const [metrics, setMetrics] = useState<BodyMetric[]>([]);
+  const [programs, setPrograms] = useState<Program[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [showLogoutModal, setShowLogoutModal] = useState(false);
 
@@ -109,6 +112,7 @@ export function TraineeHomeScreen({ onQuickAskCoach }: TraineeHomeScreenProps) {
     });
 
     const unsubMetrics = subscribeToLatestMetrics(user.uid, setMetrics);
+    const unsubPrograms = subscribeToTraineePrograms(user.uid, setPrograms);
 
     return () => {
       unsubMeals();
@@ -117,6 +121,7 @@ export function TraineeHomeScreen({ onQuickAskCoach }: TraineeHomeScreenProps) {
       unsubPrescribedMeals();
       unsubProfile();
       unsubMetrics();
+      unsubPrograms();
     };
   }, []);
 
@@ -231,6 +236,39 @@ export function TraineeHomeScreen({ onQuickAskCoach }: TraineeHomeScreenProps) {
 
               </View>
             </View>
+
+            {/* ACTIVE PROGRAM CARD */}
+            {isPremium && programs.length > 0 && (() => {
+              const activeProgram = programs[0];
+              const currentWeek = activeProgram.weeks.find(w => w.sessions.some(s => !s.isCompleted)) || activeProgram.weeks[activeProgram.weeks.length - 1];
+              const currentSession = currentWeek?.sessions.find(s => !s.isCompleted);
+              const completedSessions = activeProgram.weeks.reduce((sum, w) => sum + w.sessions.filter(s => s.isCompleted).length, 0);
+              const totalSessions = activeProgram.weeks.reduce((sum, w) => sum + w.sessions.length, 0);
+              const progressPct = totalSessions > 0 ? Math.round((completedSessions / totalSessions) * 100) : 0;
+
+              return (
+                <View style={[styles.card, { borderColor: '#f87171', backgroundColor: '#1a1010' }]}>
+                  <View style={styles.cardHeader}>
+                    <Ionicons name="calendar" size={18} color="#f87171" />
+                    <Typography variant="h2">Active Program</Typography>
+                    <View style={[styles.coachBadge, { backgroundColor: '#f87171' }]}>
+                      <Typography style={{ fontSize: 9, color: '#000', fontWeight: '900' }}>{activeProgram.level}</Typography>
+                    </View>
+                  </View>
+                  <View style={styles.prescribedContent}>
+                    <Typography variant="h2" style={{ fontSize: 20 }}>{activeProgram.title}</Typography>
+                    <Typography variant="label" color="#8c8c8c">
+                      {currentWeek ? `Week ${currentWeek.weekNumber}` : 'Complete'} • {currentSession ? currentSession.title : 'All done!'} • By {activeProgram.coachName}
+                    </Typography>
+                  </View>
+                  {/* Progress Bar */}
+                  <View style={{ height: 6, backgroundColor: '#2c2c2e', borderRadius: 3, overflow: 'hidden' }}>
+                    <View style={{ width: `${progressPct}%`, height: '100%', backgroundColor: '#f87171', borderRadius: 3 }} />
+                  </View>
+                  <Typography variant="label" color="#666" style={{ textAlign: 'right', fontSize: 10 }}>{progressPct}% complete ({completedSessions}/{totalSessions} sessions)</Typography>
+                </View>
+              );
+            })()}
 
             {isPremium && prescribed.length > 0 && (
               <View style={[styles.card, { borderColor: colors.primary, backgroundColor: "#1a1a10" }]}>

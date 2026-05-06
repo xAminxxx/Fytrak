@@ -82,29 +82,44 @@ export function TraineeDetailScreen() {
                 <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scroll}>
                     {/* QUICK ACTIONS */}
                     <View style={styles.actionRow}>
-                        <Pressable
-                            style={[styles.actionCard, { flex: 1 }]}
-                            onPress={() => navigation.navigate("PrescribeWorkout", { traineeId, traineeName })}
-                        >
-                            <View style={[styles.actionIcon, { backgroundColor: "#22251a" }]}>
-                                <Ionicons name="barbell-outline" size={24} color={colors.primary} />
-                            </View>
-                            <View>
-                                <Text style={styles.actionTitle}>Prescribe Routine</Text>
-                                <Text style={styles.actionSub}>Workouts</Text>
-                            </View>
-                        </Pressable>
+                        <View style={{ flexDirection: "row", gap: 12 }}>
+                            <Pressable
+                                style={[styles.actionCard, { flex: 1 }]}
+                                onPress={() => navigation.navigate("PrescribeWorkout", { traineeId, traineeName })}
+                            >
+                                <View style={[styles.actionIcon, { backgroundColor: "#22251a" }]}>
+                                    <Ionicons name="barbell-outline" size={24} color={colors.primary} />
+                                </View>
+                                <View>
+                                    <Text style={styles.actionTitle}>Prescribe Routine</Text>
+                                    <Text style={styles.actionSub}>Workouts</Text>
+                                </View>
+                            </Pressable>
+
+                            <Pressable
+                                style={[styles.actionCard, { flex: 1 }]}
+                                onPress={() => navigation.navigate("PrescribeMeal", { traineeId, traineeName })}
+                            >
+                                <View style={[styles.actionIcon, { backgroundColor: "#1a2225" }]}>
+                                    <Ionicons name="nutrition-outline" size={24} color="#4ade80" />
+                                </View>
+                                <View>
+                                    <Text style={styles.actionTitle}>Prescribe Plan</Text>
+                                    <Text style={styles.actionSub}>Nutrition</Text>
+                                </View>
+                            </Pressable>
+                        </View>
 
                         <Pressable
-                            style={[styles.actionCard, { flex: 1 }]}
-                            onPress={() => navigation.navigate("PrescribeMeal", { traineeId, traineeName })}
+                            style={[styles.actionCard, { marginTop: 12 }]}
+                            onPress={() => navigation.navigate("CreateProgram" as any, { traineeId, traineeName })}
                         >
-                            <View style={[styles.actionIcon, { backgroundColor: "#1a2225" }]}>
-                                <Ionicons name="nutrition-outline" size={24} color="#4ade80" />
+                            <View style={[styles.actionIcon, { backgroundColor: "#251a1a" }]}>
+                                <Ionicons name="calendar-outline" size={24} color="#f87171" />
                             </View>
                             <View>
-                                <Text style={styles.actionTitle}>Prescribe Plan</Text>
-                                <Text style={styles.actionSub}>Nutrition</Text>
+                                <Text style={styles.actionTitle}>Build Training Program</Text>
+                                <Text style={styles.actionSub}>Assign a scalable multi-week plan</Text>
                             </View>
                         </Pressable>
                     </View>

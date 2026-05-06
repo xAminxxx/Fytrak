@@ -92,6 +92,10 @@ export function ProgressScreen() {
     }).length;
   }, [workouts]);
 
+  const totalVolumeLifted = useMemo(() => {
+    return workouts.reduce((sum, w) => sum + (w.totalVolume || 0), 0);
+  }, [workouts]);
+
   const weightChartData = useMemo(() => {
     if (!metrics.length) return { data: [], yAxisOffset: 0 };
     const now = new Date();
@@ -122,6 +126,34 @@ export function ProgressScreen() {
       }))
     };
   }, [metrics, chartFilter]);
+
+  const volumeChartData = useMemo(() => {
+    if (!workouts.length) return { data: [] };
+    let cutoff = new Date(0);
+    if (chartFilter === '1W') { const d = new Date(); d.setDate(d.getDate() - 7); cutoff = d; }
+    else if (chartFilter === '1M') { const d = new Date(); d.setMonth(d.getMonth() - 1); cutoff = d; }
+    else if (chartFilter === '3M') { const d = new Date(); d.setMonth(d.getMonth() - 3); cutoff = d; }
+    else if (chartFilter === '1Y') { const d = new Date(); d.setFullYear(d.getFullYear() - 1); cutoff = d; }
+
+    const filtered = [...workouts]
+      .filter(w => w.createdAt && new Date(w.createdAt.toDate ? w.createdAt.toDate() : w.createdAt) >= cutoff)
+      .sort((a, b) => new Date(a.createdAt?.toDate ? a.createdAt.toDate() : a.createdAt).getTime() - new Date(b.createdAt?.toDate ? b.createdAt.toDate() : b.createdAt).getTime());
+
+    if (filtered.length === 0) return { data: [] };
+
+    return {
+      data: filtered.map(w => ({
+        value: w.totalVolume || 0,
+        label: new Date(w.createdAt?.toDate ? w.createdAt.toDate() : w.createdAt).toLocaleDateString([], { month: 'numeric', day: 'numeric' }),
+        dataPointText: (w.totalVolume || 0).toString(),
+        dataPointColor: "#f87171",
+        dataPointRadius: 5,
+        textColor: '#aaa',
+        textFontSize: 10,
+        textShiftY: -14,
+      }))
+    };
+  }, [workouts, chartFilter]);
 
   const itemWidth = useMemo(() => (windowWidth - 40 - (GAP * 2)) / 3, [windowWidth]);
 
@@ -368,7 +400,7 @@ export function ProgressScreen() {
           <View style={styles.grid}>
              <MetricCard icon="calendar" label="Weekly Flow" value={weeklyConsistency} unit="Days" color="#60a5fa" />
              <MetricCard icon="flash" label="Daily Fuel" value={macroAdherence} unit="%" color={colors.primary} />
-             <MetricCard icon="scale" label="Weight" value={metrics[0]?.weight || "--"} unit="kg" color="#a78bfa" />
+             <MetricCard icon="barbell" label="Total Volume" value={totalVolumeLifted > 1000 ? `${(totalVolumeLifted/1000).toFixed(1)}k` : totalVolumeLifted} unit="kg" color="#f87171" />
              <MetricCard icon="body" label="BMI Index" value={calculateBMI} unit="" color="#4ade80" />
           </View>
 
@@ -545,6 +577,96 @@ export function ProgressScreen() {
               ) : (
                 <View style={styles.chartEmpty}>
                   <Typography variant="label" color="#444">Insufficient tracking data</Typography>
+                </View>
+              )}
+            </View>
+
+            <View style={styles.filterContainer}>
+              {(['1W', '1M', '3M', '1Y', 'ALL'] as const).map(f => (
+                <Pressable
+                  key={f}
+                  onPress={() => setChartFilter(f)}
+                  style={[styles.filterBtn, chartFilter === f && styles.filterBtnActive]}
+                >
+                   <Typography style={[styles.filterText, chartFilter === f && styles.filterTextActive]}>{f.toUpperCase()}</Typography>
+                </Pressable>
+              ))}
+            </View>
+          </View>
+
+          {/* 6. VOLUME ANALYSIS */}
+          <View style={styles.trendCard}>
+            <View style={styles.trendHeader}>
+              <View style={styles.trendTitleRow}>
+                 <View style={[styles.accentBar, { backgroundColor: "#f87171" }]} />
+                 <Typography variant="h2" style={{ fontSize: 18 }}>Volume Progression</Typography>
+              </View>
+            </View>
+
+            <View style={styles.chartBox}>
+              {volumeChartData.data.length > 0 ? (
+                <LineChart
+                  areaChart
+                  data={volumeChartData.data}
+                  curved
+                  height={200}
+                  width={windowWidth - 90}
+                  initialSpacing={15}
+                  endSpacing={20}
+                  spacing={volumeChartData.data.length <= 3 ? 80 : volumeChartData.data.length <= 7 ? 50 : 35}
+                  color="#f87171"
+                  thickness={3}
+                  startFillColor="rgba(248, 113, 113, 0.25)"
+                  endFillColor="rgba(248, 113, 113, 0.02)"
+                  startOpacity={0.5}
+                  endOpacity={0.05}
+                  yAxisOffset={0}
+                  noOfSections={4}
+                  rulesType="dashed"
+                  rulesColor="#1c1c1e"
+                  dashWidth={4}
+                  dashGap={6}
+                  xAxisThickness={0}
+                  yAxisThickness={0}
+                  yAxisTextStyle={{ color: '#555', fontSize: 10, fontWeight: '600' }}
+                  yAxisTextNumberOfLines={1}
+                  xAxisLabelTextStyle={{ color: '#555', fontSize: 9, fontWeight: '500' }}
+                  showVerticalLines
+                  verticalLinesColor="#1a1a1a"
+                  verticalLinesThickness={1}
+                  hideDataPoints={false}
+                  dataPointsColor="#f87171"
+                  dataPointsRadius={5}
+                  focusEnabled
+                  showStripOnFocus
+                  stripColor="rgba(248, 113, 113, 0.15)"
+                  stripWidth={2}
+                  showTextOnFocus
+                  unFocusOnPressOut
+                  focusedDataPointColor="#fff"
+                  focusedDataPointRadius={7}
+                  textColor="#aaa"
+                  textFontSize={10}
+                  textShiftY={-14}
+                  pointerConfig={{
+                    pointerStripColor: 'rgba(248, 113, 113, 0.4)',
+                    pointerStripWidth: 1,
+                    pointerColor: '#fff',
+                    radius: 7,
+                    pointerLabelWidth: 80,
+                    pointerLabelHeight: 32,
+                    activatePointersOnLongPress: false,
+                    autoAdjustPointerLabelPosition: true,
+                    pointerLabelComponent: (items: any) => (
+                      <View style={styles.pointerBadge}>
+                        <Text style={styles.pointerText}>{items[0].value} kg</Text>
+                      </View>
+                    ),
+                  }}
+                />
+              ) : (
+                <View style={styles.chartEmpty}>
+                  <Typography variant="label" color="#444">No volume data in this period</Typography>
                 </View>
               )}
             </View>

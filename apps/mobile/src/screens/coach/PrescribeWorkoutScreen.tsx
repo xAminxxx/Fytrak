@@ -13,7 +13,8 @@ import {
 import { ScreenShell } from "../../components/ScreenShell";
 import { colors } from "../../theme/colors";
 import { Ionicons } from "@expo/vector-icons";
-import { savePrescribedWorkout, CoachTemplate, subscribeToCoachTemplates } from "../../services/userSession";
+import { savePrescribedWorkout, CoachTemplate, subscribeToCoachTemplates, WorkoutSetType } from "../../services/userSession";
+import { EXERCISE_LIBRARY, ExerciseLibraryItem, t as tEx } from "../../constants/exercises";
 import { auth } from "../../config/firebase";
 import { useNavigation, useRoute } from "@react-navigation/native";
 
@@ -23,8 +24,8 @@ export function PrescribeWorkoutScreen() {
     const { traineeId, traineeName } = route.params;
 
     const [title, setTitle] = useState("");
-    const [exercises, setExercises] = useState([
-        { name: "", targetSets: 4, targetReps: "10-12", restTime: "60s" }
+    const [exercises, setExercises] = useState<{name: string; type: WorkoutSetType; targetSets: number; targetReps: string; restTime: string;}[]>([
+        { name: "", type: "WEIGHT_REPS", targetSets: 4, targetReps: "10-12", restTime: "60s" }
     ]);
     const [templates, setTemplates] = useState<CoachTemplate[]>([]);
     const [libModalVisible, setLibModalVisible] = useState(false);
@@ -32,8 +33,19 @@ export function PrescribeWorkoutScreen() {
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [libSearchQuery, setLibSearchQuery] = useState("");
 
+    // EXERCISE LIBRARY STATES
+    const [exerciseModalVisible, setExerciseModalVisible] = useState(false);
+    const [exerciseSearchQuery, setExerciseSearchQuery] = useState("");
+    const [activeExerciseIndex, setActiveExerciseIndex] = useState<number | null>(null);
+
     const filteredTemplates = templates.filter(t =>
         t.title.toLowerCase().includes(libSearchQuery.toLowerCase())
+    );
+
+    const filteredExercises = EXERCISE_LIBRARY.filter(ex =>
+        tEx(ex.name).toLowerCase().includes(exerciseSearchQuery.toLowerCase()) ||
+        ex.muscleGroup.toLowerCase().includes(exerciseSearchQuery.toLowerCase()) ||
+        ex.equipment.toLowerCase().includes(exerciseSearchQuery.toLowerCase())
     );
 
     useEffect(() => {
@@ -54,7 +66,7 @@ export function PrescribeWorkoutScreen() {
     };
 
     const addExercise = () => {
-        setExercises([...exercises, { name: "", targetSets: 4, targetReps: "10-12", restTime: "60s" }]);
+        setExercises([...exercises, { name: "", type: "WEIGHT_REPS", targetSets: 4, targetReps: "10-12", restTime: "60s" }]);
     };
 
     const updateExercise = (index: number, field: string, value: any) => {
@@ -145,17 +157,31 @@ export function PrescribeWorkoutScreen() {
                     <View key={idx} style={styles.exerciseCard}>
                         <View style={styles.exHeader}>
                             <View style={styles.indexCircle}><Text style={styles.indexText}>{idx + 1}</Text></View>
-                            <TextInput
-                                placeholder="Exercise Name"
-                                placeholderTextColor="#444"
-                                style={styles.exInput}
-                                value={ex.name}
-                                onChangeText={(v) => updateExercise(idx, "name", v)}
-                            />
+                            <View style={{ flex: 1, gap: 12 }}>
+                                <Pressable
+                                    style={styles.exInput}
+                                    onPress={() => {
+                                        setActiveExerciseIndex(idx);
+                                        setExerciseSearchQuery("");
+                                        setExerciseModalVisible(true);
+                                    }}
+                                >
+                                    <Text style={{ color: ex.name ? "#fff" : "#444", fontSize: 16, fontWeight: "700" }}>
+                                        {ex.name || "Tap to select exercise..."}
+                                    </Text>
+                                </Pressable>
+                                <View style={styles.typeSelectorRow}>
+                                    {(["WEIGHT_REPS", "TIME", "BODYWEIGHT"] as WorkoutSetType[]).map(t => (
+                                        <Pressable key={t} style={[styles.typePill, ex.type === t && styles.typePillActive]} onPress={() => updateExercise(idx, "type", t)}>
+                                            <Text style={[styles.typePillText, ex.type === t && styles.typePillTextActive]}>{t.replace("_", " ")}</Text>
+                                        </Pressable>
+                                    ))}
+                                </View>
+                            </View>
                             <Pressable
                                 onPress={() => {
                                     const newEx = exercises.filter((_, i) => i !== idx);
-                                    setExercises(newEx.length ? newEx : [{ name: "", targetSets: 4, targetReps: "10-12", restTime: "60s" }]);
+                                    setExercises(newEx.length ? newEx : [{ name: "", type: "WEIGHT_REPS", targetSets: 4, targetReps: "10-12", restTime: "60s" }]);
                                 }}
                             >
                                 <Ionicons name="close-circle-outline" size={20} color="#ff4444" />
@@ -173,10 +199,12 @@ export function PrescribeWorkoutScreen() {
                                 />
                             </View>
                             <View style={styles.paramItem}>
-                                <Text style={styles.paramLabel}>REPS</Text>
+                                <Text style={styles.paramLabel}>{ex.type === "TIME" ? "SECONDS" : "REPS"}</Text>
                                 <TextInput
                                     style={styles.paramInput}
                                     value={ex.targetReps}
+                                    placeholder={ex.type === "TIME" ? "60s" : "10-12"}
+                                    placeholderTextColor="#444"
                                     onChangeText={(v) => updateExercise(idx, "targetReps", v)}
                                 />
                             </View>
@@ -275,6 +303,77 @@ export function PrescribeWorkoutScreen() {
                     </View>
                 </View>
             </Modal>
+
+            {/* EXERCISE LIBRARY MODAL */}
+            <Modal
+                visible={exerciseModalVisible}
+                animationType="slide"
+                transparent={true}
+                onRequestClose={() => setExerciseModalVisible(false)}
+            >
+                <View style={styles.modalOverlay}>
+                    <View style={styles.modalContent}>
+                        <View style={styles.modalHeader}>
+                            <Text style={styles.modalTitle}>Exercise Library</Text>
+                            <Pressable onPress={() => setExerciseModalVisible(false)} style={styles.closeBtn}>
+                                <Ionicons name="close" size={24} color="#fff" />
+                            </Pressable>
+                        </View>
+
+                        <View style={styles.modalSearch}>
+                            <Ionicons name="search" size={18} color="#666" />
+                            <TextInput
+                                style={styles.modalSearchInput}
+                                placeholder="Search by name, muscle, or equipment..."
+                                placeholderTextColor="#666"
+                                value={exerciseSearchQuery}
+                                onChangeText={setExerciseSearchQuery}
+                            />
+                        </View>
+
+                        <ScrollView style={styles.modalList}>
+                            {filteredExercises.length === 0 ? (
+                                <Text style={styles.emptyText}>No exercises found.</Text>
+                            ) : (
+                                filteredExercises.map(ex => (
+                                    <Pressable 
+                                        key={ex.id} 
+                                        style={styles.modalItem} 
+                                        onPress={() => {
+                                            if (activeExerciseIndex !== null) {
+                                                const newEx = [...exercises];
+                                                newEx[activeExerciseIndex] = {
+                                                    ...newEx[activeExerciseIndex],
+                                                    name: tEx(ex.name),
+                                                    type: ex.defaultType,
+                                                    targetReps: ex.defaultType === "TIME" ? "60" : "10-12"
+                                                };
+                                                setExercises(newEx);
+                                            }
+                                            setExerciseModalVisible(false);
+                                        }}
+                                    >
+                                        <View style={{ flex: 1, gap: 4 }}>
+                                            <Text style={styles.modalItemTitle}>{tEx(ex.name)}</Text>
+                                            <View style={{ flexDirection: "row", gap: 8 }}>
+                                                <View style={styles.tag}><Text style={styles.tagText}>{ex.muscleGroup.toUpperCase()}</Text></View>
+                                                <View style={styles.tag}><Text style={styles.tagText}>{ex.equipment.toUpperCase()}</Text></View>
+                                                {ex.videoUrl && (
+                                                    <View style={[styles.tag, { backgroundColor: "rgba(255, 204, 0, 0.1)" }]}>
+                                                        <Ionicons name="videocam" size={10} color={colors.primary} />
+                                                    </View>
+                                                )}
+                                            </View>
+                                        </View>
+                                        <Ionicons name="add-circle" size={24} color={colors.primary} />
+                                    </Pressable>
+                                ))
+                            )}
+                        </ScrollView>
+                    </View>
+                </View>
+            </Modal>
+
         </ScreenShell>
     );
 }
@@ -316,7 +415,7 @@ const styles = StyleSheet.create({
     },
     exHeader: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
     exNumber: { color: "#444", fontSize: 12, fontWeight: "900" },
-    exNameInput: {
+    exInput: {
         backgroundColor: "#161616",
         borderRadius: 12,
         paddingHorizontal: 16,
@@ -327,6 +426,11 @@ const styles = StyleSheet.create({
         borderWidth: 1,
         borderColor: "#2c2c2e",
     },
+    typeSelectorRow: { flexDirection: "row", gap: 6 },
+    typePill: { paddingVertical: 6, paddingHorizontal: 12, borderRadius: 8, backgroundColor: "#1c1c1e", borderWidth: 1, borderColor: "#2c2c2e" },
+    typePillActive: { backgroundColor: colors.primary, borderColor: colors.primary },
+    typePillText: { color: "#8c8c8c", fontSize: 10, fontWeight: "900" },
+    typePillTextActive: { color: "#000" },
     inputGroup: {
         gap: 12,
         marginBottom: 10,
@@ -356,13 +460,6 @@ const styles = StyleSheet.create({
         color: "#666",
         fontSize: 14,
         fontWeight: "900",
-    },
-    exInput: {
-        flex: 1,
-        color: "#fff",
-        fontSize: 16,
-        fontWeight: "700",
-        paddingVertical: 4,
     },
     paramGrid: { flexDirection: "row", gap: 12 },
     paramItem: { flex: 1, gap: 6 },
@@ -477,4 +574,15 @@ const styles = StyleSheet.create({
         marginTop: 40,
         fontSize: 15,
     },
+    tag: {
+        backgroundColor: "#2c2c2e",
+        paddingHorizontal: 8,
+        paddingVertical: 4,
+        borderRadius: 6,
+    },
+    tagText: {
+        color: "#aaa",
+        fontSize: 10,
+        fontWeight: "800",
+    }
 });
