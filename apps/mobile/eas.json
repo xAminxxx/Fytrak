@@ -12,6 +12,21 @@
       "android": {
         "buildType": "apk"
       },
+      "env": {
+        "EXPO_PUBLIC_FIREBASE_API_KEY": "AIzaSyCeiUNwFBVV4fi9uwdF2kjBLDqXacMdGPs",
+        "EXPO_PUBLIC_FIREBASE_AUTH_DOMAIN": "fytrak-d754f.firebaseapp.com",
+        "EXPO_PUBLIC_FIREBASE_PROJECT_ID": "fytrak-d754f",
+        "EXPO_PUBLIC_FIREBASE_STORAGE_BUCKET": "fytrak-d754f.firebasestorage.app",
+        "EXPO_PUBLIC_FIREBASE_MESSAGING_SENDER_ID": "314272170712",
+        "EXPO_PUBLIC_FIREBASE_APP_ID": "1:314272170712:web:d72dbb57beaca9888ecdad",
+        "EXPO_PUBLIC_GOOGLE_EXPO_CLIENT_ID": "540378963287-lv87eu5icfddie4t6v47c1o27ckm5kbp.apps.googleusercontent.com",
+        "EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID": "540378963287-lv87eu5icfddie4t6v47c1o27ckm5kbp.apps.googleusercontent.com",
+        "EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID": "540378963287-lv87eu5icfddie4t6v47c1o27ckm5kbp.apps.googleusercontent.com",
+        "EXPO_PUBLIC_CLOUDINARY_CLOUD_NAME": "drh28rj03",
+        "EXPO_PUBLIC_CLOUDINARY_UPLOAD_PRESET": "Fytrak",
+        "EXPO_PUBLIC_DEFAULT_LANGUAGE": "en",
+        "EXPO_PUBLIC_SUPPORTED_LANGS": "en,fr,ar"
+      },
       "distribution": "internal"
     },
     "production": {}

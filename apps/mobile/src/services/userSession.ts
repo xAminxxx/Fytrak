@@ -168,6 +168,17 @@ export type Meal = {
   createdAt?: any;
 };
 
+export type WorkoutSetType = "WEIGHT_REPS" | "TIME" | "BODYWEIGHT" | "REPS_ONLY";
+
+export type WorkoutSet = {
+  type: WorkoutSetType;
+  reps?: number;
+  weight?: number;    // kg or lbs
+  durationSec?: number; // for planks, stretches
+  rpe?: string;
+  isCompleted: boolean;
+};
+
 export type WorkoutCheckIn = {
   energy: number;   // 1-5
   soreness: number; // 1-10
@@ -179,7 +190,7 @@ export type WorkoutLog = {
   name: string;
   exercises: {
     name: string;
-    sets: { reps: string; weight: string; rpe: string; isCompleted: boolean }[];
+    sets: WorkoutSet[];
   }[];
   duration?: number;
   checkIn?: WorkoutCheckIn;
@@ -194,19 +205,46 @@ export type BodyMetric = {
   createdAt: any;
 };
 
-export type PrescribedWorkout = {
+export type ProgramSuggestedSet = {
+  type: WorkoutSetType;
+  targetReps?: number;
+  targetWeight?: number;
+  targetDurationSec?: number;
+};
+
+export type ProgramSessionExercise = {
+  name: string;
+  instructions?: string;
+  restTimeSec?: number;
+  suggestedSets: ProgramSuggestedSet[];
+};
+
+export type ProgramSession = {
+  id: string;
+  sessionNumber: number;
+  title: string;
+  description?: string;
+  estimatedMinutes: number;
+  exercises: ProgramSessionExercise[];
+  isCompleted: boolean;
+};
+
+export type ProgramWeek = {
+  id: string;
+  weekNumber: number;
+  title: string;
+  sessions: ProgramSession[];
+};
+
+export type Program = {
   id: string;
   coachId: string;
   coachName: string;
   title: string;
-  description?: string;
-  exercises: {
-    name: string;
-    targetSets: number;
-    targetReps: string;
-    restTime?: string;
-  }[];
-  isCompleted: boolean;
+  description: string;
+  level: "BEGINNER" | "INTERMEDIATE" | "ADVANCED" | "EXPERT";
+  durationWeeks: number;
+  weeks: ProgramWeek[];
   assignedAt: any;
 };
 

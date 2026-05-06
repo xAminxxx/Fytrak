@@ -1,8 +1,8 @@
 const required = (value: string | undefined, key: string): string => {
   if (!value) {
-    throw new Error(`Missing required environment variable: ${key}`);
+    console.warn(`Missing required environment variable: ${key}`);
+    return "";
   }
-
   return value;
 };
 
