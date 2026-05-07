@@ -3,6 +3,8 @@ import { Pressable, StyleProp, StyleSheet, Text, TextStyle, View, ViewStyle, Ima
 import { SafeAreaView } from "react-native-safe-area-context";
 import { colors } from "../theme/colors";
 import { Ionicons } from "@expo/vector-icons";
+import { radius, spacing, touchTarget, typography } from "../theme/tokens";
+import { IconButton } from "./IconButton";
 
 type ScreenShellProps = PropsWithChildren<{
   title: string;
@@ -38,9 +40,12 @@ export function ScreenShell({
         <View style={styles.header}>
           <View style={styles.headerTitleRow}>
             {leftActionIcon && onLeftAction && (
-              <Pressable onPress={onLeftAction} style={[styles.headerButton, { marginRight: 16 }]}>
-                <Ionicons name={leftActionIcon} size={24} color="#fff" />
-              </Pressable>
+              <IconButton
+                icon={leftActionIcon}
+                onPress={onLeftAction}
+                accessibilityLabel="Go back"
+                style={styles.leftButton}
+              />
             )}
             <Text 
               numberOfLines={1} 
@@ -49,11 +54,17 @@ export function ScreenShell({
               {title.toUpperCase()}
             </Text>
             {(rightActionIcon || rightActionImageUri) && onRightAction && (
-              <Pressable onPress={onRightAction} style={[styles.headerButton, rightActionImageUri && { borderWidth: 0, padding: 0 }]}>
+              <Pressable
+                onPress={onRightAction}
+                accessibilityRole="button"
+                accessibilityLabel={rightActionImageUri ? "Open profile" : "Open action"}
+                hitSlop={8}
+                style={[styles.headerButton, rightActionImageUri && styles.avatarButton]}
+              >
                 {rightActionImageUri ? (
-                  <Image source={{ uri: rightActionImageUri }} style={{ width: 44, height: 44, borderRadius: 22, borderWidth: 2, borderColor: colors.primary }} />
+                  <Image source={{ uri: rightActionImageUri }} style={styles.avatarImage} />
                 ) : (
-                  <Ionicons name={rightActionIcon!} size={28} color={colors.primary} />
+                  <Ionicons name={rightActionIcon!} size={24} color={colors.primary} />
                 )}
               </Pressable>
             )}
@@ -73,14 +84,14 @@ const styles = StyleSheet.create({
   },
   container: {
     flex: 1,
-    paddingHorizontal: 20,
+    paddingHorizontal: spacing.xl,
   },
   containerCentered: {
     justifyContent: "center",
   },
   header: {
-    marginTop: 20,
-    marginBottom: 10,
+    marginTop: spacing.lg,
+    marginBottom: spacing.sm,
   },
   headerTitleRow: {
     flexDirection: "row",
@@ -88,36 +99,47 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   headerButton: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    backgroundColor: "#161616",
+    width: touchTarget.comfortable,
+    height: touchTarget.comfortable,
+    borderRadius: radius.pill,
+    backgroundColor: colors.surfaceMuted,
     alignItems: "center",
     justifyContent: "center",
     borderWidth: 1,
-    borderColor: "#333",
+    borderColor: colors.borderSubtle,
+  },
+  leftButton: {
+    marginRight: spacing.lg,
+  },
+  avatarButton: {
+    borderWidth: 0,
+    padding: 0,
+    backgroundColor: "transparent",
+  },
+  avatarImage: {
+    width: touchTarget.comfortable,
+    height: touchTarget.comfortable,
+    borderRadius: radius.pill,
+    borderWidth: 2,
+    borderColor: colors.primary,
   },
   title: {
-    fontFamily: "Adcure", // Brand font re-applied
-    fontSize: 34,
+    ...typography.display,
     color: colors.primary,
     letterSpacing: 1.0,
-    lineHeight: 40,
-    paddingRight: 10,
+    paddingRight: spacing.sm,
   },
   subtitle: {
-    marginTop: 4,
-    color: "#8c8c8c",
-    fontSize: 14,
-    fontWeight: "500",
-    lineHeight: 20,
+    marginTop: spacing.xs,
+    color: colors.textMuted,
+    ...typography.bodySmall,
   },
   content: {
     flex: 1,
-    marginTop: 10,
+    marginTop: spacing.sm,
   },
   contentCentered: {
     flex: 0,
-    marginTop: 20,
+    marginTop: spacing.xl,
   },
 });

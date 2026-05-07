@@ -1,37 +1,45 @@
 import React from 'react';
 import { Text, StyleSheet, TextStyle, StyleProp } from 'react-native';
+import { colors } from '../theme/colors';
+import { typography } from '../theme/tokens';
 
 interface TypographyProps {
   children: React.ReactNode;
-  variant?: 'h1' | 'h2' | 'subtitle' | 'body' | 'label' | 'button' | 'metric';
+  variant?: 'display' | 'h1' | 'h2' | 'subtitle' | 'body' | 'bodySmall' | 'label' | 'button' | 'metric';
   color?: string;
   style?: StyleProp<TextStyle>;
   numberOfLines?: number;
+  accessibilityRole?: "text" | "header";
 }
 
 export function Typography({ 
   children, 
   variant = 'body', 
-  color = '#fff', 
+  color = colors.text, 
   style,
-  numberOfLines 
+  numberOfLines,
+  accessibilityRole,
 }: TypographyProps) {
   const getVariantStyle = () => {
     switch (variant) {
+      case 'display':
+        return typography.display;
       case 'h1':
-        return { fontSize: 32, fontWeight: '900' as const, fontFamily: 'Adcure' };
+        return typography.title;
       case 'h2':
-        return { fontSize: 18, fontWeight: '800' as const, letterSpacing: 0.5 };
+        return typography.heading;
       case 'subtitle':
-        return { fontSize: 15, color: '#8c8c8c', fontWeight: '600' as const };
+        return { ...typography.body, color: colors.textMuted };
       case 'body':
-        return { fontSize: 14, color: '#fff' };
+        return typography.body;
+      case 'bodySmall':
+        return typography.bodySmall;
       case 'label':
-        return { fontSize: 12, fontWeight: '900' as const, textTransform: 'uppercase' as const, letterSpacing: 1 };
+        return typography.label;
       case 'metric':
-        return { fontSize: 28, fontWeight: '900' as const, color: '#ffcc00' };
+        return { ...typography.metric, color: colors.primary };
       case 'button':
-        return { fontSize: 14, fontWeight: '900' as const, textTransform: 'uppercase' as const };
+        return typography.button;
       default:
         return {};
     }
@@ -41,6 +49,8 @@ export function Typography({
     <Text 
       style={[styles.base, getVariantStyle(), { color }, style]} 
       numberOfLines={numberOfLines}
+      accessibilityRole={accessibilityRole}
+      allowFontScaling
     >
       {children}
     </Text>
@@ -49,6 +59,6 @@ export function Typography({
 
 const styles = StyleSheet.create({
   base: {
-    color: '#fff',
+    color: colors.text,
   },
 });

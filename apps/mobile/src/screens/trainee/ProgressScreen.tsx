@@ -19,7 +19,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { Typography } from "../../components/Typography";
 import { auth } from "../../config/firebase";
 import * as ImagePicker from "expo-image-picker";
-import { LineChart } from "react-native-gifted-charts";
+import { LineChart, BarChart } from "react-native-gifted-charts";
 import {
   subscribeToWorkouts,
   subscribeToLatestMetrics,
@@ -33,12 +33,17 @@ import {
   type BodyMetric,
   type ProgressPhoto,
   type UserProfile,
-  type Meal
+  type Meal,
+  type WorkoutSetType,
+  type WorkoutSet
 } from "../../services/userSession";
+import { EXERCISE_LIBRARY, t as tEx } from "../../constants/exercises";
 import { uploadProgressPhoto } from "../../services/cloudinaryUpload";
 import { ProgressCamera } from "../../components/ProgressCamera";
 import { CompareSlider } from "../../components/CompareSlider";
 import { useNavigation } from "@react-navigation/native";
+import { ConsistencyCalendar } from "../../components/ConsistencyCalendar";
+import { toLocalDateKey } from "../../utils/dateKeys";
 
 // Clean Components extracted for modularity
 import { MetricCard } from "../../components/MetricCard";
@@ -71,6 +76,7 @@ export function ProgressScreen() {
   const [isCameraVisible, setIsCameraVisible] = useState(false);
   const [activeComparePair, setActiveComparePair] = useState<[ProgressPhoto, ProgressPhoto] | null>(null);
   const [chartFilter, setChartFilter] = useState<'1W' | '1M' | '3M' | '1Y' | 'ALL'>('1M');
+  const [selectedPrId, setSelectedPrId] = useState<string>("e1"); // Default: Bench Press
 
   // Computed Values
   const calculateBMI = useMemo(() => {
@@ -155,6 +161,79 @@ export function ProgressScreen() {
     };
   }, [workouts, chartFilter]);
 
+  const muscleDistributionData = useMemo(() => {
+    const counts: Record<string, number> = {
+      "Chest": 0, "Back": 0, "Legs": 0, "Shoulders": 0, "Arms": 0, "Core": 0, "Cardio": 0
+    };
+
+    workouts.forEach(w => {
+      w.exercises.forEach(ex => {
+        // Try to find muscle group in library
+        const libEx = EXERCISE_LIBRARY.find(l => tEx(l.name).toLowerCase() === ex.name.toLowerCase());
+        if (libEx) {
+          counts[libEx.muscleGroup] = (counts[libEx.muscleGroup] || 0) + 1;
+        }
+      });
+    });
+
+    return Object.entries(counts)
+      .filter(([_, val]) => val > 0 || true) // Keep all for now to show the map
+      .map(([name, value]) => ({
+        value,
+        label: name.substring(0, 3).toUpperCase(),
+        frontColor: name === "Chest" ? "#f87171" : name === "Back" ? "#60a5fa" : name === "Legs" ? "#4ade80" : "#ffcc00",
+        labelTextStyle: { color: '#555', fontSize: 10, fontWeight: 'bold' } as const
+      }));
+  }, [workouts]);
+
+  const prChartData = useMemo(() => {
+    const targetName = EXERCISE_LIBRARY.find(ex => ex.id === selectedPrId)?.name.en.toLowerCase();
+    if (!targetName) return { data: [], yAxisOffset: 0 };
+
+    const prPoints: { value: number; label: string; date: number }[] = [];
+    
+    workouts.forEach(w => {
+      w.exercises.forEach(ex => {
+        if (ex.name.toLowerCase() === targetName) {
+          // Calculate estimated 1RM for each set and pick the max for this workout
+          const max1RM = ex.sets.reduce((max, set) => {
+            if (!set.isCompleted || !set.weight || !set.reps) return max;
+            // Brzycki Formula: 1RM = Weight / (1.0278 - 0.0278 * Reps)
+            const est1RM = set.weight / (1.0278 - (0.0278 * set.reps));
+            return Math.max(max, est1RM);
+          }, 0);
+          
+          if (max1RM > 0) {
+            prPoints.push({
+              value: Math.round(max1RM),
+              label: new Date(w.createdAt?.toDate ? w.createdAt.toDate() : w.createdAt).toLocaleDateString([], { month: 'numeric', day: 'numeric' }),
+              date: new Date(w.createdAt?.toDate ? w.createdAt.toDate() : w.createdAt).getTime()
+            });
+          }
+        }
+      });
+    });
+
+    const sorted = prPoints.sort((a, b) => a.date - b.date);
+    const weights = sorted.map(p => p.value);
+    const minW = Math.min(...weights);
+    const yAxisOffset = Math.max(0, Math.floor(minW - 10));
+
+    return {
+      yAxisOffset,
+      data: sorted.map(p => ({
+        value: p.value,
+        label: p.label,
+        dataPointText: `${p.value}kg`,
+        dataPointColor: "#a855f7",
+        dataPointRadius: 5,
+        textColor: '#aaa',
+        textFontSize: 10,
+        textShiftY: -14,
+      }))
+    };
+  }, [workouts, selectedPrId]);
+
   const itemWidth = useMemo(() => (windowWidth - 40 - (GAP * 2)) / 3, [windowWidth]);
 
   const macroAdherence = useMemo(() => {
@@ -195,7 +274,7 @@ export function ProgressScreen() {
       const result = await uploadProgressPhoto(uri);
       await saveProgressPhoto(user.uid, {
         url: result.secureUrl,
-        date: new Date().toISOString().split("T")[0],
+        date: toLocalDateKey(),
         type: "front"
       });
       Alert.alert("Success", "Transformation photo saved!");
@@ -397,6 +476,9 @@ export function ProgressScreen() {
           </Modal>
 
           {/* DASHBOARD CONTENT */}
+          {/* 1. CONSISTENCY CALENDAR */}
+          <ConsistencyCalendar workouts={workouts} />
+
           <View style={styles.grid}>
              <MetricCard icon="calendar" label="Weekly Flow" value={weeklyConsistency} unit="Days" color="#60a5fa" />
              <MetricCard icon="flash" label="Daily Fuel" value={macroAdherence} unit="%" color={colors.primary} />
@@ -683,7 +765,99 @@ export function ProgressScreen() {
               ))}
             </View>
           </View>
+          {/* 7. MUSCLE DISTRIBUTION */}
+          <View style={styles.trendCard}>
+            <View style={styles.trendHeader}>
+              <View style={styles.trendTitleRow}>
+                 <View style={[styles.accentBar, { backgroundColor: colors.primary }]} />
+                 <Typography variant="h2" style={{ fontSize: 18 }}>Muscle Focus</Typography>
+              </View>
+              <Typography variant="label" color="#444">Total Sets Map</Typography>
+            </View>
 
+            <View style={[styles.chartBox, { paddingLeft: 10 }]}>
+              {muscleDistributionData.some(d => d.value > 0) ? (
+                <BarChart
+                  data={muscleDistributionData}
+                  barWidth={32}
+                  noOfSections={3}
+                  barBorderRadius={8}
+                  frontColor={colors.primary}
+                  yAxisThickness={0}
+                  xAxisThickness={0}
+                  hideRules
+                  height={150}
+                  width={windowWidth - 100}
+                  spacing={12}
+                  isAnimated
+                  animationDuration={800}
+                  yAxisTextStyle={{ color: '#444', fontSize: 10 }}
+                  xAxisLabelTextStyle={{ color: '#666', fontSize: 9, fontWeight: '700' }}
+                />
+              ) : (
+                <View style={styles.chartEmpty}>
+                  <Typography variant="label" color="#444">Log workouts to see your focus map</Typography>
+                </View>
+              )}
+            </View>
+            <View style={{ marginTop: 16, flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+               {muscleDistributionData.filter(d => d.value > 0).map((m, i) => (
+                 <View key={i} style={[styles.tag, { backgroundColor: m.frontColor + '20', borderColor: m.frontColor + '40', borderWidth: 1 }]}>
+                    <Text style={[styles.tagText, { color: m.frontColor }]}>{m.label}: {m.value}</Text>
+                 </View>
+               ))}
+            </View>
+          </View>
+          {/* 8. PR STRENGTH TRACKER */}
+          <View style={styles.trendCard}>
+            <View style={styles.trendHeader}>
+              <View style={styles.trendTitleRow}>
+                 <View style={[styles.accentBar, { backgroundColor: "#a855f7" }]} />
+                 <Typography variant="h2" style={{ fontSize: 18 }}>PR Strength (1RM)</Typography>
+              </View>
+            </View>
+            
+            <View style={styles.prSelector}>
+               {EXERCISE_LIBRARY.filter(ex => ex.mechanicsType === "Compound").slice(0, 4).map(ex => (
+                 <Pressable 
+                   key={ex.id} 
+                   onPress={() => setSelectedPrId(ex.id)}
+                   style={[styles.prOption, selectedPrId === ex.id && styles.prOptionActive]}
+                 >
+                    <Text style={[styles.prOptionText, selectedPrId === ex.id && styles.prOptionTextActive]}>{tEx(ex.name)}</Text>
+                 </Pressable>
+               ))}
+            </View>
+
+            <View style={[styles.chartBox, { paddingLeft: 10, marginTop: 10 }]}>
+              {prChartData.data.length > 0 ? (
+                <LineChart
+                  data={prChartData.data}
+                  height={150}
+                  width={windowWidth - 100}
+                  color="#a855f7"
+                  thickness={3}
+                  yAxisOffset={prChartData.yAxisOffset}
+                  noOfSections={3}
+                  yAxisTextStyle={{ color: '#555', fontSize: 10 }}
+                  xAxisLabelTextStyle={{ color: '#555', fontSize: 9 }}
+                  hideRules
+                  showVerticalLines
+                  verticalLinesColor="#1a1a1a"
+                  dataPointsColor="#a855f7"
+                  curved
+                />
+              ) : (
+                <View style={styles.chartEmpty}>
+                  <Typography variant="label" color="#444">No sets logged for this exercise</Typography>
+                </View>
+              )}
+            </View>
+            <View style={styles.prFooter}>
+               <Ionicons name="bulb-outline" size={14} color="#a855f7" />
+               <Text style={styles.prFooterText}>Calculated using Brzycki estimated 1RM formula.</Text>
+            </View>
+          </View>
         </ScrollView>
       )}
     </ScreenShell>
@@ -695,6 +869,8 @@ const styles = StyleSheet.create({
   loader: { padding: 100, alignItems: "center" },
   scroll: { paddingBottom: 120, gap: 20 },
   grid: { flexDirection: "row", flexWrap: "wrap", gap: 12, marginTop: 10, paddingHorizontal: 4 },
+  tag: { backgroundColor: "#2c2c2e", paddingHorizontal: 10, paddingVertical: 6, borderRadius: 8 },
+  tagText: { color: "#aaa", fontSize: 10, fontWeight: "900" },
   card: { backgroundColor: "#111", borderRadius: 32, padding: 24, borderWidth: 1, borderColor: "#1c1c1e", gap: 16 },
   headerActions: { flexDirection: "row", gap: 10 },
   cardHeader: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
@@ -751,6 +927,13 @@ const styles = StyleSheet.create({
   vaultLockedDesc: { color: '#555', fontSize: 11, fontWeight: '500', textAlign: 'center', lineHeight: 16 },
   vaultLockedCta: { flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: colors.primary, paddingHorizontal: 16, paddingVertical: 8, borderRadius: 12, marginTop: 4 },
   vaultLockedCtaText: { color: '#000', fontSize: 11, fontWeight: '900', letterSpacing: 0.5 },
+  prSelector: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 12 },
+  prOption: { paddingHorizontal: 12, paddingVertical: 8, borderRadius: 12, backgroundColor: '#111', borderWidth: 1, borderColor: '#1c1c1e' },
+  prOptionActive: { backgroundColor: '#a855f7' },
+  prOptionText: { color: '#666', fontSize: 11, fontWeight: '800' },
+  prOptionTextActive: { color: '#000' },
+  prFooter: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 12, backgroundColor: '#0a0a0a', padding: 10, borderRadius: 12 },
+  prFooterText: { color: '#444', fontSize: 10, fontWeight: '600' },
   floatingCompareBtn: {
     position: 'absolute',
     bottom: 40,

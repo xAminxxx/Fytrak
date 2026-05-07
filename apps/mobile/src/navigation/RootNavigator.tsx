@@ -1,11 +1,15 @@
 import { NavigationContainer } from "@react-navigation/native";
 import { createNativeStackNavigator } from "@react-navigation/native-stack";
-import { useEffect, useMemo, useState } from "react";
-import { ActivityIndicator, View, Image } from "react-native";
+import { useEffect, useState } from "react";
+import { doc, onSnapshot } from "firebase/firestore";
 import { CompleteProfileScreen } from "../screens/auth/CompleteProfileScreen";
 import { CoachCompleteProfileScreen } from "../screens/coach/CoachCompleteProfileScreen";
 import { LoginScreen } from "../screens/auth/LoginScreen";
 import { SignUpScreen } from "../screens/auth/SignUpScreen";
+import { CreateTemplateScreen } from "../screens/coach/CreateTemplateScreen";
+import { EditCoachProfileScreen } from "../screens/coach/EditCoachProfileScreen";
+import { PrescribeMealScreen } from "../screens/coach/PrescribeMealScreen";
+import { TemplateDetailScreen } from "../screens/coach/TemplateDetailScreen";
 import {
   loginWithEmailPassword,
   signInWithGoogleIdToken,
@@ -23,7 +27,6 @@ import { CreateProgramScreen } from "../screens/coach/CreateProgramScreen";
 import { CoachChatScreen } from "../screens/trainee/CoachChatScreen";
 import { auth } from "../config/firebase";
 import { onAuthStateChanged } from "firebase/auth";
-import { colors } from "../theme/colors";
 import { SplashScreen } from "../screens/onboarding/SplashScreen";
 import { WelcomeScreen } from "../screens/onboarding/WelcomeScreen";
 import {
@@ -34,26 +37,9 @@ import {
   saveCoachProfile,
 } from "../services/userSession";
 import { calculateNutritionPlan } from '../utils/calculators';
-
-export type RootStackParamList = {
-  Welcome: undefined;
-  Login: undefined;
-  SignUp: undefined;
-  CompleteProfile: undefined;
-  CoachAssignment: undefined;
-  PendingCoach: undefined;
-  TraineeTabs: undefined;
-  CoachTabs: undefined;
-  Profile: undefined;
-  TraineeDetail: { traineeId: string; traineeName: string };
-  PrescribeWorkout: { traineeId: string; traineeName: string };
-  CreateProgram: { traineeId: string; traineeName: string };
-  PrescribeMeal: { traineeId: string; traineeName: string };
-  CoachChat: { traineeId: string; traineeName?: string; coachId: string };
-  CreateTemplate: { type: "workout" | "meal" };
-  TemplateDetail: { templateId: string; type: "workout" | "meal" };
-  EditCoachProfile: undefined;
-};
+import { db } from "../config/firebase";
+import { OnboardingFlow } from "../screens/onboarding/OnboardingFlow";
+import type { RootStackParamList } from "./types";
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
 
@@ -65,11 +51,6 @@ const initialSession: SessionState = {
   selectedCoachId: null,
   selectedCoachName: null,
 };
-
-import { doc, onSnapshot } from "firebase/firestore";
-import { db } from "../config/firebase";
-
-import { OnboardingFlow } from "../screens/onboarding/OnboardingFlow";
 
 export function RootNavigator() {
   const [session, setSession] = useState<SessionState>(initialSession);
@@ -277,7 +258,7 @@ export function RootNavigator() {
             <Stack.Screen name="TraineeDetail" component={TraineeDetailScreen} />
             <Stack.Screen name="PrescribeWorkout" component={PrescribeWorkoutScreen} />
             <Stack.Screen name="CreateProgram" component={CreateProgramScreen} />
-            <Stack.Screen name="PrescribeMeal" component={require("../screens/coach/PrescribeMealScreen").PrescribeMealScreen} />
+            <Stack.Screen name="PrescribeMeal" component={PrescribeMealScreen} />
             <Stack.Screen name="CoachChat">
               {({ route }) => (
                 <CoachChatScreen
@@ -287,9 +268,9 @@ export function RootNavigator() {
                 />
               )}
             </Stack.Screen>
-            <Stack.Screen name="CreateTemplate" component={require("../screens/coach/CreateTemplateScreen").CreateTemplateScreen} />
-            <Stack.Screen name="TemplateDetail" component={require("../screens/coach/TemplateDetailScreen").TemplateDetailScreen} />
-            <Stack.Screen name="EditCoachProfile" component={require("../screens/coach/EditCoachProfileScreen").EditCoachProfileScreen} />
+            <Stack.Screen name="CreateTemplate" component={CreateTemplateScreen} />
+            <Stack.Screen name="TemplateDetail" component={TemplateDetailScreen} />
+            <Stack.Screen name="EditCoachProfile" component={EditCoachProfileScreen} />
           </>
         )}
       </Stack.Navigator>

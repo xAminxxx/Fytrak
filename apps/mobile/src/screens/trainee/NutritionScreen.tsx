@@ -26,6 +26,7 @@ import {
 import { uploadMealPhoto } from "../../services/cloudinaryUpload";
 import * as ImagePicker from "expo-image-picker";
 import { ToastService } from "../../components/Toast";
+import { WaterTracker } from "../../components/WaterTracker";
 
 export function NutritionScreen() {
   const [mealName, setMealName] = useState("");
@@ -232,6 +233,30 @@ export function NutritionScreen() {
             </View>
           </View>
 
+          {/* 2. WATER TRACKER */}
+          <WaterTracker />
+
+          {/* 3. AI SMART LOG */}
+          <View style={styles.smartLogCard}>
+             <View style={styles.smartHeader}>
+                <Ionicons name="sparkles" size={18} color={colors.primary} />
+                <Typography variant="h2" style={{ fontSize: 16 }}>AI Smart Log</Typography>
+                <View style={styles.betaBadge}><Text style={styles.betaText}>BETA</Text></View>
+             </View>
+             <Typography variant="label" color="#444">Describe your meal in plain text (e.g. "2 chicken breasts and 100g rice")</Typography>
+             <View style={styles.aiInputRow}>
+                <TextInput 
+                   style={styles.aiInput} 
+                   placeholder="I ate..." 
+                   placeholderTextColor="#444"
+                   multiline
+                />
+                <Pressable style={styles.aiSendBtn}>
+                   <Ionicons name="send" size={18} color="#000" />
+                </Pressable>
+             </View>
+          </View>
+
           {profile?.isPremium && prescribed.length > 0 && (
             <View style={styles.coachBanner}>
               <View style={styles.bannerHeader}><Ionicons name="sparkles" size={18} color={colors.primary} /><Text style={styles.bannerTitle}>NEW COACH PRESCRIPTION</Text></View>
@@ -368,4 +393,11 @@ const styles = StyleSheet.create({
   stepperContainer: { flexDirection: "row", alignItems: "center", backgroundColor: "#1c1c1e", borderRadius: 12, padding: 4, borderWidth: 1, borderColor: "#2c2c2e" },
   stepperBtn: { width: 36, height: 36, alignItems: "center", justifyContent: "center" },
   stepperValueText: { flex: 1, textAlign: "center", color: "#fff", fontSize: 16, fontWeight: "800" },
+  smartLogCard: { backgroundColor: '#111', borderRadius: 28, padding: 24, borderWidth: 1, borderColor: '#1c1c1e', gap: 12 },
+  smartHeader: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  betaBadge: { backgroundColor: '#1c1c1e', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4, borderWidth: 1, borderColor: '#333' },
+  betaText: { color: colors.primary, fontSize: 8, fontWeight: '900' },
+  aiInputRow: { flexDirection: 'row', gap: 12, alignItems: 'flex-end', marginTop: 8 },
+  aiInput: { flex: 1, backgroundColor: '#0a0a0a', borderRadius: 16, padding: 16, color: '#fff', fontSize: 14, minHeight: 60, borderWidth: 1, borderColor: '#1c1c1e' },
+  aiSendBtn: { width: 50, height: 50, borderRadius: 16, backgroundColor: colors.primary, alignItems: 'center', justifyContent: 'center' },
 });

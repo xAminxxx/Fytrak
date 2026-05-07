@@ -12,9 +12,9 @@ import {
 import { ScreenShell } from "../../components/ScreenShell";
 import { colors } from "../../theme/colors";
 import { Ionicons } from "@expo/vector-icons";
-import { saveCoachProfile, UserProfile } from "../../services/userSession";
+import { UserProfile } from "../../services/userSession";
 import { auth, db } from "../../config/firebase";
-import { doc, getDoc } from "firebase/firestore";
+import { doc, getDoc, serverTimestamp, setDoc } from "firebase/firestore";
 import { useNavigation } from "@react-navigation/native";
 import { useEffect } from "react";
 
@@ -80,9 +80,6 @@ export function EditCoachProfileScreen() {
             const user = auth.currentUser;
             if (!user) return;
 
-            // Merge name and coachProfile
-            const { db } = require("../../config/firebase");
-            const { doc, setDoc, serverTimestamp } = require("firebase/firestore");
             const ref = doc(db, "users", user.uid);
             await setDoc(ref, {
                 name: name.trim(),

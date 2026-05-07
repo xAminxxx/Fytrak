@@ -13,9 +13,12 @@ import {
   getDocs,
   query,
   where,
+  orderBy,
+  limit,
   serverTimestamp,
 } from "firebase/firestore";
 import { db } from "../config/firebase";
+import { localDateKeyDaysAgo } from "../utils/dateKeys";
 
 export type Coach = {
   id: string;
@@ -46,6 +49,33 @@ export type CoachTemplate = {
   title: string;
   data: any;
   createdAt: any;
+};
+
+export type CoachTrainee = {
+  id: string;
+  name?: string;
+  profile?: {
+    goalText?: string;
+    goal?: string;
+  };
+  macroTargets?: {
+    calories?: number;
+    protein?: number;
+    carbs?: number;
+    fats?: number;
+  };
+  assignmentStatus?: "assigned" | "pending" | "rejected" | "expired" | "unassigned";
+  selectedCoachId?: string | null;
+  selectedCoachName?: string | null;
+};
+
+export type CoachClientSignal = {
+  traineeId: string;
+  lastWorkoutAt: Date | null;
+  workoutsLast7Days: number;
+  mealsLast7Days: number;
+  avgDailyProtein: number;
+  proteinTarget: number | null;
 };
 
 const usersCollection = "users";
@@ -86,12 +116,52 @@ export const fetchCoaches = async (): Promise<Coach[]> => {
 
 // --- TRAINEE MANAGEMENT ---
 
-export const subscribeToCoachTrainees = (coachId: string, callback: (trainees: any[]) => void) => {
+export const subscribeToCoachTrainees = (coachId: string, callback: (trainees: CoachTrainee[]) => void) => {
   const q = query(collection(db, usersCollection), where("selectedCoachId", "==", coachId));
   return onSnapshot(q, (snapshot) => {
-    const trainees = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+    const trainees = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as CoachTrainee));
     callback(trainees);
   });
+};
+
+export const fetchCoachClientSignal = async (trainee: CoachTrainee): Promise<CoachClientSignal> => {
+  const workoutSnapshot = await getDocs(
+    query(
+      collection(db, usersCollection, trainee.id, "workouts"),
+      orderBy("createdAt", "desc"),
+      limit(20)
+    )
+  );
+  const mealSnapshot = await getDocs(
+    query(
+      collection(db, usersCollection, trainee.id, "meals"),
+      where("date", ">=", localDateKeyDaysAgo(6))
+    )
+  );
+
+  const sevenDaysAgo = Date.now() - 7 * 86400000;
+  const workouts = workoutSnapshot.docs.map((workoutDoc) => workoutDoc.data());
+  const workoutsLast7Days = workouts.filter((workout) => {
+    const createdAt = workout.createdAt?.toDate ? workout.createdAt.toDate() : null;
+    return createdAt ? createdAt.getTime() >= sevenDaysAgo : false;
+  }).length;
+  const lastWorkoutAt = workouts[0]?.createdAt?.toDate ? workouts[0].createdAt.toDate() as Date : null;
+
+  const meals = mealSnapshot.docs.map((mealDoc) => mealDoc.data());
+  const totalProtein = meals.reduce((sum, meal) => sum + (Number(meal.protein) || 0), 0);
+
+  return {
+    traineeId: trainee.id,
+    lastWorkoutAt,
+    workoutsLast7Days,
+    mealsLast7Days: meals.length,
+    avgDailyProtein: Math.round(totalProtein / 7),
+    proteinTarget: trainee.macroTargets?.protein ?? null,
+  };
+};
+
+export const fetchCoachClientSignals = async (trainees: CoachTrainee[]): Promise<CoachClientSignal[]> => {
+  return Promise.all(trainees.map(fetchCoachClientSignal));
 };
 
 export const respondToTraineeRequest = async (traineeId: string, accept: boolean): Promise<void> => {

@@ -18,6 +18,7 @@ import {
 } from "../../services/userSession";
 import { useRoute, useNavigation } from "@react-navigation/native";
 import { auth } from "../../config/firebase";
+import { toLocalDateKey } from "../../utils/dateKeys";
 
 export function TraineeDetailScreen() {
     const route = useRoute<any>();
@@ -269,7 +270,7 @@ function NutritionChart({ data, target }: { data: Meal[], target: number }) {
         for (let i = 0; i < 7; i++) {
             const d = new Date();
             d.setDate(d.getDate() - i);
-            days[d.toISOString().split("T")[0]] = 0;
+            days[toLocalDateKey(d)] = 0;
         }
 
         data.forEach(m => {

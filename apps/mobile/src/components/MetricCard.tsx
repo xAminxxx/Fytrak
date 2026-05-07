@@ -2,6 +2,9 @@ import React, { memo } from "react";
 import { View, StyleSheet } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { Typography } from "./Typography";
+import { colors } from "../theme/colors";
+import { radius, spacing } from "../theme/tokens";
+import { Surface } from "./Surface";
 
 interface MetricCardProps {
   icon: keyof typeof Ionicons.glyphMap;
@@ -13,7 +16,7 @@ interface MetricCardProps {
 
 export const MetricCard = memo(({ icon, label, value, unit, color }: MetricCardProps) => {
   return (
-    <View style={styles.metricCard}>
+    <Surface style={styles.metricCard}>
       <View style={styles.header}>
         <Ionicons name={icon} size={16} color={color} />
         <View style={styles.histogram}>
@@ -22,7 +25,7 @@ export const MetricCard = memo(({ icon, label, value, unit, color }: MetricCardP
                key={i} 
                style={[
                  styles.bar, 
-                 { height: h, backgroundColor: i === 4 ? color : '#2c2c2e' }
+                 { height: h, backgroundColor: i === 4 ? color : colors.borderSubtle }
                ]} 
              />
            ))}
@@ -36,7 +39,7 @@ export const MetricCard = memo(({ icon, label, value, unit, color }: MetricCardP
           {label.toUpperCase()}
         </Typography>
       </View>
-    </View>
+    </Surface>
   );
 });
 
@@ -44,11 +47,8 @@ const styles = StyleSheet.create({
   metricCard: {
     flex: 1,
     minWidth: "45%",
-    backgroundColor: "#111",
-    borderRadius: 28,
-    padding: 20,
-    borderWidth: 1,
-    borderColor: "#1c1c1e",
+    borderRadius: radius.xl,
+    padding: spacing.xl,
   },
   header: {
     flexDirection: 'row',
@@ -57,7 +57,7 @@ const styles = StyleSheet.create({
   },
   histogram: {
     flexDirection: 'row',
-    gap: 3,
+    gap: spacing.xs,
     alignItems: 'flex-end',
     height: 16,
   },
@@ -75,12 +75,12 @@ const styles = StyleSheet.create({
   },
   unit: {
     fontSize: 12,
-    color: '#444',
+    color: colors.textFaint,
     fontWeight: '700',
   },
   label: {
     fontSize: 10,
-    marginTop: 2,
+    marginTop: spacing.xxs,
     fontWeight: '800',
   },
 });

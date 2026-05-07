@@ -5,7 +5,8 @@ import DateTimePicker from "@react-native-community/datetimepicker";
 import { ScreenShell } from "../../components/ScreenShell";
 import { colors } from "../../theme/colors";
 import { Ionicons } from "@expo/vector-icons";
-import { auth } from "../../config/firebase";
+import { auth, db } from "../../config/firebase";
+import { collection, getDocs, limit, query, where } from "firebase/firestore";
 import {
   saveWorkoutLog,
   subscribeToWorkouts,
@@ -28,30 +29,100 @@ import { SectionTitle } from "../../components/SectionTitle";
 import { MetricStepper } from "../../components/MetricStepper";
 import { ToastService } from "../../components/Toast";
 import { Typography } from "../../components/Typography";
+import { ExerciseDetailSheet } from "../../components/ExerciseDetailSheet";
+import {
+  clearActiveWorkoutDraft,
+  createEmptyWorkoutExercise,
+  hasMeaningfulWorkoutDraft,
+  loadActiveWorkoutDraft,
+  saveActiveWorkoutDraft,
+  type ActiveWorkoutExerciseDraft,
+} from "../../features/workouts/activeWorkoutDraft";
+import {
+  calculateWorkoutVolume,
+  detectWorkoutPersonalRecords,
+  duplicateSetForNextEntry,
+  getCompletedWorkoutExercises,
+} from "../../features/workouts/workoutPerformance";
+import { trackEvent } from "../../services/analytics";
+import { toLocalDateKey } from "../../utils/dateKeys";
+import { radius, spacing, touchTarget, typography } from "../../theme/tokens";
 
-type ExerciseLog = {
-  name: string;
-  type: WorkoutSetType;
-  sets: WorkoutSet[];
-};
+type ExerciseLog = ActiveWorkoutExerciseDraft;
 
 export function WorkoutLogScreen() {
   const [workoutName, setWorkoutName] = useState("Today's Session");
-  const [exercises, setExercises] = useState<ExerciseLog[]>([{ name: "", type: "WEIGHT_REPS", sets: [{ type: "WEIGHT_REPS", isCompleted: false }] }]);
+  const [exercises, setExercises] = useState<ExerciseLog[]>([createEmptyWorkoutExercise()]);
   const [prescribed, setPrescribed] = useState<PrescribedWorkout[]>([]);
   const [activePrescriptionId, setActivePrescriptionId] = useState<string | null>(null);
+  const [workoutStartedAt, setWorkoutStartedAt] = useState(new Date().toISOString());
   const [workouts, setWorkouts] = useState<WorkoutLog[]>([]);
   const [profile, setProfile] = useState<UserProfile | null>(null);
+  const hasLoadedDraftRef = useRef(false);
+  const isCompletingWorkoutRef = useRef(false);
 
   // EXERCISE INFO MODAL
   const [selectedExerciseInfo, setSelectedExerciseInfo] = useState<ExerciseLibraryItem | null>(null);
   const [isExerciseModalVisible, setIsExerciseModalVisible] = useState(false);
   const [exerciseSearchQuery, setExerciseSearchQuery] = useState("");
 
-  const filteredExercises = EXERCISE_LIBRARY.filter(ex => 
-    tEx(ex.name).toLowerCase().includes(exerciseSearchQuery.toLowerCase()) ||
-    ex.muscleGroup.toLowerCase().includes(exerciseSearchQuery.toLowerCase())
-  );
+  const [dbExercises, setDbExercises] = useState<ExerciseLibraryItem[]>([]);
+  const [isSearching, setIsSearching] = useState(false);
+
+  useEffect(() => {
+    if (exerciseSearchQuery.length < 2) {
+      setDbExercises([]);
+      return;
+    }
+
+    const delayDebounceFn = setTimeout(async () => {
+      setIsSearching(true);
+      try {
+        const q = query(
+          collection(db, "exercises"),
+          where("nameLower", ">=", exerciseSearchQuery.toLowerCase()),
+          where("nameLower", "<=", exerciseSearchQuery.toLowerCase() + "\uf8ff"),
+          limit(20)
+        );
+        const querySnapshot = await getDocs(q);
+        const results: ExerciseLibraryItem[] = [];
+        querySnapshot.forEach((exerciseDoc) => {
+          results.push(exerciseDoc.data() as ExerciseLibraryItem);
+        });
+        setDbExercises(results);
+      } catch (err) {
+        console.error("Search failed:", err);
+      } finally {
+        setIsSearching(false);
+      }
+    }, 500);
+
+    return () => clearTimeout(delayDebounceFn);
+  }, [exerciseSearchQuery]);
+
+  const filteredExercises = [
+    ...EXERCISE_LIBRARY.filter(ex =>
+      tEx(ex.name).toLowerCase().includes(exerciseSearchQuery.toLowerCase()) ||
+      ex.muscleGroup.toLowerCase().includes(exerciseSearchQuery.toLowerCase())
+    ),
+    ...dbExercises.filter(dbEx => !EXERCISE_LIBRARY.some(localEx => localEx.id === dbEx.id))
+  ].slice(0, 30);
+
+  const findExerciseInfo = useCallback((exercise: ExerciseLog) => {
+    const normalizedName = exercise.name.trim().toLowerCase();
+
+    return [...EXERCISE_LIBRARY, ...dbExercises].find((candidate) => {
+      return (
+        candidate.id === exercise.exerciseId ||
+        tEx(candidate.name).trim().toLowerCase() === normalizedName
+      );
+    }) ?? null;
+  }, [dbExercises]);
+
+  const openExerciseDetails = useCallback((exercise: ExerciseLibraryItem) => {
+    setIsExerciseModalVisible(false);
+    setSelectedExerciseInfo(exercise);
+  }, []);
 
   // REST TIMER
   const [restTimeLeft, setRestTimeLeft] = useState(0);
@@ -103,7 +174,15 @@ export function WorkoutLogScreen() {
           "Are you sure you want to leave? Your active log will be lost.",
           [
             { text: "Keep Logging", style: "cancel", onPress: () => { } },
-            { text: "Discard", style: "destructive", onPress: () => navigation.dispatch(e.data.action) }
+            {
+              text: "Discard",
+              style: "destructive",
+              onPress: () => {
+                const userId = auth.currentUser?.uid;
+                if (userId) void clearActiveWorkoutDraft(userId);
+                navigation.dispatch(e.data.action);
+              }
+            }
           ]
         );
       };
@@ -124,6 +203,79 @@ export function WorkoutLogScreen() {
       if (timerRef.current) clearInterval(timerRef.current);
     };
   }, []);
+
+  // LOCAL ACTIVE WORKOUT DRAFT
+  useEffect(() => {
+    const user = auth.currentUser;
+    if (!user) {
+      hasLoadedDraftRef.current = true;
+      return;
+    }
+
+    let isMounted = true;
+
+    loadActiveWorkoutDraft(user.uid).then((draft) => {
+      if (!isMounted) return;
+
+      hasLoadedDraftRef.current = true;
+      if (!draft || !hasMeaningfulWorkoutDraft(draft)) return;
+
+      Alert.alert(
+        "Resume Workout?",
+        "You have an unfinished workout saved on this device.",
+        [
+          {
+            text: "Discard",
+            style: "destructive",
+            onPress: () => void clearActiveWorkoutDraft(user.uid),
+          },
+          {
+            text: "Resume",
+            onPress: () => {
+              const ageMinutes = Math.max(0, Math.round((Date.now() - new Date(draft.updatedAt).getTime()) / 60000));
+              trackEvent("active_workout_resumed", {
+                exerciseCount: draft.exercises.length,
+                ageMinutes,
+              });
+              setWorkoutName(draft.workoutName);
+              setActivePrescriptionId(draft.activePrescriptionId);
+              setWorkoutStartedAt(draft.startedAt);
+              setExercises(draft.exercises.length > 0 ? draft.exercises : [createEmptyWorkoutExercise()]);
+            },
+          },
+        ]
+      );
+    });
+
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    const user = auth.currentUser;
+    if (!user || !hasLoadedDraftRef.current || isCompletingWorkoutRef.current) return;
+
+    const draft = {
+      version: 1 as const,
+      userId: user.uid,
+      workoutName,
+      activePrescriptionId,
+      exercises,
+      startedAt: workoutStartedAt,
+      updatedAt: new Date().toISOString(),
+    };
+
+    const autosave = setTimeout(() => {
+      if (hasMeaningfulWorkoutDraft(draft)) {
+        void saveActiveWorkoutDraft(draft);
+      } else {
+        void clearActiveWorkoutDraft(user.uid);
+      }
+    }, 400);
+
+    return () => clearTimeout(autosave);
+  }, [activePrescriptionId, exercises, workoutName, workoutStartedAt]);
 
   // INTAKE AUTO-SHOW
   useEffect(() => {
@@ -163,16 +315,17 @@ export function WorkoutLogScreen() {
   const initFromPrescribed = (p: PrescribedWorkout) => {
     setWorkoutName(p.title);
     setActivePrescriptionId(p.id);
+    setWorkoutStartedAt(new Date().toISOString());
     setExercises(p.exercises.map(ex => {
       const exType = ex.type || "WEIGHT_REPS";
       return {
         name: ex.name,
         type: exType,
-        sets: Array(ex.targetSets).fill(0).map(() => ({ 
-          type: exType, 
-          reps: exType === "TIME" ? undefined : Number(ex.targetReps) || 0, 
+        sets: Array(ex.targetSets).fill(0).map(() => ({
+          type: exType,
+          reps: exType === "TIME" ? undefined : Number(ex.targetReps) || 0,
           durationSec: exType === "TIME" ? parseInt(ex.targetReps) || 60 : undefined,
-          isCompleted: false 
+          isCompleted: false
         }))
       };
     }));
@@ -184,7 +337,7 @@ export function WorkoutLogScreen() {
       setIsSavingIntake(true);
       await saveWorkoutIntake(auth.currentUser.uid, {
         level,
-        lastTrainedDate: lastTrainedDate.toISOString().split('T')[0],
+        lastTrainedDate: toLocalDateKey(lastTrainedDate),
         trainingExperience: trainingExp.trim() || "None",
         flexibility,
         injuries: injuries.trim() || "None",
@@ -220,20 +373,40 @@ export function WorkoutLogScreen() {
     const user = auth.currentUser;
     if (!user) return;
     try {
-      const completedExercises = exercises.map(ex => ({ name: ex.name.trim() || "Untitled", sets: ex.sets.filter(s => s.isCompleted) })).filter(ex => ex.sets.length > 0);
-      const totalVolume = completedExercises.reduce((sum, ex) => sum + ex.sets.reduce((s, set) => s + ((set.weight || 0) * (set.reps || 0)), 0), 0);
+      isCompletingWorkoutRef.current = true;
+      const completedExercises = getCompletedWorkoutExercises(exercises);
+      const personalRecords = detectWorkoutPersonalRecords(completedExercises, workouts);
+      const totalVolume = calculateWorkoutVolume(completedExercises);
+      const duration = Math.max(1, Math.round((Date.now() - new Date(workoutStartedAt).getTime()) / 60000));
       await saveWorkoutLog(user.uid, {
         name: workoutName.trim() || "Today's Session",
         exercises: completedExercises,
+        duration,
         totalVolume,
         checkIn: { energy, soreness, mood }
       });
       if (activePrescriptionId) await completePrescribedWorkout(user.uid, activePrescriptionId);
+      await clearActiveWorkoutDraft(user.uid);
+      trackEvent("workout_completed", {
+        setsCompleted: completedExercises.reduce((sum, exercise) => sum + exercise.sets.length, 0),
+        totalVolume,
+        durationMinutes: duration,
+        personalRecords: personalRecords.length,
+        source: activePrescriptionId ? "coach_prescribed" : "manual",
+      });
       setIsCheckingIn(false);
       setExercises([]); // Clear local state so beforeRemove discard alert is bypassed
-      ToastService.success("Workout Complete!", "Excellent work today.");
+      ToastService.success(
+        personalRecords.length > 0 ? "New PR!" : "Workout Complete!",
+        personalRecords.length > 0
+          ? `${personalRecords[0].exerciseName}: ${personalRecords[0].estimatedOneRepMax}kg estimated 1RM`
+          : "Excellent work today."
+      );
       navigation.navigate("Home");
-    } catch (error) { ToastService.error("Error", "Could not save log."); }
+    } catch (error) {
+      isCompletingWorkoutRef.current = false;
+      ToastService.error("Error", "Could not save log. Your workout draft is still saved.");
+    }
   };
 
   if (showIntake) {
@@ -292,8 +465,17 @@ export function WorkoutLogScreen() {
           <View style={styles.checkInCard}>
             <Text style={styles.checkInTitle}>Mood / Focus</Text>
             <View style={styles.ratingRow}>
-              {["😞", "😐", "😊", "🔥", "🤩"].map((emoji, idx) => (
-                <Pressable key={idx} style={[styles.emojiCircle, mood === (idx + 1) && styles.emojiCircleActive]} onPress={() => setMood(idx + 1)}><Text style={{ fontSize: 24 }}>{emoji}</Text></Pressable>
+              {["Low", "OK", "Good", "Fire", "Peak"].map((moodLabel, idx) => (
+                <Pressable
+                  key={moodLabel}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Mood ${moodLabel}`}
+                  accessibilityState={{ selected: mood === (idx + 1) }}
+                  style={[styles.emojiCircle, mood === (idx + 1) && styles.emojiCircleActive]}
+                  onPress={() => setMood(idx + 1)}
+                >
+                  <Text style={[styles.moodText, mood === (idx + 1) && styles.moodTextActive]}>{moodLabel}</Text>
+                </Pressable>
               ))}
             </View>
           </View>
@@ -330,25 +512,30 @@ export function WorkoutLogScreen() {
           {exercises.length === 0 ? (
             <View style={styles.emptyState}>
               <Ionicons name="barbell-outline" size={48} color="#333" />
-              <Typography variant="h2" style={{ color: "#555" }}>Time to crush it</Typography>
-              <Text style={{ color: "#444" }}>Add your first exercise to start tracking.</Text>
+              <Typography variant="h2" color={colors.textMuted}>Time to train</Typography>
+              <Typography variant="bodySmall" color={colors.textFaint}>Add your first exercise to start tracking.</Typography>
             </View>
           ) : (
             exercises.map((ex, exIdx) => (
               <View key={exIdx} style={styles.exerciseCard}>
                 <View style={styles.exerciseHeader}>
                   <View style={{ flex: 1, gap: 12 }}>
-                    <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+                    <View style={styles.exerciseNameRow}>
                       <TextInput style={styles.exerciseNameInput} value={ex.name} onChangeText={(v) => { const n = [...exercises]; n[exIdx].name = v; setExercises(n); }} placeholder="Exercise Name" placeholderTextColor="#444" />
-                      <Pressable onPress={() => {
-                        const info = EXERCISE_LIBRARY.find(e => tEx(e.name).toLowerCase() === ex.name.toLowerCase());
-                        if (info) setSelectedExerciseInfo(info);
+                      <Pressable
+                        accessibilityRole="button"
+                        accessibilityLabel={`Open details for ${ex.name || "exercise"}`}
+                        hitSlop={8}
+                        style={styles.infoTapTarget}
+                        onPress={() => {
+                        const info = findExerciseInfo(ex);
+                        if (info) openExerciseDetails(info);
                         else ToastService.info("Not Found", "No detailed instructions available for this exercise.");
                       }}>
-                        <Ionicons 
-                          name={EXERCISE_LIBRARY.some(e => tEx(e.name).toLowerCase() === ex.name.toLowerCase() && e.videoUrl) ? "videocam" : "information-circle-outline"} 
-                          size={24} 
-                          color={colors.primary} 
+                        <Ionicons
+                          name={findExerciseInfo(ex)?.videoUrl ? "videocam" : "information-circle-outline"}
+                          size={24}
+                          color={colors.primary}
                         />
                       </Pressable>
                     </View>
@@ -365,9 +552,17 @@ export function WorkoutLogScreen() {
                       ))}
                     </View>
                   </View>
-                  <Pressable style={{ padding: 8 }} onPress={() => setExercises(exercises.filter((_, i) => i !== exIdx))}><Ionicons name="close-circle-outline" size={26} color="#ff4444" /></Pressable>
+                  <Pressable
+                    accessibilityRole="button"
+                    accessibilityLabel={`Remove ${ex.name || "exercise"}`}
+                    hitSlop={8}
+                    style={styles.removeExerciseBtn}
+                    onPress={() => setExercises(exercises.filter((_, i) => i !== exIdx))}
+                  >
+                    <Ionicons name="close-circle-outline" size={26} color={colors.danger} />
+                  </Pressable>
                 </View>
-                
+
                 <View style={styles.tableHeader}>
                   <Text style={[styles.columnLabel, { flex: 0.5 }]}>SET</Text>
                   {ex.type === "TIME" ? (
@@ -385,7 +580,7 @@ export function WorkoutLogScreen() {
                 {ex.sets.map((set, sIdx) => (
                   <View key={sIdx} style={[styles.setRow, set.isCompleted && styles.setRowCompleted]}>
                     <Text style={[styles.setText, { flex: 0.5 }]}>{sIdx + 1}</Text>
-                    
+
                     {ex.type === "TIME" ? (
                       <TextInput style={styles.setInput} value={set.durationSec?.toString()} keyboardType="number-pad" placeholder="-" placeholderTextColor="#444" onChangeText={(v) => { const n = [...exercises]; n[exIdx].sets[sIdx].durationSec = Number(v); setExercises(n); }} editable={!set.isCompleted} />
                     ) : ex.type === "BODYWEIGHT" || ex.type === "REPS_ONLY" ? (
@@ -397,7 +592,13 @@ export function WorkoutLogScreen() {
                       </>
                     )}
 
-                    <Pressable style={styles.checkBtn} onPress={() => {
+                    <Pressable
+                      accessibilityRole="button"
+                      accessibilityLabel={set.isCompleted ? `Mark set ${sIdx + 1} incomplete` : `Complete set ${sIdx + 1}`}
+                      accessibilityState={{ checked: set.isCompleted }}
+                      hitSlop={8}
+                      style={styles.checkBtn}
+                      onPress={() => {
                       if (!set.isCompleted && ex.type === "WEIGHT_REPS" && (!set.reps || !set.weight)) {
                         ToastService.info("Missing Data", "Please enter weight and reps.");
                         return;
@@ -406,7 +607,12 @@ export function WorkoutLogScreen() {
                     }}><Ionicons name={set.isCompleted ? "checkmark-circle" : "ellipse-outline"} size={24} color={set.isCompleted ? colors.primary : "#333"} /></Pressable>
                   </View>
                 ))}
-                <Pressable style={styles.addSetBtn} onPress={() => { const n = [...exercises]; n[exIdx].sets.push({ type: ex.type, isCompleted: false }); setExercises(n); }}><Ionicons name="add" size={18} color={colors.primary} /><Text style={styles.addSetText}>ADD SET</Text></Pressable>
+                <Pressable style={styles.addSetBtn} onPress={() => {
+                  const n = [...exercises];
+                  const previousSet = n[exIdx].sets[n[exIdx].sets.length - 1];
+                  n[exIdx].sets.push(previousSet ? duplicateSetForNextEntry(previousSet, ex.type) : { type: ex.type, isCompleted: false });
+                  setExercises(n);
+                }}><Ionicons name="copy-outline" size={18} color={colors.primary} /><Text style={styles.addSetText}>DUPLICATE SET</Text></Pressable>
               </View>
             ))
           )}
@@ -422,7 +628,7 @@ export function WorkoutLogScreen() {
         </ScrollView>
       </KeyboardAvoidingView>
       {timerActive && restTimeLeft > 0 && <RestTimer value={restTimeLeft} onAdjust={(d: number) => setRestTimeLeft(prev => prev + d)} onSkip={() => { setTimerActive(false); setRestTimeLeft(0); }} />}
-      
+
       {/* EXERCISE SELECTION MODAL */}
       <Modal
         visible={isExerciseModalVisible}
@@ -439,40 +645,41 @@ export function WorkoutLogScreen() {
               </Pressable>
             </View>
 
-            <TextInput 
-              style={[styles.input, { marginTop: 20, marginBottom: 10 }]} 
-              placeholder="Search exercise database..." 
+            <TextInput
+              style={[styles.input, { marginTop: 20, marginBottom: 10 }]}
+              placeholder="Search 800+ exercises..."
               placeholderTextColor="#666"
               value={exerciseSearchQuery}
               onChangeText={setExerciseSearchQuery}
             />
 
+            {isSearching && (
+              <View style={{ paddingVertical: 10, alignItems: "center" }}>
+                <ActivityIndicator size="small" color={colors.primary} />
+              </View>
+            )}
+
             <ScrollView style={{ flex: 1 }}>
               {filteredExercises.length === 0 ? (
                 <View style={{ paddingVertical: 40, alignItems: "center" }}>
-                   <Typography variant="label" color="#444">No matches found</Typography>
-                   <Pressable 
+                  <Typography variant="label" color="#444">No matches found</Typography>
+                  <Pressable
                     style={[styles.loadBtn, { marginTop: 12, backgroundColor: "#111" }]}
                     onPress={() => {
                       setExercises([...exercises, { name: exerciseSearchQuery || "Custom Exercise", type: "WEIGHT_REPS", sets: [{ type: "WEIGHT_REPS", isCompleted: false }] }]);
                       setIsExerciseModalVisible(false);
                       setExerciseSearchQuery("");
                     }}
-                   >
-                     <Ionicons name="add" size={18} color={colors.primary} />
-                     <Text style={styles.loadBtnText}>ADD "{exerciseSearchQuery.toUpperCase() || "CUSTOM"}"</Text>
-                   </Pressable>
+                  >
+                    <Ionicons name="add" size={18} color={colors.primary} />
+                    <Text style={styles.loadBtnText}>ADD "{exerciseSearchQuery.toUpperCase() || "CUSTOM"}"</Text>
+                  </Pressable>
                 </View>
               ) : (
                 filteredExercises.map((ex) => (
-                  <Pressable 
-                    key={ex.id} 
+                  <View
+                    key={ex.id}
                     style={styles.exerciseSelectItem}
-                    onPress={() => {
-                      setExercises([...exercises, { name: tEx(ex.name), type: ex.defaultType, sets: [{ type: ex.defaultType, isCompleted: false }] }]);
-                      setIsExerciseModalVisible(false);
-                      setExerciseSearchQuery("");
-                    }}
                   >
                     <View style={{ flex: 1 }}>
                       <Text style={styles.modalItemTitle}>{tEx(ex.name)}</Text>
@@ -481,19 +688,34 @@ export function WorkoutLogScreen() {
                         <View style={styles.tag}><Text style={styles.tagText}>{ex.equipment.toUpperCase()}</Text></View>
                       </View>
                     </View>
-                    <View style={styles.addIconCircle}>
-                      <Ionicons name="add" size={20} color="#000" />
+                    <View style={{ flexDirection: "row", gap: 12 }}>
+                      <Pressable
+                        style={styles.infoIconBtn}
+                        onPress={() => openExerciseDetails(ex)}
+                      >
+                        <Ionicons name="information-circle-outline" size={22} color={colors.primary} />
+                      </Pressable>
+                      <Pressable
+                        style={styles.addIconCircle}
+                        onPress={() => {
+                          setExercises([...exercises, { exerciseId: ex.id, name: tEx(ex.name), type: ex.defaultType, sets: [{ type: ex.defaultType, isCompleted: false }] }]);
+                          setIsExerciseModalVisible(false);
+                          setExerciseSearchQuery("");
+                        }}
+                      >
+                        <Ionicons name="add" size={20} color="#000" />
+                      </Pressable>
                     </View>
-                  </Pressable>
+                  </View>
                 ))
               )}
             </ScrollView>
-            
+
             {!exerciseSearchQuery && (
-               <Pressable 
+              <Pressable
                 style={[styles.addExBtn, { marginTop: 10, borderStyle: "solid" }]}
                 onPress={() => {
-                  setExercises([...exercises, { name: "", type: "WEIGHT_REPS", sets: [{ type: "WEIGHT_REPS", isCompleted: false }] }]);
+                  setExercises([...exercises, createEmptyWorkoutExercise()]);
                   setIsExerciseModalVisible(false);
                 }}
               >
@@ -505,61 +727,11 @@ export function WorkoutLogScreen() {
         </View>
       </Modal>
 
-      {/* EXERCISE INFO MODAL */}
-      <Modal
-        visible={!!selectedExerciseInfo}
-        animationType="slide"
-        transparent={true}
-        onRequestClose={() => setSelectedExerciseInfo(null)}
-      >
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalContent}>
-            <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>{selectedExerciseInfo ? tEx(selectedExerciseInfo.name) : ''}</Text>
-              <Pressable onPress={() => setSelectedExerciseInfo(null)} style={styles.closeBtn}>
-                <Ionicons name="close" size={24} color="#fff" />
-              </Pressable>
-            </View>
-            <ScrollView style={{ marginTop: 10 }}>
-              <View style={{ flexDirection: "row", gap: 10, marginBottom: 20 }}>
-                <View style={styles.tag}><Text style={styles.tagText}>{selectedExerciseInfo?.muscleGroup.toUpperCase()}</Text></View>
-                <View style={styles.tag}><Text style={styles.tagText}>{selectedExerciseInfo?.equipment.toUpperCase()}</Text></View>
-              </View>
-
-              {selectedExerciseInfo?.videoUrl && (
-                <Pressable 
-                  style={styles.videoCard} 
-                  onPress={() => {
-                    const { openBrowserAsync } = require("expo-web-browser");
-                    openBrowserAsync(selectedExerciseInfo.videoUrl!);
-                  }}
-                >
-                  <View style={styles.videoIconBg}>
-                    <Ionicons name="play" size={32} color="#000" />
-                  </View>
-                  <View style={{ flex: 1 }}>
-                    <Text style={styles.videoTitle}>Watch Video Demonstration</Text>
-                    <Text style={styles.videoSub}>Professional form and execution</Text>
-                  </View>
-                  <Ionicons name="chevron-forward" size={20} color="#666" />
-                </Pressable>
-              )}
-
-              <SectionTitle title="INSTRUCTIONS" icon="book-outline" />
-              {selectedExerciseInfo?.instructions ? (
-                selectedExerciseInfo.instructions.map((step, i) => (
-                  <View key={i} style={styles.stepRow}>
-                    <View style={styles.stepCircle}><Text style={styles.stepNumber}>{i + 1}</Text></View>
-                    <Text style={styles.stepText}>{tEx(step)}</Text>
-                  </View>
-                ))
-              ) : (
-                <Text style={{ color: "#888", fontSize: 14 }}>No instructions provided yet.</Text>
-              )}
-            </ScrollView>
-          </View>
-        </View>
-      </Modal>
+      <ExerciseDetailSheet
+        exercise={selectedExerciseInfo}
+        isVisible={!!selectedExerciseInfo}
+        onClose={() => setSelectedExerciseInfo(null)}
+      />
     </ScreenShell>
   );
 }
@@ -593,51 +765,56 @@ function RestTimer({ value, onAdjust, onSkip }: any) {
 
 const styles = StyleSheet.create({
   shellContent: { paddingBottom: 0 },
-  scroll: { paddingBottom: 140, gap: 16 },
-  onboardCard: { backgroundColor: "#111", borderRadius: 32, padding: 24, borderWidth: 1, borderColor: "#1c1c1e", gap: 16 },
-  prescribedBanner: { backgroundColor: colors.primary, flexDirection: "row", alignItems: "center", justifyContent: "center", padding: 14, borderRadius: 16, gap: 10, marginTop: 10 },
-  bannerText: { color: "#000", fontWeight: "900", fontSize: 13 },
-  liveStatsRow: { flexDirection: "row", gap: 12, marginTop: 10 },
-  liveStatBox: { flex: 1, backgroundColor: "#1c1c1e", borderRadius: 16, padding: 16, borderWidth: 1, borderColor: "#2c2c2e" },
-  emptyState: { alignItems: "center", justifyContent: "center", paddingVertical: 40, gap: 8, backgroundColor: "#111", borderRadius: 24, borderWidth: 1, borderColor: "#222", borderStyle: "dashed", marginBottom: 16 },
-  workoutNameInput: { color: "#fff", fontSize: 26, fontWeight: "900", marginTop: 10, marginBottom: 10 },
-  exerciseCard: { backgroundColor: "#111", borderRadius: 32, padding: 20, borderWidth: 1, borderColor: "#1c1c1e" },
-  exerciseHeader: { flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 20 },
-  exerciseNameInput: { color: colors.primary, fontSize: 18, fontWeight: "800", flex: 1 },
-  typeSelectorRow: { flexDirection: "row", gap: 6 },
-  typePill: { paddingVertical: 6, paddingHorizontal: 12, borderRadius: 8, backgroundColor: "#1c1c1e", borderWidth: 1, borderColor: "#2c2c2e" },
+  scroll: { paddingBottom: 140, gap: spacing.lg },
+  onboardCard: { backgroundColor: colors.bgElevated, borderRadius: radius.xl, padding: spacing["2xl"], borderWidth: 1, borderColor: colors.borderSubtle, gap: spacing.lg },
+  prescribedBanner: { minHeight: touchTarget.comfortable, backgroundColor: colors.primary, flexDirection: "row", alignItems: "center", justifyContent: "center", padding: spacing.md, borderRadius: radius.md, gap: spacing.sm, marginTop: spacing.sm },
+  bannerText: { color: colors.primaryText, ...typography.label },
+  liveStatsRow: { flexDirection: "row", gap: spacing.md, marginTop: spacing.sm },
+  liveStatBox: { flex: 1, backgroundColor: colors.surfaceMuted, borderRadius: radius.md, padding: spacing.lg, borderWidth: 1, borderColor: colors.borderSubtle },
+  emptyState: { alignItems: "center", justifyContent: "center", paddingVertical: spacing["4xl"], gap: spacing.sm, backgroundColor: colors.bgElevated, borderRadius: radius.xl, borderWidth: 1, borderColor: colors.borderSubtle, borderStyle: "dashed", marginBottom: spacing.lg },
+  workoutNameInput: { color: colors.text, ...typography.title, marginTop: spacing.sm, marginBottom: spacing.sm },
+  exerciseCard: { backgroundColor: colors.bgElevated, borderRadius: radius.xl, padding: spacing.xl, borderWidth: 1, borderColor: colors.borderSubtle },
+  exerciseHeader: { flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start", marginBottom: spacing.xl },
+  exerciseNameRow: { flexDirection: "row", alignItems: "center", gap: spacing.sm },
+  exerciseNameInput: { color: colors.primary, ...typography.heading, flex: 1 },
+  infoTapTarget: { width: touchTarget.min, height: touchTarget.min, alignItems: "center", justifyContent: "center" },
+  removeExerciseBtn: { width: touchTarget.min, height: touchTarget.min, alignItems: "center", justifyContent: "center" },
+  typeSelectorRow: { flexDirection: "row", gap: spacing.sm, flexWrap: "wrap" },
+  typePill: { minHeight: 32, paddingVertical: spacing.sm, paddingHorizontal: spacing.md, borderRadius: radius.sm, backgroundColor: colors.surfaceMuted, borderWidth: 1, borderColor: colors.borderSubtle },
   typePillActive: { backgroundColor: colors.primary, borderColor: colors.primary },
-  typePillText: { color: "#8c8c8c", fontSize: 10, fontWeight: "900" },
-  typePillTextActive: { color: "#000" },
-  tableHeader: { flexDirection: "row", marginBottom: 10 },
-  columnLabel: { flex: 1, color: "#444", fontSize: 10, fontWeight: "900", textAlign: "center" },
-  setRow: { flexDirection: "row", alignItems: "center", backgroundColor: "#1c1c1e", borderRadius: 12, paddingVertical: 4, paddingHorizontal: 10, marginBottom: 6 },
-  setRowCompleted: { backgroundColor: "#1a1a10", borderWidth: 1, borderColor: "#3a3a10" },
-  setText: { color: "#8c8c8c", fontSize: 13, fontWeight: "800", textAlign: "center" },
-  setInput: { flex: 1, color: "#fff", fontSize: 15, fontWeight: "700", textAlign: "center", paddingVertical: 10 },
-  checkBtn: { flex: 0.5, alignItems: "center" },
-  addSetBtn: { flexDirection: "row", alignItems: "center", justifyContent: "center", paddingVertical: 10, gap: 4 },
-  addSetText: { color: colors.primary, fontWeight: "900", fontSize: 12 },
-  addExBtn: { backgroundColor: "#111", padding: 18, borderRadius: 24, flexDirection: "row", alignItems: "center", justifyContent: "center", borderStyle: "dashed", borderWidth: 1, borderColor: "#222", gap: 10, marginBottom: 10 },
-  addExText: { color: "#fff", fontWeight: "800" },
-  finishBtn: { backgroundColor: colors.primary, borderRadius: 24, height: 64, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 12 },
-  finishBtnText: { color: colors.primaryText, fontWeight: "900", fontSize: 16, letterSpacing: 1 },
-  checkInCard: { backgroundColor: "#111", borderRadius: 32, padding: 24, borderWidth: 1, borderColor: "#1c1c1e", gap: 16, marginBottom: 16 },
-  checkInTitle: { color: "#fff", fontSize: 18, fontWeight: "800", textAlign: "center" },
-  ratingRow: { flexDirection: "row", justifyContent: "center", gap: 10 },
-  ratingCircle: { width: 44, height: 44, borderRadius: 22, backgroundColor: "#1c1c1e", alignItems: "center", justifyContent: "center", borderWidth: 1, borderColor: "#222" },
+  typePillText: { color: colors.textMuted, ...typography.label, fontSize: 10 },
+  typePillTextActive: { color: colors.primaryText },
+  tableHeader: { flexDirection: "row", marginBottom: spacing.sm },
+  columnLabel: { flex: 1, color: colors.textFaint, ...typography.label, fontSize: 10, textAlign: "center" },
+  setRow: { minHeight: 48, flexDirection: "row", alignItems: "center", backgroundColor: colors.surfaceMuted, borderRadius: radius.md, paddingVertical: spacing.xs, paddingHorizontal: spacing.sm, marginBottom: spacing.sm },
+  setRowCompleted: { backgroundColor: colors.primaryMuted, borderWidth: 1, borderColor: "rgba(255,204,0,0.28)" },
+  setText: { color: colors.textMuted, ...typography.bodySmall, fontWeight: "800", textAlign: "center" },
+  setInput: { flex: 1, color: colors.text, ...typography.body, fontWeight: "800", textAlign: "center", paddingVertical: spacing.sm },
+  checkBtn: { flex: 0.5, minHeight: touchTarget.min, alignItems: "center", justifyContent: "center" },
+  addSetBtn: { minHeight: touchTarget.min, flexDirection: "row", alignItems: "center", justifyContent: "center", paddingVertical: spacing.sm, gap: spacing.xs },
+  addSetText: { color: colors.primary, ...typography.label },
+  addExBtn: { minHeight: touchTarget.large, backgroundColor: colors.bgElevated, padding: spacing.lg, borderRadius: radius.xl, flexDirection: "row", alignItems: "center", justifyContent: "center", borderStyle: "dashed", borderWidth: 1, borderColor: colors.borderSubtle, gap: spacing.sm, marginBottom: spacing.sm },
+  addExText: { color: colors.text, fontWeight: "800" },
+  finishBtn: { backgroundColor: colors.primary, borderRadius: radius.xl, minHeight: 64, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: spacing.md },
+  finishBtnText: { color: colors.primaryText, ...typography.button, fontSize: 16 },
+  checkInCard: { backgroundColor: colors.bgElevated, borderRadius: radius.xl, padding: spacing["2xl"], borderWidth: 1, borderColor: colors.borderSubtle, gap: spacing.lg, marginBottom: spacing.lg },
+  checkInTitle: { color: colors.text, ...typography.heading, textAlign: "center" },
+  ratingRow: { flexDirection: "row", justifyContent: "center", gap: spacing.sm },
+  ratingCircle: { width: touchTarget.min, height: touchTarget.min, borderRadius: radius.pill, backgroundColor: colors.surfaceMuted, alignItems: "center", justifyContent: "center", borderWidth: 1, borderColor: colors.borderSubtle },
   ratingCircleActive: { backgroundColor: colors.primary, borderColor: colors.primary },
-  ratingText: { color: "#8c8c8c", fontSize: 16, fontWeight: "800" },
-  ratingTextActive: { color: "#000" },
-  emojiCircle: { width: 52, height: 52, borderRadius: 26, backgroundColor: "#1c1c1e", alignItems: "center", justifyContent: "center", borderWidth: 1, borderColor: "#222" },
-  emojiCircleActive: { backgroundColor: "#222", borderColor: colors.primary },
-  cancelLink: { alignItems: "center", paddingVertical: 16 },
-  cancelLinkText: { color: "#444", fontWeight: "700" },
-  floatingTimer: { position: "absolute", bottom: 120, alignSelf: "center", backgroundColor: colors.primary, flexDirection: "row", alignItems: "center", paddingHorizontal: 16, paddingVertical: 10, borderRadius: 30, elevation: 10 },
-  timerInfo: { flexDirection: "row", alignItems: "center", gap: 6, paddingRight: 12 },
-  timerBold: { color: "#000", fontWeight: "900", fontSize: 16 },
-  timerActionBtn: { paddingHorizontal: 12, height: 30, justifyContent: "center", alignItems: "center" },
-  timerActionText: { color: "#000", fontWeight: "900", fontSize: 13 },
+  ratingText: { color: colors.textMuted, fontSize: 16, fontWeight: "800" },
+  ratingTextActive: { color: colors.primaryText },
+  emojiCircle: { minWidth: 54, height: touchTarget.comfortable, borderRadius: radius.pill, backgroundColor: colors.surfaceMuted, alignItems: "center", justifyContent: "center", borderWidth: 1, borderColor: colors.borderSubtle, paddingHorizontal: spacing.sm },
+  emojiCircleActive: { backgroundColor: colors.primary, borderColor: colors.primary },
+  moodText: { color: colors.textMuted, ...typography.label, fontSize: 10 },
+  moodTextActive: { color: colors.primaryText },
+  cancelLink: { alignItems: "center", paddingVertical: spacing.lg },
+  cancelLinkText: { color: colors.textFaint, fontWeight: "700" },
+  floatingTimer: { position: "absolute", bottom: 120, alignSelf: "center", backgroundColor: colors.primary, flexDirection: "row", alignItems: "center", paddingHorizontal: spacing.lg, paddingVertical: spacing.sm, borderRadius: radius.pill, elevation: 10 },
+  timerInfo: { flexDirection: "row", alignItems: "center", gap: spacing.sm, paddingRight: spacing.md },
+  timerBold: { color: colors.primaryText, fontWeight: "900", fontSize: 16 },
+  timerActionBtn: { paddingHorizontal: spacing.md, minHeight: 34, justifyContent: "center", alignItems: "center" },
+  timerActionText: { color: colors.primaryText, fontWeight: "900", fontSize: 13 },
   timerDivider: { width: 1, height: 20, backgroundColor: "rgba(0,0,0,0.2)" },
   label: { color: "#8c8c8c", fontSize: 14, fontWeight: "600", marginBottom: 4 },
   inputGroup: { gap: 4, marginBottom: 12 },
@@ -653,66 +830,19 @@ const styles = StyleSheet.create({
   timeValue: { color: '#fff', fontSize: 13 },
   timerLabel: { color: '#444', fontSize: 8, fontWeight: '900' },
   modalOverlay: { flex: 1, backgroundColor: "rgba(0,0,0,0.8)", justifyContent: "flex-end" },
-  modalContent: { backgroundColor: "#000", borderTopLeftRadius: 32, borderTopRightRadius: 32, height: "60%", padding: 24, borderWidth: 1, borderColor: "#2c2c2e" },
-  modalHeader: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
+  infoIconBtn: { width: 36, height: 36, borderRadius: 12, backgroundColor: "#1c1c1e", alignItems: "center", justifyContent: "center", borderWidth: 1, borderColor: "#2c2c2e" },
+  exerciseSelectItem: { flexDirection: "row", alignItems: "center", backgroundColor: "#1c1c1e", borderRadius: 20, padding: 16, marginBottom: 10, borderWidth: 1, borderColor: "#2c2c2e" },
+  modalContent: { backgroundColor: "#000", borderTopLeftRadius: 32, borderTopRightRadius: 32, height: "85%", padding: 24, borderWidth: 1, borderColor: "#1c1c1e" },
+  modalHeader: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 10 },
   modalTitle: { color: "#fff", fontSize: 22, fontWeight: "900" },
   closeBtn: { width: 40, height: 40, borderRadius: 20, backgroundColor: "#111", alignItems: "center", justifyContent: "center" },
-  tag: { backgroundColor: "#2c2c2e", paddingHorizontal: 10, paddingVertical: 6, borderRadius: 8 },
+  tag: { backgroundColor: "#1c1c1e", paddingHorizontal: 10, paddingVertical: 6, borderRadius: 8, borderWidth: 1, borderColor: "#2c2c2e" },
   tagText: { color: "#aaa", fontSize: 10, fontWeight: "900" },
-  stepRow: { flexDirection: "row", gap: 12, marginBottom: 16, alignItems: "flex-start" },
-  stepCircle: { width: 24, height: 24, borderRadius: 12, backgroundColor: colors.primary, alignItems: "center", justifyContent: "center", marginTop: 2 },
-  stepNumber: { color: "#000", fontSize: 12, fontWeight: "900" },
-  stepText: { flex: 1, color: "#ccc", fontSize: 15, lineHeight: 22, fontWeight: "500" },
-  videoCard: { 
-    flexDirection: "row", 
-    alignItems: "center", 
-    backgroundColor: "#161616", 
-    borderRadius: 20, 
-    padding: 16, 
-    marginBottom: 24, 
-    borderWidth: 1, 
-    borderColor: "#2c2c2e",
-    gap: 16
-  },
-  videoIconBg: { 
-    width: 64, 
-    height: 64, 
-    borderRadius: 16, 
-    backgroundColor: colors.primary, 
-    alignItems: "center", 
-    justifyContent: "center" 
-  },
+  modalItemTitle: { color: "#fff", fontSize: 16, fontWeight: "800" },
+  addIconCircle: { width: 36, height: 36, borderRadius: 18, backgroundColor: colors.primary, alignItems: "center", justifyContent: "center" },
+  loadBtn: { flexDirection: "row", alignItems: "center", backgroundColor: "#161616", padding: 16, borderRadius: 20, borderWidth: 1, borderColor: "#2c2c2e", gap: 12 },
+  loadBtnText: { color: colors.primary, fontSize: 13, fontWeight: "900", letterSpacing: 0.5 },
+  videoIconBg: { width: 64, height: 64, borderRadius: 16, backgroundColor: colors.primary, alignItems: "center", justifyContent: "center" },
   videoTitle: { color: "#fff", fontSize: 16, fontWeight: "800" },
   videoSub: { color: "#666", fontSize: 12, fontWeight: "600", marginTop: 2 },
-  exerciseSelectItem: {
-    flexDirection: "row",
-    alignItems: "center",
-    backgroundColor: "#111",
-    padding: 16,
-    borderRadius: 20,
-    marginBottom: 10,
-    borderWidth: 1,
-    borderColor: "#1c1c1e",
-    gap: 12,
-  },
-  modalItemTitle: { color: "#fff", fontSize: 16, fontWeight: "800" },
-  addIconCircle: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    backgroundColor: colors.primary,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  loadBtn: {
-    flexDirection: "row",
-    alignItems: "center",
-    backgroundColor: "#161616",
-    padding: 16,
-    borderRadius: 20,
-    borderWidth: 1,
-    borderColor: "#2c2c2e",
-    gap: 12,
-  },
-  loadBtnText: { color: colors.primary, fontSize: 13, fontWeight: "900", letterSpacing: 0.5 },
 });

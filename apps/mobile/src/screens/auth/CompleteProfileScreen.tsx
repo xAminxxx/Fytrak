@@ -6,6 +6,7 @@ import { Ionicons } from "@expo/vector-icons";
 import DateTimePicker from "@react-native-community/datetimepicker";
 import * as Haptics from "expo-haptics";
 import type { CompleteProfilePayload } from "../../services/userSession";
+import { toLocalDateKey } from "../../utils/dateKeys";
 
 type CompleteProfileScreenProps = {
   onComplete: (payload: CompleteProfilePayload) => Promise<void>;
@@ -42,7 +43,7 @@ export function CompleteProfileScreen({ onComplete }: CompleteProfileScreenProps
         goal,
         weight,
         height,
-        birthday: birthDate.toISOString().split('T')[0],
+        birthday: toLocalDateKey(birthDate),
         city,
         country,
       });

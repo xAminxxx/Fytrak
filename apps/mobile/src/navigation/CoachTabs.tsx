@@ -5,13 +5,7 @@ import { CoachClientsScreen } from "../screens/coach/CoachClientsScreen";
 import { CoachLibraryScreen } from "../screens/coach/CoachLibraryScreen";
 import { CoachProfileScreen } from "../screens/coach/CoachProfileScreen";
 import { SessionState } from "../state/types";
-
-export type CoachTabsParamList = {
-    CoachHome: undefined;
-    CoachClients: undefined;
-    CoachLibrary: undefined;
-    CoachProfile: undefined;
-};
+import type { CoachTabsParamList } from "./types";
 
 const Tab = createBottomTabNavigator<CoachTabsParamList>();
 

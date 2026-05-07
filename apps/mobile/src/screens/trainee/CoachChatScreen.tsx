@@ -18,6 +18,8 @@ import { uploadChatImage } from "../../services/cloudinaryUpload";
 import { ChatMessage } from "../../types/chat";
 import { colors } from "../../theme/colors";
 import { Ionicons } from "@expo/vector-icons";
+import { auth } from "../../config/firebase";
+import { getChatThreadId, sendChatMessage, subscribeToChatMessages } from "../../services/chatService";
 
 const formatTime = (value: string): string => {
   return new Date(value).toLocaleTimeString([], {
@@ -25,17 +27,6 @@ const formatTime = (value: string): string => {
     minute: "2-digit",
   });
 };
-
-import {
-  collection,
-  onSnapshot,
-  query,
-  orderBy,
-  addDoc,
-  serverTimestamp,
-  Timestamp,
-} from "firebase/firestore";
-import { db, auth } from "../../config/firebase";
 
 type CoachChatScreenProps = {
   traineeId: string;
@@ -62,33 +53,15 @@ export function CoachChatScreen({ traineeId, coachId, traineeName }: CoachChatSc
   }, []);
 
   const threadId = useMemo(() => {
-    return [traineeId, coachId].sort().join("_");
+    return getChatThreadId(traineeId, coachId);
   }, [traineeId, coachId]);
 
   useEffect(() => {
-    const q = query(
-      collection(db, "chats", threadId, "messages"),
-      orderBy("createdAt", "asc")
+    return subscribeToChatMessages(
+      threadId,
+      setMessages,
+      () => setErrorText("Could not load chat messages.")
     );
-
-    const unsubscribe = onSnapshot(q, (snapshot) => {
-      const fetched = snapshot.docs.map((doc) => {
-        const data = doc.data();
-        let createdAt = new Date().toISOString();
-        if (data.createdAt instanceof Timestamp) {
-          createdAt = data.createdAt.toDate().toISOString();
-        }
-
-        return {
-          id: doc.id,
-          ...data,
-          createdAt,
-        } as ChatMessage;
-      });
-      setMessages(fetched);
-    });
-
-    return unsubscribe;
   }, [threadId]);
 
   const sendTextMessage = async () => {
@@ -99,18 +72,12 @@ export function CoachChatScreen({ traineeId, coachId, traineeName }: CoachChatSc
     setErrorText(null);
 
     try {
-      const myId = auth.currentUser?.uid || "unknown";
-      const otherId = myId === traineeId ? coachId : traineeId;
-
-      await addDoc(collection(db, "chats", threadId, "messages"), {
+      await sendChatMessage({
         threadId,
-        senderId: myId,
-        receiverId: otherId,
-        type: "text" as const,
+        traineeId,
+        coachId,
+        type: "text",
         text,
-        status: "sent",
-        createdAt: serverTimestamp(),
-        readAt: null,
       });
     } catch (error) {
       console.error("Send failed:", error);
@@ -139,14 +106,11 @@ export function CoachChatScreen({ traineeId, coachId, traineeName }: CoachChatSc
       setIsUploading(true);
       const uploaded = await uploadChatImage(result.assets[0].uri);
 
-      const myId = auth.currentUser?.uid || "unknown";
-      const otherId = myId === traineeId ? coachId : traineeId;
-
-      await addDoc(collection(db, "chats", threadId, "messages"), {
+      await sendChatMessage({
         threadId,
-        senderId: myId,
-        receiverId: otherId,
-        type: "image" as const,
+        traineeId,
+        coachId,
+        type: "image",
         text: "",
         image: {
           url: uploaded.secureUrl,
@@ -156,9 +120,6 @@ export function CoachChatScreen({ traineeId, coachId, traineeName }: CoachChatSc
           format: uploaded.format,
           bytes: uploaded.bytes,
         },
-        status: "sent",
-        createdAt: serverTimestamp(),
-        readAt: null,
       });
     } catch (error) {
       setErrorText(error instanceof Error ? error.message : "Image upload failed.");

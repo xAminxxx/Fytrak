@@ -15,6 +15,7 @@ import {
   serverTimestamp,
 } from "firebase/firestore";
 import { db } from "../config/firebase";
+import { localDateKeyDaysAgo, toLocalDateKey } from "../utils/dateKeys";
 
 export type Meal = {
   id: string;
@@ -48,13 +49,13 @@ const usersCollection = "users";
 // --- MEAL LOGGING ---
 
 export const saveMealLog = async (uid: string, meal: Omit<Meal, "id" | "date" | "createdAt">): Promise<void> => {
-  const today = new Date().toISOString().split("T")[0];
+  const today = toLocalDateKey();
   const ref = collection(db, usersCollection, uid, "meals");
   await addDoc(ref, { ...meal, date: today, createdAt: serverTimestamp() });
 };
 
 export const subscribeToDailyMeals = (uid: string, callback: (meals: Meal[]) => void) => {
-  const today = new Date().toISOString().split("T")[0];
+  const today = toLocalDateKey();
   const q = query(collection(db, usersCollection, uid, "meals"), where("date", "==", today));
   return onSnapshot(q, (snapshot) => {
     const meals = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Meal)).sort((a, b) => {
@@ -72,9 +73,7 @@ export const deleteMealLog = async (uid: string, mealId: string): Promise<void> 
 };
 
 export const subscribeToHistoricalMeals = (uid: string, days: number, callback: (meals: Meal[]) => void) => {
-  const dateLimit = new Date();
-  dateLimit.setDate(dateLimit.getDate() - days);
-  const dateStr = dateLimit.toISOString().split("T")[0];
+  const dateStr = localDateKeyDaysAgo(days);
 
   const q = query(collection(db, usersCollection, uid, "meals"), where("date", ">=", dateStr));
   return onSnapshot(q, (snapshot) => {

@@ -5,8 +5,7 @@ import { colors } from "../../theme/colors";
 import { Ionicons } from "@expo/vector-icons";
 import { logOut } from "../../services/auth";
 import { useNavigation } from "@react-navigation/native";
-import { NativeStackNavigationProp } from "@react-navigation/native-stack";
-import { RootStackParamList } from "../../navigation/RootNavigator";
+import type { TraineeHomeNavigation } from "../../navigation/types";
 import { auth } from "../../config/firebase";
 import { Typography } from "../../components/Typography";
 import Svg, { Circle, G, Defs, LinearGradient as SvgLinearGradient, Stop } from "react-native-svg";
@@ -26,12 +25,17 @@ import {
   type BodyMetric,
   type Program
 } from "../../services/userSession";
+import { ExerciseDetailSheet } from "../../components/ExerciseDetailSheet";
+import { EXERCISE_LIBRARY, ExerciseLibraryItem } from "../../constants/exercises";
+import { buildTodayMission, type TodayMissionItemId } from "../../features/retention/todayMission";
+import { trackEvent } from "../../services/analytics";
+import { toLocalDateKey } from "../../utils/dateKeys";
 
 type TraineeHomeScreenProps = {
   onQuickAskCoach: () => void;
 };
 
-// 💎 PREMIUM MACRO RING COMPONENT
+// Premium macro ring component.
 const MacroRing = ({ current, target, label }: { current: number, target: number, label: string }) => {
   const size = 120;
   const strokeWidth = 12;
@@ -78,7 +82,7 @@ const MacroRing = ({ current, target, label }: { current: number, target: number
 };
 
 export function TraineeHomeScreen({ onQuickAskCoach }: TraineeHomeScreenProps) {
-  const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
+  const navigation = useNavigation<TraineeHomeNavigation>();
   const [meals, setMeals] = useState<Meal[]>([]);
   const [workouts, setWorkouts] = useState<WorkoutLog[]>([]);
   const [profile, setProfile] = useState<UserProfile | null>(null);
@@ -88,6 +92,7 @@ export function TraineeHomeScreen({ onQuickAskCoach }: TraineeHomeScreenProps) {
   const [programs, setPrograms] = useState<Program[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [showLogoutModal, setShowLogoutModal] = useState(false);
+  const [selectedEx, setSelectedEx] = useState<ExerciseLibraryItem | null>(null);
 
   useEffect(() => {
     const user = auth.currentUser;
@@ -95,9 +100,9 @@ export function TraineeHomeScreen({ onQuickAskCoach }: TraineeHomeScreenProps) {
 
     const unsubMeals = subscribeToDailyMeals(user.uid, setMeals);
     const unsubWorkouts = subscribeToWorkouts(user.uid, (data) => {
-      const today = new Date().toISOString().split("T")[0];
+      const today = toLocalDateKey();
       const todayFlows = data.filter(w => {
-        const wDate = (w.createdAt?.toDate ? w.createdAt.toDate() : new Date()).toISOString().split("T")[0];
+        const wDate = toLocalDateKey(w.createdAt?.toDate ? w.createdAt.toDate() : new Date());
         return wDate === today;
       });
       setWorkouts(todayFlows);
@@ -143,6 +148,50 @@ export function TraineeHomeScreen({ onQuickAskCoach }: TraineeHomeScreenProps) {
     if (hour < 18) return "Good Afternoon";
     return "Good Evening";
   }, []);
+
+  const todayMission = useMemo(() => {
+    const today = toLocalDateKey();
+    const latestMetricDate = metrics[0]?.date;
+
+    return buildTodayMission({
+      hasWorkoutToday: workouts.length > 0,
+      caloriesLogged: nutritionStats.current,
+      calorieTarget: nutritionStats.target,
+      hasCoachAssigned: profile?.assignmentStatus === "assigned",
+      hasPendingWorkoutPlan: prescribed.length > 0,
+      hasPendingMealPlan: prescribedMeals.length > 0,
+      hasBodyMetricToday: latestMetricDate === today,
+    });
+  }, [metrics, nutritionStats.current, nutritionStats.target, prescribed.length, prescribedMeals.length, profile?.assignmentStatus, workouts.length]);
+
+  const handleMissionAction = (missionId: TodayMissionItemId) => {
+    trackEvent("today_mission_action_pressed", {
+      missionId,
+      completionPercent: todayMission.completionPercent,
+    });
+
+    if (missionId === "workout") {
+      if (prescribed.length > 0) {
+        navigation.navigate("Workouts", { autoLoadPrescriptionId: prescribed[0].id });
+      } else {
+        navigation.navigate("Workouts");
+      }
+      return;
+    }
+
+    if (missionId === "nutrition") {
+      navigation.navigate("Nutrition");
+      return;
+    }
+
+    if (missionId === "coach") {
+      if (profile?.assignmentStatus === "assigned") onQuickAskCoach();
+      else navigation.navigate("CoachAssignment");
+      return;
+    }
+
+    navigation.navigate("Progress");
+  };
 
   return (
     <ScreenShell
@@ -197,9 +246,42 @@ export function TraineeHomeScreen({ onQuickAskCoach }: TraineeHomeScreenProps) {
             <View style={styles.greetingHeader}>
               <View>
                 <Typography variant="label" style={{ color: colors.primary, fontWeight: '800', letterSpacing: 1 }}>{greeting.toUpperCase()}</Typography>
-                <Typography variant="h1" style={{ fontSize: 32, marginTop: 4 }}>{profile?.name?.split(' ')[0] || "Athlete"} 🏃‍♂️</Typography>
+                <Typography variant="h1" style={{ fontSize: 32, marginTop: 4 }}>{profile?.name?.split(' ')[0] || "Athlete"}</Typography>
               </View>
               {isPremium && <PremiumBadge />}
+            </View>
+
+            <View style={styles.missionCard}>
+              <View style={styles.missionHeader}>
+                <View>
+                  <Typography variant="label" color={colors.primary}>TODAY MISSION</Typography>
+                  <Typography variant="h2" style={{ fontSize: 22 }}>{todayMission.headline}</Typography>
+                </View>
+                <View style={styles.missionScore}>
+                  <Typography style={styles.missionScoreText}>{todayMission.completionPercent}%</Typography>
+                </View>
+              </View>
+              <View style={styles.missionTrack}>
+                <View style={[styles.missionProgress, { width: `${todayMission.completionPercent}%` }]} />
+              </View>
+              <View style={styles.missionList}>
+                {todayMission.items.map((item) => (
+                  <Pressable
+                    key={item.id}
+                    style={[styles.missionItem, item.isComplete && styles.missionItemComplete]}
+                    onPress={() => handleMissionAction(item.id)}
+                  >
+                    <View style={[styles.missionIcon, item.isComplete && styles.missionIconComplete]}>
+                      <Ionicons name={item.icon as any} size={18} color={item.isComplete ? "#000" : colors.primary} />
+                    </View>
+                    <View style={{ flex: 1 }}>
+                      <Typography variant="h2" style={{ fontSize: 14 }}>{item.title}</Typography>
+                      <Typography variant="label" color="#777" style={{ fontSize: 9 }}>{item.subtitle}</Typography>
+                    </View>
+                    <Ionicons name="chevron-forward" size={16} color="#444" />
+                  </Pressable>
+                ))}
+              </View>
             </View>
 
             <View style={styles.card}>
@@ -209,7 +291,7 @@ export function TraineeHomeScreen({ onQuickAskCoach }: TraineeHomeScreenProps) {
               </View>
               
               <View style={styles.statsGrid}>
-                {/* 💎 PREMIUM SVG MACRO RING */}
+                {/* Premium SVG macro ring. */}
                 <View style={styles.ringContainer}>
                   <MacroRing 
                     current={nutritionStats.current} 
@@ -258,7 +340,7 @@ export function TraineeHomeScreen({ onQuickAskCoach }: TraineeHomeScreenProps) {
                   <View style={styles.prescribedContent}>
                     <Typography variant="h2" style={{ fontSize: 20 }}>{activeProgram.title}</Typography>
                     <Typography variant="label" color="#8c8c8c">
-                      {currentWeek ? `Week ${currentWeek.weekNumber}` : 'Complete'} • {currentSession ? currentSession.title : 'All done!'} • By {activeProgram.coachName}
+                      {currentWeek ? `Week ${currentWeek.weekNumber}` : 'Complete'} | {currentSession ? currentSession.title : 'All done!'} | By {activeProgram.coachName}
                     </Typography>
                   </View>
                   {/* Progress Bar */}
@@ -282,8 +364,26 @@ export function TraineeHomeScreen({ onQuickAskCoach }: TraineeHomeScreenProps) {
                 <View style={styles.prescribedContent}>
                   <Typography variant="h2" style={{ fontSize: 20 }}>{prescribed[0].title}</Typography>
                   <Typography variant="label" color="#8c8c8c">
-                    {prescribed[0].exercises.length} exercises • By {prescribed[0].coachName}
+                    {prescribed[0].exercises.length} exercises | By {prescribed[0].coachName}
                   </Typography>
+
+                  <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.previewRow}>
+                    {prescribed[0].exercises.map((pEx, idx) => {
+                      const libEx = EXERCISE_LIBRARY.find(l => l.name.en.toLowerCase() === pEx.name.toLowerCase());
+                      return (
+                        <Pressable 
+                          key={idx} 
+                          style={styles.previewItem}
+                          onPress={() => libEx && setSelectedEx(libEx)}
+                        >
+                          <View style={styles.previewIcon}>
+                             <Ionicons name="barbell" size={16} color={colors.primary} />
+                          </View>
+                          <Text style={styles.previewText} numberOfLines={1}>{pEx.name}</Text>
+                        </Pressable>
+                      );
+                    })}
+                  </ScrollView>
                 </View>
                 <Pressable
                   style={styles.startPrescribedBtn}
@@ -291,7 +391,7 @@ export function TraineeHomeScreen({ onQuickAskCoach }: TraineeHomeScreenProps) {
                     { text: "Later", style: "cancel" },
                     {
                       text: "Start Now",
-                      onPress: () => navigation.navigate("Workouts" as any, { autoLoadPrescriptionId: prescribed[0].id })
+                      onPress: () => navigation.navigate("Workouts", { autoLoadPrescriptionId: prescribed[0].id })
                     }
                   ])}
                 >
@@ -313,12 +413,12 @@ export function TraineeHomeScreen({ onQuickAskCoach }: TraineeHomeScreenProps) {
                 <View style={styles.prescribedContent}>
                   <Typography variant="h2" style={{ fontSize: 20 }}>{prescribedMeals[0].title}</Typography>
                   <Typography variant="label" color="#8c8c8c">
-                    {prescribedMeals[0].macros.calories} kcal • {prescribedMeals[0].macros.protein}g Protein
+                    {prescribedMeals[0].macros.calories} kcal | {prescribedMeals[0].macros.protein}g Protein
                   </Typography>
                 </View>
                 <Pressable
                   style={[styles.startPrescribedBtn, { backgroundColor: "#4ade80" }]}
-                  onPress={() => navigation.navigate("Nutrition" as any)}
+                  onPress={() => navigation.navigate("Nutrition")}
                 >
                   <Typography style={{ color: "#000", fontWeight: "900", fontSize: 14 }}>REVIEW PLAN</Typography>
                   <Ionicons name="nutrition" size={16} color="#000" />
@@ -393,6 +493,12 @@ export function TraineeHomeScreen({ onQuickAskCoach }: TraineeHomeScreenProps) {
           </View>
         </View>
       </Modal>
+
+      <ExerciseDetailSheet 
+        exercise={selectedEx}
+        isVisible={!!selectedEx}
+        onClose={() => setSelectedEx(null)}
+      />
     </ScreenShell>
   );
 }
@@ -434,6 +540,76 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: "#333333",
     gap: 16,
+  },
+  missionCard: {
+    backgroundColor: "#101010",
+    borderRadius: 24,
+    padding: 18,
+    borderWidth: 1,
+    borderColor: "#2c2c2e",
+    gap: 14,
+  },
+  missionHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 12,
+  },
+  missionScore: {
+    width: 54,
+    height: 54,
+    borderRadius: 27,
+    backgroundColor: "#1c1c1e",
+    borderWidth: 1,
+    borderColor: colors.primary,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  missionScoreText: {
+    color: colors.primary,
+    fontSize: 14,
+    fontWeight: "900",
+  },
+  missionTrack: {
+    height: 7,
+    backgroundColor: "#242424",
+    borderRadius: 999,
+    overflow: "hidden",
+  },
+  missionProgress: {
+    height: "100%",
+    backgroundColor: colors.primary,
+    borderRadius: 999,
+  },
+  missionList: {
+    gap: 8,
+  },
+  missionItem: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    backgroundColor: "#161616",
+    borderRadius: 16,
+    padding: 12,
+    borderWidth: 1,
+    borderColor: "#242424",
+  },
+  missionItemComplete: {
+    opacity: 0.74,
+  },
+  missionIcon: {
+    width: 36,
+    height: 36,
+    borderRadius: 12,
+    backgroundColor: "#1c1c1e",
+    alignItems: "center",
+    justifyContent: "center",
+    borderWidth: 1,
+    borderColor: "#2c2c2e",
+  },
+  missionIconComplete: {
+    backgroundColor: colors.primary,
+    borderColor: colors.primary,
   },
   cardHeader: {
     flexDirection: "row",
@@ -512,4 +688,8 @@ const styles = StyleSheet.create({
   modalCancelBtn: { flex: 1, padding: 18, borderRadius: 16, backgroundColor: '#222', alignItems: 'center' },
   modalConfirmBtn: { flex: 1, padding: 18, borderRadius: 16, backgroundColor: '#ff4444', alignItems: 'center' },
   modalBtnText: { color: '#fff', fontWeight: '900', fontSize: 14, textTransform: 'uppercase' },
+  previewRow: { flexDirection: 'row', marginTop: 12, marginBottom: 4 },
+  previewItem: { alignItems: 'center', width: 80, gap: 6, marginRight: 12 },
+  previewIcon: { width: 44, height: 44, borderRadius: 12, backgroundColor: 'rgba(255,204,0,0.1)', alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: 'rgba(255,204,0,0.2)' },
+  previewText: { color: '#ccc', fontSize: 10, fontWeight: '700', textAlign: 'center' },
 });

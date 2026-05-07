@@ -1,9 +1,14 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useRef } from 'react';
 import { View, StyleSheet, Animated } from 'react-native';
 import { AppLogo } from '../../components/Branding';
 
 export function SplashScreen({ onFinish }: { onFinish: () => void }) {
-  const fadeAnim = new Animated.Value(0);
+  const fadeAnim = useRef(new Animated.Value(0)).current;
+  const onFinishRef = useRef(onFinish);
+
+  useEffect(() => {
+    onFinishRef.current = onFinish;
+  }, [onFinish]);
 
   useEffect(() => {
     Animated.timing(fadeAnim, {
@@ -17,11 +22,11 @@ export function SplashScreen({ onFinish }: { onFinish: () => void }) {
         toValue: 0,
         duration: 800,
         useNativeDriver: true,
-      }).start(() => onFinish());
+      }).start(() => onFinishRef.current());
     }, 2500);
 
     return () => clearTimeout(timer);
-  }, []);
+  }, [fadeAnim]);
 
   return (
     <View style={styles.container}>

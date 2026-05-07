@@ -5,7 +5,7 @@ import { colors } from "../../theme/colors";
 import { Ionicons } from "@expo/vector-icons";
 import { useNavigation } from "@react-navigation/native";
 import { NativeStackNavigationProp } from "@react-navigation/native-stack";
-import { RootStackParamList } from "../../navigation/RootNavigator";
+import type { RootStackParamList } from "../../navigation/types";
 import * as WebBrowser from "expo-web-browser";
 import { Typography } from "../../components/Typography";
 import { PrimaryButton } from "../../components/Button";

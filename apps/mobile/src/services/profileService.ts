@@ -9,6 +9,7 @@ import {
   onSnapshot,
   collection,
   addDoc,
+  deleteDoc,
   getDocs,
   query,
   where,
@@ -19,6 +20,7 @@ import {
 import { db, auth } from "../config/firebase";
 import { appEnv } from "../config/env";
 import type { AssignmentStatus, SessionState, UserRole } from "../state/types";
+import { toLocalDateKey } from "../utils/dateKeys";
 
 export type ProfileLevel = "Beginner" | "Intermediate" | "Advanced";
 
@@ -305,7 +307,7 @@ export const saveAssignmentStatus = async (uid: string, status: AssignmentStatus
 // --- BODY METRICS ---
 
 export const saveBodyMetric = async (uid: string, metric: { weight: number; bodyFat?: number }): Promise<void> => {
-  const today = new Date().toISOString().split("T")[0];
+  const today = toLocalDateKey();
   const collRef = collection(db, usersCollection, uid, "metrics");
   const userRef = doc(db, usersCollection, uid);
 
@@ -356,7 +358,6 @@ export const subscribeToProgressPhotos = (uid: string, callback: (photos: Progre
 
 export const deleteProgressPhoto = async (uid: string, photoId: string): Promise<void> => {
   const ref = doc(db, usersCollection, uid, "photos", photoId);
-  const { deleteDoc } = require("firebase/firestore");
   await deleteDoc(ref);
 };
 

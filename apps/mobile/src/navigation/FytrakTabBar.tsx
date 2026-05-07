@@ -1,9 +1,10 @@
 import { useEffect, useRef, useState } from "react";
-import { MaterialTopTabBarProps } from "@react-navigation/material-top-tabs";
+import { ParamListBase, TabNavigationState } from "@react-navigation/native";
 import { Ionicons } from "@expo/vector-icons";
 import { Animated, Pressable, StyleSheet, useWindowDimensions, View, Keyboard } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { colors } from "../theme/colors";
+import { radius } from "../theme/tokens";
 
 const iconByRoute: Record<string, keyof typeof Ionicons.glyphMap> = {
   Workouts: "barbell-outline",
@@ -18,7 +19,17 @@ const iconByRoute: Record<string, keyof typeof Ionicons.glyphMap> = {
   CoachProfile: "person-outline",
 };
 
-export function FytrakTabBar({ state, descriptors, navigation }: MaterialTopTabBarProps) {
+type FytrakTabBarProps = {
+  state: TabNavigationState<ParamListBase>;
+  navigation: {
+    emit: (options: { type: "tabPress"; target?: string; canPreventDefault: true }) => {
+      defaultPrevented: boolean;
+    };
+    navigate: (name: string) => void;
+  };
+};
+
+export function FytrakTabBar({ state, navigation }: FytrakTabBarProps) {
   const insets = useSafeAreaInsets();
   const { width } = useWindowDimensions();
   const tabWidth = (width - 40) / state.routes.length; // Adjusted for paddingHorizontal 20
@@ -86,7 +97,15 @@ export function FytrakTabBar({ state, descriptors, navigation }: MaterialTopTabB
           const activeIconName = iconName.replace("-outline", "") as keyof typeof Ionicons.glyphMap;
 
           return (
-            <Pressable key={route.key} onPress={onPress} style={styles.tabButton}>
+            <Pressable
+              key={route.key}
+              onPress={onPress}
+              accessibilityRole="tab"
+              accessibilityLabel={`${route.name} tab`}
+              accessibilityState={{ selected: isFocused }}
+              style={styles.tabButton}
+              hitSlop={8}
+            >
               <AnimatedIcon
                 isFocused={isFocused}
                 name={isFocused ? activeIconName : iconName}
@@ -148,10 +167,10 @@ const styles = StyleSheet.create({
   },
   bar: {
     height: 68,
-    backgroundColor: "#1c1c1e",
-    borderRadius: 34,
+    backgroundColor: colors.surface,
+    borderRadius: radius.pill,
     borderWidth: 1.5,
-    borderColor: "#2c2c2e",
+    borderColor: colors.borderSubtle,
     flexDirection: "row",
     alignItems: "center",
     shadowColor: "#000",
@@ -169,10 +188,10 @@ const styles = StyleSheet.create({
   indicatorBubble: {
     width: 60,
     height: 60,
-    borderRadius: 30,
+    borderRadius: radius.pill,
     backgroundColor: "#0b0b0b",
     borderWidth: 2,
-    borderColor: "#333",
+    borderColor: colors.border,
     alignItems: "center",
     justifyContent: "center",
     marginTop: -42,
@@ -199,6 +218,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     height: "100%",
+    minWidth: 44,
     zIndex: 1,
   },
 });

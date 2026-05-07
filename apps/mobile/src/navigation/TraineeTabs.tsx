@@ -1,4 +1,5 @@
 import { createMaterialTopTabNavigator } from "@react-navigation/material-top-tabs";
+import type { MaterialTopTabScreenProps } from "@react-navigation/material-top-tabs";
 import { useNavigation } from "@react-navigation/native";
 import { FytrakTabBar } from "./FytrakTabBar";
 import { CoachChatScreen } from "../screens/trainee/CoachChatScreen";
@@ -13,19 +14,12 @@ import { colors } from "../theme/colors";
 import { ScreenShell } from "../components/ScreenShell";
 
 import { SessionState } from "../state/types";
-
-export type TraineeTabsParamList = {
-  Workouts: undefined;
-  Nutrition: undefined;
-  Home: undefined;
-  Progress: undefined;
-  Chat: undefined;
-};
+import type { RootStackNavigation, TraineeTabsParamList } from "./types";
 
 const Tab = createMaterialTopTabNavigator<TraineeTabsParamList>();
 
 export function TraineeTabs({ session }: { session: SessionState }) {
-  const navigation = useNavigation<any>();
+  const navigation = useNavigation<RootStackNavigation>();
 
   return (
     <Tab.Navigator
@@ -40,7 +34,7 @@ export function TraineeTabs({ session }: { session: SessionState }) {
       <Tab.Screen name="Workouts" component={WorkoutLogScreen} />
       <Tab.Screen name="Nutrition" component={NutritionScreen} />
       <Tab.Screen name="Home">
-        {(props: any) => (
+        {(props: MaterialTopTabScreenProps<TraineeTabsParamList, "Home">) => (
           <TraineeHomeScreen
             onQuickAskCoach={() => props.navigation.navigate("Chat")}
           />

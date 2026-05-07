@@ -4,28 +4,35 @@ import { ScreenShell } from "../../components/ScreenShell";
 import { colors } from "../../theme/colors";
 import { Ionicons } from "@expo/vector-icons";
 import { auth } from "../../config/firebase";
-import { subscribeToCoachTrainees } from "../../services/userSession";
+import { subscribeToCoachTrainees, type CoachTrainee } from "../../services/userSession";
 import { useNavigation } from "@react-navigation/native";
+import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
+import type { RootStackParamList } from "../../navigation/types";
 
 export function CoachClientsScreen() {
-    const [trainees, setTrainees] = useState<any[]>([]);
+    const [trainees, setTrainees] = useState<CoachTrainee[]>([]);
     const [search, setSearch] = useState("");
     const [isLoading, setIsLoading] = useState(true);
-    const navigation = useNavigation<any>();
+    const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
 
     useEffect(() => {
         const user = auth.currentUser;
         if (!user) return;
 
         const unsubscribe = subscribeToCoachTrainees(user.uid, (data) => {
-            setTrainees(data.filter((t: any) => t.assignmentStatus === "assigned"));
+            setTrainees(data.filter((t) => t.assignmentStatus === "assigned"));
             setIsLoading(false);
         });
 
         return () => unsubscribe();
     }, []);
 
-    const filtered = trainees.filter(t => (t.name || "").toLowerCase().includes(search.toLowerCase()));
+    const searchTerm = search.trim().toLowerCase();
+    const filtered = trainees.filter((trainee) => {
+        const name = trainee.name || "";
+        const goal = trainee.profile?.goalText || trainee.profile?.goal || "";
+        return `${name} ${goal}`.toLowerCase().includes(searchTerm);
+    });
 
     return (
         <ScreenShell
@@ -44,9 +51,9 @@ export function CoachClientsScreen() {
                         onChangeText={setSearch}
                     />
                 </View>
-                <Pressable style={styles.filterBtn}>
-                    <Ionicons name="filter" size={20} color="#ffffff" />
-                </Pressable>
+                <View style={styles.countBadge}>
+                    <Text style={styles.countText}>{filtered.length}</Text>
+                </View>
             </View>
 
             {isLoading ? (
@@ -73,7 +80,7 @@ export function CoachClientsScreen() {
                                     <Text style={styles.name}>{t.name || "Anonymous"}</Text>
                                     <View style={styles.statusRow}>
                                         <View style={styles.statusDot} />
-                                        <Text style={styles.goal}>{t.profile?.goal || "General Fitness"}</Text>
+                                    <Text style={styles.goal}>{t.profile?.goalText || t.profile?.goal || "General Fitness"}</Text>
                                     </View>
                                 </View>
                                 <Ionicons name="chevron-forward" size={20} color="#333" />
@@ -114,15 +121,20 @@ const styles = StyleSheet.create({
         fontSize: 15,
         fontWeight: "600",
     },
-    filterBtn: {
+    countBadge: {
         width: 48,
         height: 48,
         borderRadius: 16,
-        backgroundColor: "#161616",
+        backgroundColor: colors.primary,
         alignItems: "center",
         justifyContent: "center",
         borderWidth: 1,
-        borderColor: "#2c2c2e",
+        borderColor: colors.primary,
+    },
+    countText: {
+        color: colors.primaryText,
+        fontSize: 14,
+        fontWeight: "900",
     },
     loader: {
         marginTop: 40,

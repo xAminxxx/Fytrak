@@ -2,6 +2,7 @@ import React from "react";
 import { View, StyleSheet, Text } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { colors } from "../theme/colors";
+import { spacing, typography } from "../theme/tokens";
 
 interface SectionTitleProps {
   title: string;
@@ -12,7 +13,7 @@ export function SectionTitle({ title, icon }: SectionTitleProps) {
   return (
     <View style={styles.sectionHeader}>
       <Ionicons name={icon} size={18} color={colors.primary} />
-      <Text style={styles.sectionTitleText}>{title}</Text>
+      <Text accessibilityRole="header" style={styles.sectionTitleText}>{title}</Text>
     </View>
   );
 }
@@ -21,14 +22,13 @@ const styles = StyleSheet.create({
   sectionHeader: { 
     flexDirection: "row", 
     alignItems: "center", 
-    gap: 10, 
-    marginTop: 10, 
-    marginBottom: 4 
+    gap: spacing.sm,
+    marginTop: spacing.md,
+    marginBottom: spacing.xs,
   },
   sectionTitleText: { 
-    color: "#ffffff", 
-    fontWeight: "800", 
-    fontSize: 13, 
-    letterSpacing: 0.5 
+    color: colors.text,
+    ...typography.bodySmall,
+    fontWeight: "800",
   },
 });

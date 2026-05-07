@@ -4,30 +4,34 @@ import { ScreenShell } from "../../components/ScreenShell";
 import { colors } from "../../theme/colors";
 import { Ionicons } from "@expo/vector-icons";
 import { auth } from "../../config/firebase";
-import { subscribeToCoachTrainees, respondToTraineeRequest } from "../../services/userSession";
+import {
+    fetchCoachClientSignals,
+    respondToTraineeRequest,
+    subscribeToCoachTrainees,
+    type CoachTrainee,
+} from "../../services/userSession";
 import { useNavigation } from "@react-navigation/native";
-import { NativeStackNavigationProp } from "@react-navigation/native-stack";
-import { CoachTabsParamList } from "../../navigation/CoachTabs";
-
-type Trainee = {
-    id: string;
-    name: string;
-    profile?: { goalText?: string; goal?: string };
-    lastActiveAt?: any;
-    assignmentStatus: "assigned" | "pending";
-};
+import type { CoachHomeNavigation } from "../../navigation/types";
+import {
+    buildCoachDashboardIntelligence,
+    type CoachClientIntelligence,
+    type CoachClientSignal,
+} from "../../features/coaching/coachIntelligence";
+import { trackEvent } from "../../services/analytics";
 
 export function CoachHomeScreen() {
-    const [trainees, setTrainees] = useState<Trainee[]>([]);
+    const [trainees, setTrainees] = useState<CoachTrainee[]>([]);
+    const [clientSignals, setClientSignals] = useState<CoachClientSignal[]>([]);
     const [isLoading, setIsLoading] = useState(true);
-    const navigation = useNavigation<NativeStackNavigationProp<CoachTabsParamList>>();
+    const [isLoadingSignals, setIsLoadingSignals] = useState(false);
+    const navigation = useNavigation<CoachHomeNavigation>();
 
     useEffect(() => {
         const user = auth.currentUser;
         if (!user) return;
 
         const unsubscribe = subscribeToCoachTrainees(user.uid, (data) => {
-            setTrainees(data as Trainee[]);
+            setTrainees(data);
             setIsLoading(false);
         });
 
@@ -37,31 +41,65 @@ export function CoachHomeScreen() {
     const pending = useMemo(() => trainees.filter(t => t.assignmentStatus === "pending"), [trainees]);
     const assigned = useMemo(() => trainees.filter(t => t.assignmentStatus === "assigned"), [trainees]);
 
+    useEffect(() => {
+        let isMounted = true;
+
+        if (assigned.length === 0) {
+            setClientSignals([]);
+            return;
+        }
+
+        setIsLoadingSignals(true);
+        fetchCoachClientSignals(assigned)
+            .then((signals) => {
+                if (isMounted) setClientSignals(signals);
+            })
+            .catch((error) => {
+                console.error("Failed to load coach intelligence:", error);
+                if (isMounted) setClientSignals([]);
+            })
+            .finally(() => {
+                if (isMounted) setIsLoadingSignals(false);
+            });
+
+        return () => {
+            isMounted = false;
+        };
+    }, [assigned]);
+
+    const dashboard = useMemo(() => buildCoachDashboardIntelligence(clientSignals), [clientSignals]);
+
+    const clientIntelligenceById = useMemo(() => {
+        return new Map(dashboard.clients.map((client) => [client.traineeId, client]));
+    }, [dashboard.clients]);
+
+    const atRiskClients = useMemo(() => {
+        return dashboard.clients.filter((client) => client.risk !== "low").slice(0, 3);
+    }, [dashboard.clients]);
+
     const stats = useMemo(() => {
-        const totalClients = assigned.length;
-        const newLeads = pending.length;
-        // Mock consistency linked to client count to feel dynamic
-        const consistency = totalClients > 0 ? 85 + (totalClients % 10) : 0;
-        return { totalClients, newLeads, consistency };
-    }, [assigned, pending]);
+        return {
+            totalClients: assigned.length,
+            newLeads: pending.length,
+            consistency: dashboard.avgCompliance,
+        };
+    }, [assigned.length, dashboard.avgCompliance, pending.length]);
 
     const insights = useMemo(() => {
-        if (assigned.length === 0) return [
-            { title: "Roster is empty", sub: "New trainees will appear here once they request you.", icon: "people-outline" }
-        ];
-        return [
-            {
-                title: "Compliance is steady",
-                sub: `Your ${assigned.length} clients logged ${assigned.length * 3} workouts this week.`,
-                icon: "trending-up"
-            },
-            {
-                title: "New Opportunity",
-                sub: pending.length > 0 ? `You have ${pending.length} pending requests to review.` : "No new requests today.",
-                icon: "mail-outline"
-            }
-        ];
-    }, [assigned, pending]);
+        if (pending.length > 0) {
+            return [
+                {
+                    title: "New Opportunity",
+                    sub: `${pending.length} pending request${pending.length === 1 ? "" : "s"} waiting for your review.`,
+                    icon: "mail-outline",
+                    tone: "warning" as const,
+                },
+                ...dashboard.insights,
+            ];
+        }
+
+        return dashboard.insights;
+    }, [dashboard.insights, pending.length]);
 
     const handleAction = async (traineeId: string, name: string, accept: boolean) => {
         const action = accept ? "Accept" : "Reject";
@@ -132,10 +170,10 @@ export function CoachHomeScreen() {
                                         <Text style={styles.goal}>{t.profile?.goal ?? "Not set"}</Text>
                                     </View>
                                     <View style={styles.actions}>
-                                        <Pressable style={styles.acceptBtn} onPress={() => handleAction(t.id, t.name, true)}>
+                                        <Pressable style={styles.acceptBtn} onPress={() => handleAction(t.id, t.name || "Anonymous", true)}>
                                             <Ionicons name="person-add" size={18} color={colors.primaryText} />
                                         </Pressable>
-                                        <Pressable style={styles.rejectBtn} onPress={() => handleAction(t.id, t.name, false)}>
+                                        <Pressable style={styles.rejectBtn} onPress={() => handleAction(t.id, t.name || "Anonymous", false)}>
                                             <Ionicons name="close" size={20} color="#ff4444" />
                                         </Pressable>
                                     </View>
@@ -144,11 +182,45 @@ export function CoachHomeScreen() {
                         </View>
                     )}
 
+                    {/* COACH INTELLIGENCE */}
+                    {assigned.length > 0 && (
+                        <View style={styles.section}>
+                            <View style={styles.sectionHeader}>
+                                <Text style={styles.sectionTitle}>Client Risk Radar</Text>
+                                {isLoadingSignals ? <ActivityIndicator color={colors.primary} size="small" /> : null}
+                            </View>
+                            {atRiskClients.length === 0 ? (
+                                <View style={styles.emptyBox}>
+                                    <Ionicons name="shield-checkmark-outline" size={30} color={colors.primary} style={{ marginBottom: 10 }} />
+                                    <Text style={styles.emptyText}>No at-risk clients detected this week.</Text>
+                                </View>
+                            ) : (
+                                atRiskClients.map((client) => {
+                                    const trainee = assigned.find((item) => item.id === client.traineeId);
+                                    return (
+                                        <RiskCard
+                                            key={client.traineeId}
+                                            client={client}
+                                            name={trainee?.name || "Anonymous"}
+                                            onOpen={() => {
+                                                trackEvent("coach_risk_card_opened", {
+                                                    risk: client.risk,
+                                                    complianceScore: client.complianceScore,
+                                                });
+                                                navigation.navigate("TraineeDetail", { traineeId: client.traineeId, traineeName: trainee?.name || "Anonymous" });
+                                            }}
+                                        />
+                                    );
+                                })
+                            )}
+                        </View>
+                    )}
+
                     {/* CLIENT ROSTER */}
                     <View style={styles.section}>
                         <View style={styles.sectionHeader}>
                             <Text style={styles.sectionTitle}>Client Roster</Text>
-                            <Pressable onPress={() => (navigation as any).navigate("CoachClients")}><Text style={styles.seeAll}>Manage All</Text></Pressable>
+                            <Pressable onPress={() => navigation.navigate("CoachClients")}><Text style={styles.seeAll}>Manage All</Text></Pressable>
                         </View>
                         {assigned.length === 0 ? (
                             <View style={styles.emptyBox}>
@@ -156,11 +228,13 @@ export function CoachHomeScreen() {
                                 <Text style={styles.emptyText}>Your roster is empty.</Text>
                             </View>
                         ) : (
-                            assigned.slice(0, 5).map(t => (
+                            assigned.slice(0, 5).map(t => {
+                                const intelligence = clientIntelligenceById.get(t.id);
+                                return (
                                 <Pressable
                                     key={t.id}
                                     style={styles.traineeCard}
-                                    onPress={() => navigation.navigate("TraineeDetail" as any, { traineeId: t.id, traineeName: t.name })}
+                                    onPress={() => navigation.navigate("TraineeDetail", { traineeId: t.id, traineeName: t.name || "Anonymous" })}
                                 >
                                     <View style={[styles.traineeMain, { flex: 1 }]}>
                                         <View style={styles.avatarOuter}>
@@ -176,14 +250,23 @@ export function CoachHomeScreen() {
                                     </View>
 
                                     <View style={styles.traineeMetrics}>
-                                        <View style={styles.metricItem}>
-                                            <Ionicons name="flame" size={14} color={colors.primary} />
-                                            <Text style={styles.metricText}>12d</Text>
+                                        <View style={[
+                                            styles.metricItem,
+                                            intelligence?.risk === "high" && styles.metricItemDanger,
+                                            intelligence?.risk === "medium" && styles.metricItemWarning,
+                                        ]}>
+                                            <Ionicons
+                                                name={intelligence?.risk === "high" ? "warning" : "pulse"}
+                                                size={14}
+                                                color={intelligence?.risk === "high" ? "#ff7777" : colors.primary}
+                                            />
+                                            <Text style={styles.metricText}>{intelligence?.complianceScore ?? "--"}%</Text>
                                         </View>
                                         <Ionicons name="chevron-forward" size={18} color="#444" />
                                     </View>
                                 </Pressable>
-                            ))
+                                );
+                            })
                         )}
                     </View>
 
@@ -192,8 +275,11 @@ export function CoachHomeScreen() {
                         <Text style={styles.sectionTitle}>Weekly Insights</Text>
                         {insights.map((insight, idx) => (
                             <View key={idx} style={styles.insightCard}>
-                                <View style={styles.insightIcon}>
-                                    <Ionicons name={insight.icon as any} size={20} color={colors.primary} />
+                                <View style={[
+                                    styles.insightIcon,
+                                    insight.tone === "warning" && styles.insightIconWarning,
+                                ]}>
+                                    <Ionicons name={insight.icon as any} size={20} color={insight.tone === "warning" ? "#fbbf24" : colors.primary} />
                                 </View>
                                 <View style={{ flex: 1 }}>
                                     <Text style={styles.insightTitle}>{insight.title}</Text>
@@ -205,6 +291,41 @@ export function CoachHomeScreen() {
                 </ScrollView>
             )}
         </ScreenShell>
+    );
+}
+
+function RiskCard({
+    client,
+    name,
+    onOpen,
+}: {
+    client: CoachClientIntelligence;
+    name: string;
+    onOpen: () => void;
+}) {
+    const isHighRisk = client.risk === "high";
+
+    return (
+        <Pressable style={[styles.riskCard, isHighRisk && styles.riskCardHigh]} onPress={onOpen}>
+            <View style={styles.riskHeader}>
+                <View style={styles.riskIdentity}>
+                    <View style={[styles.riskAvatar, isHighRisk && styles.riskAvatarHigh]}>
+                        <Text style={styles.avatarTextSmall}>{name[0]?.toUpperCase() || "?"}</Text>
+                    </View>
+                    <View style={{ flex: 1 }}>
+                        <Text style={styles.name}>{name}</Text>
+                        <Text style={styles.goal}>{client.riskReason}</Text>
+                    </View>
+                </View>
+                <View style={[styles.scorePill, isHighRisk && styles.scorePillHigh]}>
+                    <Text style={[styles.scoreText, isHighRisk && styles.scoreTextHigh]}>{client.complianceScore}%</Text>
+                </View>
+            </View>
+            <View style={styles.nudgeBox}>
+                <Ionicons name="chatbubble-ellipses-outline" size={15} color={isHighRisk ? "#ff7777" : colors.primary} />
+                <Text style={styles.nudgeText}>{client.suggestedNudge}</Text>
+            </View>
+        </Pressable>
     );
 }
 
@@ -400,6 +521,16 @@ const styles = StyleSheet.create({
         paddingVertical: 4,
         borderRadius: 8,
     },
+    metricItemDanger: {
+        backgroundColor: "#251414",
+        borderWidth: 1,
+        borderColor: "#5a2222",
+    },
+    metricItemWarning: {
+        backgroundColor: "#241f12",
+        borderWidth: 1,
+        borderColor: "#5a4818",
+    },
     metricText: {
         color: "#ffffff",
         fontSize: 11,
@@ -437,6 +568,11 @@ const styles = StyleSheet.create({
         alignItems: "center",
         justifyContent: "center",
     },
+    insightIconWarning: {
+        backgroundColor: "#241f12",
+        borderWidth: 1,
+        borderColor: "#5a4818",
+    },
     insightTitle: {
         color: "#ffffff",
         fontSize: 15,
@@ -448,5 +584,81 @@ const styles = StyleSheet.create({
         fontSize: 12,
         lineHeight: 18,
         fontWeight: "500",
+    },
+    riskCard: {
+        backgroundColor: "#161616",
+        borderRadius: 24,
+        padding: 16,
+        borderWidth: 1,
+        borderColor: "#2c2c2e",
+        gap: 14,
+    },
+    riskCardHigh: {
+        borderColor: "#5a2222",
+        backgroundColor: "#181212",
+    },
+    riskHeader: {
+        flexDirection: "row",
+        alignItems: "center",
+        justifyContent: "space-between",
+        gap: 12,
+    },
+    riskIdentity: {
+        flex: 1,
+        flexDirection: "row",
+        alignItems: "center",
+        gap: 12,
+    },
+    riskAvatar: {
+        width: 44,
+        height: 44,
+        borderRadius: 22,
+        backgroundColor: "#1c1c1e",
+        alignItems: "center",
+        justifyContent: "center",
+        borderWidth: 1,
+        borderColor: "#333",
+    },
+    riskAvatarHigh: {
+        borderColor: "#703030",
+        backgroundColor: "#251414",
+    },
+    scorePill: {
+        minWidth: 52,
+        alignItems: "center",
+        paddingHorizontal: 10,
+        paddingVertical: 7,
+        borderRadius: 999,
+        backgroundColor: "#1c1c1e",
+        borderWidth: 1,
+        borderColor: "#2c2c2e",
+    },
+    scorePillHigh: {
+        backgroundColor: "#251414",
+        borderColor: "#5a2222",
+    },
+    scoreText: {
+        color: colors.primary,
+        fontSize: 12,
+        fontWeight: "900",
+    },
+    scoreTextHigh: {
+        color: "#ff7777",
+    },
+    nudgeBox: {
+        flexDirection: "row",
+        gap: 10,
+        backgroundColor: "#101010",
+        borderRadius: 14,
+        padding: 12,
+        borderWidth: 1,
+        borderColor: "#242424",
+    },
+    nudgeText: {
+        flex: 1,
+        color: "#c8c8c8",
+        fontSize: 12,
+        lineHeight: 18,
+        fontWeight: "600",
     },
 });

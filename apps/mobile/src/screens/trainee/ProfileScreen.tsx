@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Pressable, StyleSheet, TextInput, View, Alert, ActivityIndicator, Image, ScrollView } from "react-native";
+import { Pressable, StyleSheet, TextInput, View, Alert, ActivityIndicator, Image, ScrollView, Text } from "react-native";
 import * as ImagePicker from 'expo-image-picker';
 import { ScreenShell } from "../../components/ScreenShell";
 import { colors } from "../../theme/colors";
@@ -11,6 +11,8 @@ import { auth } from "../../config/firebase";
 import { subscribeToUserProfile, type UserProfile, saveAssignmentStatus, saveUserProfile, uploadProfileImage } from "../../services/userSession";
 import { Typography } from "../../components/Typography";
 import { SessionState } from "../../state/types";
+import { calculateEarnedBadges, Badge } from "../../services/badgeService";
+import { subscribeToWorkouts, type WorkoutLog } from "../../services/workoutService";
 
 export function ProfileScreen({ session }: { session: SessionState }) {
   const [profile, setProfile] = useState<UserProfile | null>(null);
@@ -20,6 +22,7 @@ export function ProfileScreen({ session }: { session: SessionState }) {
   const [tempName, setTempName] = useState("");
   const [notificationsEnabled, setNotificationsEnabled] = useState(true);
   const [isLoading, setIsLoading] = useState(true);
+  const [earnedBadges, setEarnedBadges] = useState<Badge[]>([]);
   const navigation = useNavigation<any>();
 
   useEffect(() => {
@@ -33,7 +36,15 @@ export function ProfileScreen({ session }: { session: SessionState }) {
       setIsLoading(false);
     });
 
-    return () => unsubscribe();
+    const unsubWorkouts = subscribeToWorkouts(user.uid, (data: WorkoutLog[]) => {
+      const earned = calculateEarnedBadges(data);
+      setEarnedBadges(earned);
+    });
+
+    return () => {
+      unsubscribe();
+      unsubWorkouts();
+    };
   }, []);
 
   const handleLogout = () => {
@@ -155,6 +166,29 @@ export function ProfileScreen({ session }: { session: SessionState }) {
               <Typography variant="label" color="#8c8c8c">ACTIVE ID: #{auth.currentUser?.uid.slice(0, 8).toUpperCase()}</Typography>
             </View>
           </View>
+
+          <View style={styles.divider} />
+          
+          {/* BADGES SECTION */}
+          <View style={styles.badgeSection}>
+             <Typography variant="label" color="#444" style={{ marginBottom: 12 }}>ACHIEVEMENTS</Typography>
+             <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.badgeRow}>
+                {earnedBadges.length > 0 ? earnedBadges.map(b => (
+                  <View key={b.id} style={styles.badgeItem}>
+                     <View style={[styles.badgeIcon, { backgroundColor: b.color + '20', borderColor: b.color + '40' }]}>
+                        <Ionicons name={b.icon as any} size={20} color={b.color} />
+                     </View>
+                     <Text style={styles.badgeTitle}>{b.title}</Text>
+                  </View>
+                )) : (
+                  <View style={styles.emptyBadge}>
+                     <Typography variant="label" color="#444" style={{ fontSize: 10 }}>Log your first workout to earn badges</Typography>
+                  </View>
+                )}
+             </ScrollView>
+          </View>
+
+          <View style={styles.divider} />
 
           <View style={styles.bioGrid}>
              <BioTile label="Body Weight" value={`${profile?.weight || "--"} kg`} icon="body-outline" color={colors.primary} />
@@ -524,5 +558,40 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
+  badgeSection: {
+    paddingVertical: 10,
+  },
+  badgeRow: {
+    flexDirection: 'row',
+  },
+  badgeItem: {
+    alignItems: 'center',
+    marginRight: 20,
+    width: 80,
+    gap: 6,
+  },
+  badgeIcon: {
+    width: 52,
+    height: 52,
+    borderRadius: 26,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+  },
+  badgeTitle: {
+    color: '#ccc',
+    fontSize: 10,
+    fontWeight: '800',
+    textAlign: 'center',
+  },
+  emptyBadge: {
+    backgroundColor: '#0a0a0a',
+    padding: 16,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: '#1c1c1e',
+    borderStyle: 'dashed',
+    flex: 1,
+  }
 });
 
