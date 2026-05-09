@@ -26,11 +26,18 @@ export const appEnv = {
     ),
     androidClientId: process.env.EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID,
   },
+  facebook: {
+    appId: process.env.EXPO_PUBLIC_FACEBOOK_APP_ID,
+  },
   cloudinary: {
     cloudName: required(process.env.EXPO_PUBLIC_CLOUDINARY_CLOUD_NAME, "EXPO_PUBLIC_CLOUDINARY_CLOUD_NAME"),
     uploadPreset: required(
       process.env.EXPO_PUBLIC_CLOUDINARY_UPLOAD_PRESET,
       "EXPO_PUBLIC_CLOUDINARY_UPLOAD_PRESET"
     ),
+  },
+  rapidApi: {
+    key: process.env.EXPO_PUBLIC_RAPIDAPI_KEY,
+    ascendApiHost: process.env.EXPO_PUBLIC_ASCENDAPI_HOST || "edb-with-videos-and-images-by-ascendapi.p.rapidapi.com",
   },
 };

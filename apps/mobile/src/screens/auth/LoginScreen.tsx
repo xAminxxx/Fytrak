@@ -9,15 +9,14 @@ import type { RootStackParamList } from "../../navigation/types";
 import * as WebBrowser from "expo-web-browser";
 import { Typography } from "../../components/Typography";
 import { PrimaryButton } from "../../components/Button";
+import { ResponseType } from "expo-auth-session";
 import * as Google from "expo-auth-session/providers/google";
+import * as Facebook from "expo-auth-session/providers/facebook";
 import { appEnv } from "../../config/env";
-import Svg, { Path, G, Circle } from "react-native-svg";
-import appConfig from "../../../app.json";
+import Svg, { Path, Circle } from "react-native-svg";
+import { expoAuthProxyRedirectUri } from "../../utils/authRedirect";
 
 WebBrowser.maybeCompleteAuthSession();
-
-// Build the Expo Auth Proxy URI dynamically from app.json
-const EXPO_AUTH_PROXY = `https://auth.expo.io/@${appConfig.expo.owner}/${appConfig.expo.slug}`;
 
 // PREMIUM SVG LOGOS
 const GoogleLogo = () => (
@@ -54,9 +53,10 @@ const FacebookLogo = () => (
 type LoginScreenProps = {
   onLogin: (credentials: { email: string; password: string }) => Promise<void>;
   onGoogleLogin: (idToken: string) => Promise<void>;
+  onFacebookLogin: (accessToken: string) => Promise<void>;
 };
 
-export function LoginScreen({ onLogin, onGoogleLogin }: LoginScreenProps) {
+export function LoginScreen({ onLogin, onGoogleLogin, onFacebookLogin }: LoginScreenProps) {
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -64,10 +64,17 @@ export function LoginScreen({ onLogin, onGoogleLogin }: LoginScreenProps) {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errorText, setErrorText] = useState<string | null>(null);
 
-  const [request, _response, promptAsync] = Google.useIdTokenAuthRequest({
+  const [request, _response, promptAsync] = Google.useAuthRequest({
     clientId: appEnv.google.webClientId,
-    androidClientId: appEnv.google.androidClientId,
-    redirectUri: EXPO_AUTH_PROXY,
+    webClientId: appEnv.google.webClientId,
+    androidClientId: appEnv.google.webClientId,
+    scopes: ["openid", "profile", "email"],
+    responseType: ResponseType.IdToken,
+    redirectUri: expoAuthProxyRedirectUri,
+  });
+  const [facebookRequest, _facebookResponse, promptFacebookAsync] = Facebook.useAuthRequest({
+    clientId: appEnv.facebook.appId || "missing-facebook-app-id",
+    redirectUri: expoAuthProxyRedirectUri,
   });
 
   const canSubmit = useMemo(() => email.trim().includes("@") && password.trim().length >= 6, [email, password]);
@@ -89,8 +96,7 @@ export function LoginScreen({ onLogin, onGoogleLogin }: LoginScreenProps) {
   };
 
   const handleGoogleLogin = async () => {
-    // If request failed to init (client IDs missing), report it early
-    if (!request) {
+    if (!appEnv.google.webClientId || !request) {
       setErrorText("Google Authentication is not configured.");
       return;
     }
@@ -116,6 +122,38 @@ export function LoginScreen({ onLogin, onGoogleLogin }: LoginScreenProps) {
       await onGoogleLogin(idToken);
     } catch (error) {
       setErrorText(error instanceof Error ? error.message : "Google sign-in failed.");
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const handleFacebookLogin = async () => {
+    if (!appEnv.facebook.appId || !facebookRequest) {
+      setErrorText("Facebook Authentication is not configured.");
+      return;
+    }
+
+    if (isSubmitting) return;
+
+    try {
+      setIsSubmitting(true);
+      setErrorText(null);
+      const result = await promptFacebookAsync();
+
+      if (result.type !== "success") {
+        setErrorText("Facebook sign-in was cancelled.");
+        return;
+      }
+
+      const accessToken = result.authentication?.accessToken || result.params?.access_token;
+      if (!accessToken) {
+        setErrorText("Facebook sign-in failed: missing access token.");
+        return;
+      }
+
+      await onFacebookLogin(accessToken);
+    } catch (error) {
+      setErrorText(error instanceof Error ? error.message : "Facebook sign-in failed.");
     } finally {
       setIsSubmitting(false);
     }
@@ -181,12 +219,24 @@ export function LoginScreen({ onLogin, onGoogleLogin }: LoginScreenProps) {
           <View style={styles.dividerLine} />
         </View>
 
-        <Pressable style={styles.socialButton} onPress={() => void handleGoogleLogin()}>
+        <Pressable
+          style={[styles.socialButton, isSubmitting && styles.socialButtonDisabled]}
+          disabled={isSubmitting}
+          accessibilityRole="button"
+          accessibilityLabel="Sign in with Google"
+          onPress={() => void handleGoogleLogin()}
+        >
           <GoogleLogo />
           <Typography color="#000" variant="button">Sign in with Google</Typography>
         </Pressable>
 
-        <Pressable style={styles.socialButton} onPress={() => Alert.alert("Facebook", "Facebook Login is pending final verification.")}>
+        <Pressable
+          style={[styles.socialButton, isSubmitting && styles.socialButtonDisabled]}
+          disabled={isSubmitting}
+          accessibilityRole="button"
+          accessibilityLabel="Continue with Facebook"
+          onPress={() => void handleFacebookLogin()}
+        >
           <FacebookLogo />
           <Typography color="#000" variant="button">Continue with Facebook</Typography>
         </Pressable>
@@ -201,8 +251,6 @@ export function LoginScreen({ onLogin, onGoogleLogin }: LoginScreenProps) {
     </ScreenShell>
   );
 }
-
-import { Alert } from "react-native";
 
 const styles = StyleSheet.create({
   form: {
@@ -230,6 +278,9 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.1,
     shadowRadius: 4,
     elevation: 2,
+  },
+  socialButtonDisabled: {
+    opacity: 0.55,
   },
   socialText: {
     color: "#000000",

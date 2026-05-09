@@ -19,6 +19,7 @@ import {
 } from "firebase/firestore";
 import { db } from "../config/firebase";
 import { localDateKeyDaysAgo } from "../utils/dateKeys";
+import type { ClientSummary } from "./clientSummaryService";
 
 export type Coach = {
   id: string;
@@ -67,6 +68,7 @@ export type CoachTrainee = {
   assignmentStatus?: "assigned" | "pending" | "rejected" | "expired" | "unassigned";
   selectedCoachId?: string | null;
   selectedCoachName?: string | null;
+  clientSummary?: ClientSummary;
 };
 
 export type CoachClientSignal = {
@@ -125,6 +127,23 @@ export const subscribeToCoachTrainees = (coachId: string, callback: (trainees: C
 };
 
 export const fetchCoachClientSignal = async (trainee: CoachTrainee): Promise<CoachClientSignal> => {
+  if (trainee.clientSummary?.workoutsLast7Days !== undefined || trainee.clientSummary?.mealsLast7Days !== undefined) {
+    const lastWorkoutAt = trainee.clientSummary?.lastWorkoutAt?.toDate
+      ? trainee.clientSummary.lastWorkoutAt.toDate()
+      : trainee.clientSummary?.lastWorkoutAt
+        ? new Date(trainee.clientSummary.lastWorkoutAt)
+        : null;
+
+    return {
+      traineeId: trainee.id,
+      lastWorkoutAt: lastWorkoutAt && !Number.isNaN(lastWorkoutAt.getTime()) ? lastWorkoutAt : null,
+      workoutsLast7Days: trainee.clientSummary?.workoutsLast7Days ?? 0,
+      mealsLast7Days: trainee.clientSummary?.mealsLast7Days ?? 0,
+      avgDailyProtein: trainee.clientSummary?.avgDailyProtein ?? 0,
+      proteinTarget: trainee.macroTargets?.protein ?? null,
+    };
+  }
+
   const workoutSnapshot = await getDocs(
     query(
       collection(db, usersCollection, trainee.id, "workouts"),

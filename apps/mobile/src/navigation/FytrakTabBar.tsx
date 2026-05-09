@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { ParamListBase, TabNavigationState } from "@react-navigation/native";
 import { Ionicons } from "@expo/vector-icons";
-import { Animated, Pressable, StyleSheet, useWindowDimensions, View, Keyboard } from "react-native";
+import { Animated, Keyboard, Pressable, StyleSheet, Text, useWindowDimensions, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { colors } from "../theme/colors";
 import { radius } from "../theme/tokens";
@@ -16,7 +16,24 @@ const iconByRoute: Record<string, keyof typeof Ionicons.glyphMap> = {
   CoachHome: "grid-outline",
   CoachClients: "people-outline",
   CoachLibrary: "library-outline",
+  CoachInbox: "chatbubbles-outline",
   CoachProfile: "person-outline",
+};
+
+const ACTIVE_CIRCLE_SIZE = 44;
+const TAB_BAR_HORIZONTAL_MARGIN = 48;
+
+const labelByRoute: Record<string, string> = {
+  Home: "Today",
+  Workouts: "Workout",
+  Nutrition: "Nutrition",
+  Progress: "Progress",
+  Chat: "Coach",
+  CoachHome: "Today",
+  CoachClients: "Clients",
+  CoachLibrary: "Library",
+  CoachInbox: "Inbox",
+  CoachProfile: "Profile",
 };
 
 type FytrakTabBarProps = {
@@ -32,7 +49,8 @@ type FytrakTabBarProps = {
 export function FytrakTabBar({ state, navigation }: FytrakTabBarProps) {
   const insets = useSafeAreaInsets();
   const { width } = useWindowDimensions();
-  const tabWidth = (width - 40) / state.routes.length; // Adjusted for paddingHorizontal 20
+  const barWidth = width - TAB_BAR_HORIZONTAL_MARGIN;
+  const tabWidth = barWidth / state.routes.length;
 
   const translateX = useRef(new Animated.Value(0)).current;
   const [isKeyboardVisible, setKeyboardVisible] = useState(false);
@@ -58,25 +76,23 @@ export function FytrakTabBar({ state, navigation }: FytrakTabBarProps) {
   if (isKeyboardVisible) return null;
 
   return (
-    <View style={[styles.wrapper, { paddingBottom: Math.max(insets.bottom, 15) }]}>
-      <View style={[styles.bar, { width: width - 48 }]}>
+    <View style={[styles.wrapper, { paddingBottom: Math.max(insets.bottom, 10) }]}>
+      <View style={[styles.bar, { width: barWidth }]}>
         <Animated.View
           style={[
             styles.indicator,
             {
-              width: (width - 48) / state.routes.length,
+              width: tabWidth,
               transform: [{
                 translateX: translateX.interpolate({
-                  inputRange: [0, (width - 40) / state.routes.length * (state.routes.length - 1)],
-                  outputRange: [0, (width - 48) / state.routes.length * (state.routes.length - 1)]
+                  inputRange: [0, tabWidth * (state.routes.length - 1)],
+                  outputRange: [0, tabWidth * (state.routes.length - 1)]
                 })
               }],
             },
           ]}
         >
-          <View style={styles.indicatorBubble}>
-            <View style={styles.indicatorGlow} />
-          </View>
+          <View style={styles.indicatorBubble} />
         </Animated.View>
 
         {state.routes.map((route, index) => {
@@ -106,12 +122,16 @@ export function FytrakTabBar({ state, navigation }: FytrakTabBarProps) {
               style={styles.tabButton}
               hitSlop={8}
             >
-              <AnimatedIcon
-                isFocused={isFocused}
-                name={isFocused ? activeIconName : iconName}
-                color={isFocused ? colors.primary : "#8c8c8c"}
-                size={isFocused ? 28 : 24}
-              />
+              <View style={styles.iconSlot}>
+                <AnimatedIcon
+                  name={isFocused ? activeIconName : iconName}
+                  color={isFocused ? colors.primary : "#8c8c8c"}
+                  size={22}
+                />
+              </View>
+              <Text style={[styles.tabLabel, isFocused && styles.tabLabelActive]}>
+                {labelByRoute[route.name] ?? route.name}
+              </Text>
             </Pressable>
           );
         })}
@@ -121,35 +141,26 @@ export function FytrakTabBar({ state, navigation }: FytrakTabBarProps) {
 }
 
 function AnimatedIcon({
-  isFocused,
   name,
   color,
   size,
 }: {
-  isFocused: boolean;
   name: keyof typeof Ionicons.glyphMap;
   color: string;
   size: number;
 }) {
   const scale = useRef(new Animated.Value(1)).current;
-  const translateY = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
     Animated.spring(scale, {
-      toValue: isFocused ? 1.15 : 1,
+      toValue: 1,
       useNativeDriver: true,
       friction: 5,
     }).start();
-
-    Animated.spring(translateY, {
-      toValue: isFocused ? -22 : 0, // Lift icon into the bubble
-      useNativeDriver: true,
-      friction: 5,
-    }).start();
-  }, [isFocused]);
+  }, []);
 
   return (
-    <Animated.View style={{ transform: [{ scale }, { translateY }] }}>
+    <Animated.View style={{ transform: [{ scale }] }}>
       <Ionicons name={name} size={size} color={color} />
     </Animated.View>
   );
@@ -181,45 +192,51 @@ const styles = StyleSheet.create({
   },
   indicator: {
     position: "absolute",
-    height: "100%",
+    top: 5,
     alignItems: "center",
-    justifyContent: "center",
   },
   indicatorBubble: {
-    width: 60,
-    height: 60,
+    width: ACTIVE_CIRCLE_SIZE,
+    height: ACTIVE_CIRCLE_SIZE,
     borderRadius: radius.pill,
     backgroundColor: "#0b0b0b",
     borderWidth: 2,
     borderColor: colors.border,
     alignItems: "center",
     justifyContent: "center",
-    marginTop: -42,
     shadowColor: colors.primary,
     shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.4,
-    shadowRadius: 15,
+    shadowOpacity: 0.26,
+    shadowRadius: 10,
     elevation: 10,
-  },
-  indicatorGlow: {
-    width: 6,
-    height: 2,
-    borderRadius: 1,
-    backgroundColor: colors.primary,
-    position: "absolute",
-    bottom: 14,
-    shadowColor: colors.primary,
-    shadowOffset: { width: 0, height: 0 },
-    shadowOpacity: 1,
-    shadowRadius: 6,
   },
   tabButton: {
     flex: 1,
     alignItems: "center",
-    justifyContent: "center",
+    justifyContent: "flex-start",
     height: "100%",
     minWidth: 44,
     zIndex: 1,
+    paddingTop: 5,
+    paddingBottom: 9,
+  },
+  iconSlot: {
+    width: ACTIVE_CIRCLE_SIZE,
+    height: ACTIVE_CIRCLE_SIZE,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  tabLabel: {
+    color: "#8c8c8c",
+    fontSize: 9,
+    fontWeight: "800",
+    lineHeight: 11,
+    marginTop: 0,
+    textAlign: "center",
+    width: "100%",
+  },
+  tabLabelActive: {
+    color: colors.primary,
   },
 });
 

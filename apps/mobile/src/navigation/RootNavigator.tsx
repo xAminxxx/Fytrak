@@ -12,6 +12,7 @@ import { PrescribeMealScreen } from "../screens/coach/PrescribeMealScreen";
 import { TemplateDetailScreen } from "../screens/coach/TemplateDetailScreen";
 import {
   loginWithEmailPassword,
+  signInWithFacebookAccessToken,
   signInWithGoogleIdToken,
   signUpWithEmailPassword,
 } from "../services/auth";
@@ -144,6 +145,10 @@ export function RootNavigator() {
                     await signInWithGoogleIdToken(idToken);
                     handleAuthSuccess();
                   }}
+                  onFacebookLogin={async (accessToken) => {
+                    await signInWithFacebookAccessToken(accessToken);
+                    handleAuthSuccess();
+                  }}
                 />
               )}
             </Stack.Screen>
@@ -154,9 +159,13 @@ export function RootNavigator() {
                     await signUpWithEmailPassword(name, email, password, role);
                     handleAuthSuccess(role);
                   }}
-                  onGoogleLogin={async (idToken) => {
+                  onGoogleLogin={async (idToken, role) => {
                     await signInWithGoogleIdToken(idToken);
-                    handleAuthSuccess();
+                    handleAuthSuccess(role);
+                  }}
+                  onFacebookLogin={async (accessToken, role) => {
+                    await signInWithFacebookAccessToken(accessToken);
+                    handleAuthSuccess(role);
                   }}
                 />
               )}

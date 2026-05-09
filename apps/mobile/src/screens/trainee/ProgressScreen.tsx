@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState, useCallback } from "react";
+import React, { useMemo, useState, useCallback } from "react";
 import {
   ScrollView,
   StyleSheet,
@@ -17,52 +17,56 @@ import { ScreenShell } from "../../components/ScreenShell";
 import { colors } from "../../theme/colors";
 import { Ionicons } from "@expo/vector-icons";
 import { Typography } from "../../components/Typography";
-import { auth } from "../../config/firebase";
-import * as ImagePicker from "expo-image-picker";
-import { LineChart, BarChart } from "react-native-gifted-charts";
-import {
-  subscribeToWorkouts,
-  subscribeToLatestMetrics,
-  saveBodyMetric,
-  subscribeToProgressPhotos,
-  saveProgressPhoto,
-  deleteProgressPhoto,
-  subscribeToUserProfile,
-  subscribeToDailyMeals,
-  type WorkoutLog,
-  type BodyMetric,
-  type ProgressPhoto,
-  type UserProfile,
-  type Meal,
-  type WorkoutSetType,
-  type WorkoutSet
-} from "../../services/userSession";
+import { BarChart, LineChart } from "react-native-gifted-charts";
+import { saveBodyMetric, type ProgressPhoto } from "../../services/userSession";
 import { EXERCISE_LIBRARY, t as tEx } from "../../constants/exercises";
-import { uploadProgressPhoto } from "../../services/cloudinaryUpload";
 import { ProgressCamera } from "../../components/ProgressCamera";
 import { CompareSlider } from "../../components/CompareSlider";
+import { TrendChart } from "../../components/TrendChart";
+import { ChartFilterBar } from "../../components/ChartFilterBar";
 import { useNavigation } from "@react-navigation/native";
 import { ConsistencyCalendar } from "../../components/ConsistencyCalendar";
-import { toLocalDateKey } from "../../utils/dateKeys";
+import type { ChartFilter } from "../../utils/chartFilters";
 
 // Clean Components extracted for modularity
 import { MetricCard } from "../../components/MetricCard";
 import { PhotoGridItem } from "../../components/PhotoGridItem";
 import { BFRow } from "../../components/BFRow";
 
+// Extracted hooks — business logic lives here, not in the screen
+import { useCurrentUser } from "../../hooks/useCurrentUser";
+import { useWorkouts } from "../../hooks/useWorkouts";
+import { useUserProfile } from "../../hooks/useUserProfile";
+import { useBodyMetrics } from "../../hooks/useBodyMetrics";
+import { useProgressPhotos } from "../../hooks/useProgressPhotos";
+import { useDailyNutrition } from "../../hooks/useDailyNutrition";
+import { useProgressCharts } from "../../hooks/useProgressCharts";
+
 const GAP = 8;
 
 export function ProgressScreen() {
   const { width: windowWidth } = useWindowDimensions();
   const navigation = useNavigation<any>();
-  const [workouts, setWorkouts] = useState<WorkoutLog[]>([]);
-  const [metrics, setMetrics] = useState<BodyMetric[]>([]);
-  const [photos, setPhotos] = useState<ProgressPhoto[]>([]);
-  const [meals, setMeals] = useState<Meal[]>([]);
-  const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
+  const uid = useCurrentUser();
 
-  // States
+  // Data subscriptions — powered by extracted hooks
+  const workouts = useWorkouts();
+  const { profile: userProfile } = useUserProfile();
+  const { metrics, isLoading } = useBodyMetrics();
+  const { photos, isSaving: isPhotoSaving, handleCapture, handlePickPhoto } = useProgressPhotos();
+  const meals = useDailyNutrition();
+
+  // Chart state
+  const [chartFilter, setChartFilter] = useState<ChartFilter>("1M");
+  const [selectedPrId, setSelectedPrId] = useState<string>("e1");
+
+  // All chart computations — extracted to useProgressCharts hook
+  const {
+    weightChartData, volumeChartData, muscleDistributionData, prChartData,
+    calculateBMI, weeklyConsistency, totalVolumeLifted, macroAdherence,
+  } = useProgressCharts(workouts, metrics, meals, userProfile, chartFilter, selectedPrId);
+
+  // UI-only local state
   const [newWeight, setNewWeight] = useState("");
   const [newBodyFat, setNewBodyFat] = useState("");
   const [isSaving, setIsSaving] = useState(false);
@@ -75,236 +79,13 @@ export function ProgressScreen() {
   const [isBFModalVisible, setIsBFModalVisible] = useState(false);
   const [isCameraVisible, setIsCameraVisible] = useState(false);
   const [activeComparePair, setActiveComparePair] = useState<[ProgressPhoto, ProgressPhoto] | null>(null);
-  const [chartFilter, setChartFilter] = useState<'1W' | '1M' | '3M' | '1Y' | 'ALL'>('1M');
-  const [selectedPrId, setSelectedPrId] = useState<string>("e1"); // Default: Bench Press
-
-  // Computed Values
-  const calculateBMI = useMemo(() => {
-    if (!metrics[0]?.weight || !userProfile?.height) return "--";
-    const heightInM = userProfile.height / 100;
-    return (metrics[0].weight / (heightInM * heightInM)).toFixed(1);
-  }, [metrics, userProfile]);
-
-  const weeklyConsistency = useMemo(() => {
-    const today = new Date();
-    const startOfWeek = new Date(today);
-    startOfWeek.setDate(today.getDate() - today.getDay());
-    startOfWeek.setHours(0, 0, 0, 0);
-
-    return workouts.filter(w => {
-      if (!w.createdAt) return false;
-      const d = w.createdAt.toDate ? w.createdAt.toDate() : new Date(w.createdAt);
-      return d >= startOfWeek;
-    }).length;
-  }, [workouts]);
-
-  const totalVolumeLifted = useMemo(() => {
-    return workouts.reduce((sum, w) => sum + (w.totalVolume || 0), 0);
-  }, [workouts]);
-
-  const weightChartData = useMemo(() => {
-    if (!metrics.length) return { data: [], yAxisOffset: 0 };
-    const now = new Date();
-    let cutoff = new Date(0); // ALL
-    if (chartFilter === '1W') { const d = new Date(); d.setDate(d.getDate() - 7); cutoff = d; }
-    else if (chartFilter === '1M') { const d = new Date(); d.setMonth(d.getMonth() - 1); cutoff = d; }
-    else if (chartFilter === '3M') { const d = new Date(); d.setMonth(d.getMonth() - 3); cutoff = d; }
-    else if (chartFilter === '1Y') { const d = new Date(); d.setFullYear(d.getFullYear() - 1); cutoff = d; }
-
-    const filtered = [...metrics].filter(m => new Date(m.createdAt?.toDate ? m.createdAt.toDate() : m.date) >= cutoff).reverse();
-    if (filtered.length === 0) return { data: [], yAxisOffset: 0 };
-
-    const weights = filtered.map(m => m.weight);
-    const minW = Math.min(...weights);
-    const yAxisOffset = Math.floor(minW - 2);
-
-    return {
-      yAxisOffset,
-      data: filtered.map(m => ({
-        value: m.weight,
-        label: new Date(m.date).toLocaleDateString([], { month: 'numeric', day: 'numeric' }),
-        dataPointText: m.weight.toFixed(1),
-        dataPointColor: colors.primary,
-        dataPointRadius: 5,
-        textColor: '#aaa',
-        textFontSize: 10,
-        textShiftY: -14,
-      }))
-    };
-  }, [metrics, chartFilter]);
-
-  const volumeChartData = useMemo(() => {
-    if (!workouts.length) return { data: [] };
-    let cutoff = new Date(0);
-    if (chartFilter === '1W') { const d = new Date(); d.setDate(d.getDate() - 7); cutoff = d; }
-    else if (chartFilter === '1M') { const d = new Date(); d.setMonth(d.getMonth() - 1); cutoff = d; }
-    else if (chartFilter === '3M') { const d = new Date(); d.setMonth(d.getMonth() - 3); cutoff = d; }
-    else if (chartFilter === '1Y') { const d = new Date(); d.setFullYear(d.getFullYear() - 1); cutoff = d; }
-
-    const filtered = [...workouts]
-      .filter(w => w.createdAt && new Date(w.createdAt.toDate ? w.createdAt.toDate() : w.createdAt) >= cutoff)
-      .sort((a, b) => new Date(a.createdAt?.toDate ? a.createdAt.toDate() : a.createdAt).getTime() - new Date(b.createdAt?.toDate ? b.createdAt.toDate() : b.createdAt).getTime());
-
-    if (filtered.length === 0) return { data: [] };
-
-    return {
-      data: filtered.map(w => ({
-        value: w.totalVolume || 0,
-        label: new Date(w.createdAt?.toDate ? w.createdAt.toDate() : w.createdAt).toLocaleDateString([], { month: 'numeric', day: 'numeric' }),
-        dataPointText: (w.totalVolume || 0).toString(),
-        dataPointColor: "#f87171",
-        dataPointRadius: 5,
-        textColor: '#aaa',
-        textFontSize: 10,
-        textShiftY: -14,
-      }))
-    };
-  }, [workouts, chartFilter]);
-
-  const muscleDistributionData = useMemo(() => {
-    const counts: Record<string, number> = {
-      "Chest": 0, "Back": 0, "Legs": 0, "Shoulders": 0, "Arms": 0, "Core": 0, "Cardio": 0
-    };
-
-    workouts.forEach(w => {
-      w.exercises.forEach(ex => {
-        // Try to find muscle group in library
-        const libEx = EXERCISE_LIBRARY.find(l => tEx(l.name).toLowerCase() === ex.name.toLowerCase());
-        if (libEx) {
-          counts[libEx.muscleGroup] = (counts[libEx.muscleGroup] || 0) + 1;
-        }
-      });
-    });
-
-    return Object.entries(counts)
-      .filter(([_, val]) => val > 0 || true) // Keep all for now to show the map
-      .map(([name, value]) => ({
-        value,
-        label: name.substring(0, 3).toUpperCase(),
-        frontColor: name === "Chest" ? "#f87171" : name === "Back" ? "#60a5fa" : name === "Legs" ? "#4ade80" : "#ffcc00",
-        labelTextStyle: { color: '#555', fontSize: 10, fontWeight: 'bold' } as const
-      }));
-  }, [workouts]);
-
-  const prChartData = useMemo(() => {
-    const targetName = EXERCISE_LIBRARY.find(ex => ex.id === selectedPrId)?.name.en.toLowerCase();
-    if (!targetName) return { data: [], yAxisOffset: 0 };
-
-    const prPoints: { value: number; label: string; date: number }[] = [];
-    
-    workouts.forEach(w => {
-      w.exercises.forEach(ex => {
-        if (ex.name.toLowerCase() === targetName) {
-          // Calculate estimated 1RM for each set and pick the max for this workout
-          const max1RM = ex.sets.reduce((max, set) => {
-            if (!set.isCompleted || !set.weight || !set.reps) return max;
-            // Brzycki Formula: 1RM = Weight / (1.0278 - 0.0278 * Reps)
-            const est1RM = set.weight / (1.0278 - (0.0278 * set.reps));
-            return Math.max(max, est1RM);
-          }, 0);
-          
-          if (max1RM > 0) {
-            prPoints.push({
-              value: Math.round(max1RM),
-              label: new Date(w.createdAt?.toDate ? w.createdAt.toDate() : w.createdAt).toLocaleDateString([], { month: 'numeric', day: 'numeric' }),
-              date: new Date(w.createdAt?.toDate ? w.createdAt.toDate() : w.createdAt).getTime()
-            });
-          }
-        }
-      });
-    });
-
-    const sorted = prPoints.sort((a, b) => a.date - b.date);
-    const weights = sorted.map(p => p.value);
-    const minW = Math.min(...weights);
-    const yAxisOffset = Math.max(0, Math.floor(minW - 10));
-
-    return {
-      yAxisOffset,
-      data: sorted.map(p => ({
-        value: p.value,
-        label: p.label,
-        dataPointText: `${p.value}kg`,
-        dataPointColor: "#a855f7",
-        dataPointRadius: 5,
-        textColor: '#aaa',
-        textFontSize: 10,
-        textShiftY: -14,
-      }))
-    };
-  }, [workouts, selectedPrId]);
 
   const itemWidth = useMemo(() => (windowWidth - 40 - (GAP * 2)) / 3, [windowWidth]);
 
-  const macroAdherence = useMemo(() => {
-    const totalCals = meals.reduce((sum, m) => sum + (m.calories || 0), 0);
-    const targetCals = userProfile?.macroTargets?.calories || 2000;
-    if (totalCals === 0) return 0;
-    return Math.min(Math.round((totalCals / targetCals) * 100), 100);
-  }, [meals, userProfile]);
-
-  useEffect(() => {
-    const user = auth.currentUser;
-    if (!user) return;
-    const unsubWorkouts = subscribeToWorkouts(user.uid, setWorkouts);
-    const unsubMetrics = subscribeToLatestMetrics(user.uid, (data) => {
-      setMetrics(data);
-      setIsLoading(false);
-    });
-    const unsubPhotos = subscribeToProgressPhotos(user.uid, setPhotos);
-    const unsubProfile = subscribeToUserProfile(user.uid, setUserProfile);
-    const unsubMeals = subscribeToDailyMeals(user.uid, setMeals);
-
-    return () => {
-      unsubWorkouts();
-      unsubMetrics();
-      unsubPhotos();
-      unsubProfile();
-      unsubMeals();
-    };
-  }, []);
-
-  // Handlers
-  const handleCapture = async (uri: string) => {
-    const user = auth.currentUser;
-    if (!user) return;
-    try {
-      setIsCameraVisible(false);
-      setIsSaving(true);
-      const result = await uploadProgressPhoto(uri);
-      await saveProgressPhoto(user.uid, {
-        url: result.secureUrl,
-        date: toLocalDateKey(),
-        type: "front"
-      });
-      Alert.alert("Success", "Transformation photo saved!");
-    } catch (error) {
-      console.error(error);
-      Alert.alert("Error", "Failed to upload photo.");
-    } finally {
-      setIsSaving(false);
-    }
-  };
-
-  const handlePickPhotoFromLibrary = async () => {
-    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
-    if (status !== 'granted') return;
-    const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.Images,
-      allowsEditing: false,
-      quality: 0.8
-    });
-    if (!result.canceled && result.assets[0].uri) {
-      handleCapture(result.assets[0].uri);
-    }
-  };
-
-  const handlePickPhoto = () => {
-    Alert.alert("Track Progress", "Select capture mode", [
-      { text: "Camera (Ghost Overlay)", onPress: () => setIsCameraVisible(true) },
-      { text: "Import from Gallery", onPress: handlePickPhotoFromLibrary },
-      { text: "Cancel", style: "cancel" }
-    ]);
+  // Handlers — only UI-specific logic remains here
+  const handleCameraCapture = async (uri: string) => {
+    setIsCameraVisible(false);
+    await handleCapture(uri);
   };
 
   const toggleSelection = useCallback((p: ProgressPhoto) => {
@@ -339,18 +120,16 @@ export function ProgressScreen() {
       Alert.alert("Invalid", "Please enter weight.");
       return;
     }
-    const user = auth.currentUser;
-    if (!user) return;
+    if (!uid) return;
     try {
       setIsSaving(true);
-      await saveBodyMetric(user.uid, { weight: Number(newWeight), bodyFat: newBodyFat ? Number(newBodyFat) : undefined });
+      await saveBodyMetric(uid, { weight: Number(newWeight), bodyFat: newBodyFat ? Number(newBodyFat) : undefined });
       setNewWeight(""); setNewBodyFat("");
     } catch (error) { console.error(error); } finally { setIsSaving(false); }
   };
 
   const handleDeleteSelected = async () => {
-    const user = auth.currentUser;
-    if (!user || selection.length === 0) return;
+    if (!uid || selection.length === 0) return;
     Alert.alert("Delete Photos", `Delete ${selection.length} photos?`, [
       { text: "Cancel", style: "cancel" },
       {
@@ -359,7 +138,8 @@ export function ProgressScreen() {
         onPress: async () => {
           try {
             setIsSaving(true);
-            for (const id of selection) await deleteProgressPhoto(user.uid, id);
+            const { deleteProgressPhoto } = await import("../../services/userSession");
+            for (const id of selection) await deleteProgressPhoto(uid, id);
             setSelection([]); setIsSelectionMode(false);
           } catch (error) { console.error(error); } finally { setIsSaving(false); }
         }
@@ -394,7 +174,7 @@ export function ProgressScreen() {
           <Modal visible={isCameraVisible} transparent={false} animationType="slide">
             <ProgressCamera
               onClose={() => setIsCameraVisible(false)}
-              onCapture={handleCapture}
+              onCapture={handleCameraCapture}
               overlayUri={photos.length > 0 ? photos[0].url : undefined}
             />
           </Modal>
@@ -595,85 +375,14 @@ export function ProgressScreen() {
               </View>
             </View>
 
-            <View style={styles.chartBox}>
-              {weightChartData.data.length > 0 ? (
-                <LineChart
-                  areaChart
-                  data={weightChartData.data}
-                  curved
-                  height={200}
-                  width={windowWidth - 90}
-                  initialSpacing={15}
-                  endSpacing={20}
-                  spacing={weightChartData.data.length <= 3 ? 80 : weightChartData.data.length <= 7 ? 50 : 35}
-                  color={colors.primary}
-                  thickness={3}
-                  startFillColor="rgba(255, 204, 0, 0.25)"
-                  endFillColor="rgba(255, 204, 0, 0.02)"
-                  startOpacity={0.5}
-                  endOpacity={0.05}
-                  yAxisOffset={weightChartData.yAxisOffset}
-                  noOfSections={4}
-                  rulesType="dashed"
-                  rulesColor="#1c1c1e"
-                  dashWidth={4}
-                  dashGap={6}
-                  xAxisThickness={0}
-                  yAxisThickness={0}
-                  yAxisTextStyle={{ color: '#555', fontSize: 10, fontWeight: '600' }}
-                  yAxisTextNumberOfLines={1}
-                  xAxisLabelTextStyle={{ color: '#555', fontSize: 9, fontWeight: '500' }}
-                  showVerticalLines
-                  verticalLinesColor="#1a1a1a"
-                  verticalLinesThickness={1}
-                  hideDataPoints={false}
-                  dataPointsColor={colors.primary}
-                  dataPointsRadius={5}
-                  focusEnabled
-                  showStripOnFocus
-                  stripColor="rgba(255,204,0,0.15)"
-                  stripWidth={2}
-                  showTextOnFocus
-                  unFocusOnPressOut
-                  focusedDataPointColor="#fff"
-                  focusedDataPointRadius={7}
-                  textColor="#aaa"
-                  textFontSize={10}
-                  textShiftY={-14}
-                  pointerConfig={{
-                    pointerStripColor: 'rgba(255,204,0,0.4)',
-                    pointerStripWidth: 1,
-                    pointerColor: '#fff',
-                    radius: 7,
-                    pointerLabelWidth: 80,
-                    pointerLabelHeight: 32,
-                    activatePointersOnLongPress: false,
-                    autoAdjustPointerLabelPosition: true,
-                    pointerLabelComponent: (items: any) => (
-                      <View style={styles.pointerBadge}>
-                        <Text style={styles.pointerText}>{items[0].value} kg</Text>
-                      </View>
-                    ),
-                  }}
-                />
-              ) : (
-                <View style={styles.chartEmpty}>
-                  <Typography variant="label" color="#444">Insufficient tracking data</Typography>
-                </View>
-              )}
-            </View>
+            <TrendChart
+              data={weightChartData.data}
+              color={colors.primary}
+              yAxisOffset={weightChartData.yAxisOffset}
+              emptyLabel="Insufficient tracking data"
+            />
 
-            <View style={styles.filterContainer}>
-              {(['1W', '1M', '3M', '1Y', 'ALL'] as const).map(f => (
-                <Pressable
-                  key={f}
-                  onPress={() => setChartFilter(f)}
-                  style={[styles.filterBtn, chartFilter === f && styles.filterBtnActive]}
-                >
-                   <Typography style={[styles.filterText, chartFilter === f && styles.filterTextActive]}>{f.toUpperCase()}</Typography>
-                </Pressable>
-              ))}
-            </View>
+            <ChartFilterBar value={chartFilter} onChange={setChartFilter} />
           </View>
 
           {/* 6. VOLUME ANALYSIS */}
@@ -685,85 +394,13 @@ export function ProgressScreen() {
               </View>
             </View>
 
-            <View style={styles.chartBox}>
-              {volumeChartData.data.length > 0 ? (
-                <LineChart
-                  areaChart
-                  data={volumeChartData.data}
-                  curved
-                  height={200}
-                  width={windowWidth - 90}
-                  initialSpacing={15}
-                  endSpacing={20}
-                  spacing={volumeChartData.data.length <= 3 ? 80 : volumeChartData.data.length <= 7 ? 50 : 35}
-                  color="#f87171"
-                  thickness={3}
-                  startFillColor="rgba(248, 113, 113, 0.25)"
-                  endFillColor="rgba(248, 113, 113, 0.02)"
-                  startOpacity={0.5}
-                  endOpacity={0.05}
-                  yAxisOffset={0}
-                  noOfSections={4}
-                  rulesType="dashed"
-                  rulesColor="#1c1c1e"
-                  dashWidth={4}
-                  dashGap={6}
-                  xAxisThickness={0}
-                  yAxisThickness={0}
-                  yAxisTextStyle={{ color: '#555', fontSize: 10, fontWeight: '600' }}
-                  yAxisTextNumberOfLines={1}
-                  xAxisLabelTextStyle={{ color: '#555', fontSize: 9, fontWeight: '500' }}
-                  showVerticalLines
-                  verticalLinesColor="#1a1a1a"
-                  verticalLinesThickness={1}
-                  hideDataPoints={false}
-                  dataPointsColor="#f87171"
-                  dataPointsRadius={5}
-                  focusEnabled
-                  showStripOnFocus
-                  stripColor="rgba(248, 113, 113, 0.15)"
-                  stripWidth={2}
-                  showTextOnFocus
-                  unFocusOnPressOut
-                  focusedDataPointColor="#fff"
-                  focusedDataPointRadius={7}
-                  textColor="#aaa"
-                  textFontSize={10}
-                  textShiftY={-14}
-                  pointerConfig={{
-                    pointerStripColor: 'rgba(248, 113, 113, 0.4)',
-                    pointerStripWidth: 1,
-                    pointerColor: '#fff',
-                    radius: 7,
-                    pointerLabelWidth: 80,
-                    pointerLabelHeight: 32,
-                    activatePointersOnLongPress: false,
-                    autoAdjustPointerLabelPosition: true,
-                    pointerLabelComponent: (items: any) => (
-                      <View style={styles.pointerBadge}>
-                        <Text style={styles.pointerText}>{items[0].value} kg</Text>
-                      </View>
-                    ),
-                  }}
-                />
-              ) : (
-                <View style={styles.chartEmpty}>
-                  <Typography variant="label" color="#444">No volume data in this period</Typography>
-                </View>
-              )}
-            </View>
+            <TrendChart
+              data={volumeChartData.data}
+              color="#f87171"
+              emptyLabel="No volume data in this period"
+            />
 
-            <View style={styles.filterContainer}>
-              {(['1W', '1M', '3M', '1Y', 'ALL'] as const).map(f => (
-                <Pressable
-                  key={f}
-                  onPress={() => setChartFilter(f)}
-                  style={[styles.filterBtn, chartFilter === f && styles.filterBtnActive]}
-                >
-                   <Typography style={[styles.filterText, chartFilter === f && styles.filterTextActive]}>{f.toUpperCase()}</Typography>
-                </Pressable>
-              ))}
-            </View>
+            <ChartFilterBar value={chartFilter} onChange={setChartFilter} />
           </View>
           {/* 7. MUSCLE DISTRIBUTION */}
           <View style={styles.trendCard}>
@@ -912,13 +549,6 @@ const styles = StyleSheet.create({
   accentBar: { width: 4, height: 18, backgroundColor: colors.primary, borderRadius: 2 },
   chartBox: { marginTop: 4, marginLeft: -10, alignItems: 'center' },
   chartEmpty: { height: 200, justifyContent: 'center', alignItems: 'center' },
-  pointerBadge: { backgroundColor: colors.primary, paddingHorizontal: 10, paddingVertical: 6, borderRadius: 10, marginBottom: 8, alignSelf: 'center' },
-  pointerText: { color: '#000', fontWeight: '900', fontSize: 12 },
-  filterContainer: { flexDirection: 'row', justifyContent: 'space-between', marginTop: 20, backgroundColor: '#0a0a0a', borderRadius: 24, padding: 4, borderWidth: 1, borderColor: '#1c1c1e' },
-  filterBtn: { flex: 1, paddingVertical: 10, borderRadius: 20, alignItems: 'center' },
-  filterBtnActive: { backgroundColor: colors.primary },
-  filterText: { color: '#555', fontSize: 10, fontWeight: '900', letterSpacing: 0.5 },
-  filterTextActive: { color: '#000' },
   premiumPill: { flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: '#161616', paddingHorizontal: 10, paddingVertical: 6, borderRadius: 10, borderWidth: 1, borderColor: '#1c1c1e' },
   premiumPillText: { color: colors.primary, fontSize: 9, fontWeight: '900', letterSpacing: 0.5 },
   vaultLocked: { height: 160, borderRadius: 20, backgroundColor: '#0a0a0a', borderWidth: 1, borderColor: '#1c1c1e', alignItems: 'center', justifyContent: 'center', padding: 20, gap: 8 },

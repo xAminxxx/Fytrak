@@ -20,9 +20,11 @@ type Props = {
   exercise: ExerciseLibraryItem | null;
   isVisible: boolean;
   onClose: () => void;
+  primaryActionLabel?: string;
+  onPrimaryAction?: (exercise: ExerciseLibraryItem) => void;
 };
 
-export function ExerciseDetailSheet({ exercise, isVisible, onClose }: Props) {
+export function ExerciseDetailSheet({ exercise, isVisible, onClose, primaryActionLabel, onPrimaryAction }: Props) {
   const { height: windowHeight } = useWindowDimensions();
   const [videoError, setVideoError] = useState<string | null>(null);
 
@@ -129,6 +131,15 @@ export function ExerciseDetailSheet({ exercise, isVisible, onClose }: Props) {
             </View>
           </ScrollView>
 
+          {onPrimaryAction ? (
+            <View style={styles.actionDock}>
+              <Pressable style={styles.primaryActionButton} onPress={() => onPrimaryAction(exercise)}>
+                <Ionicons name="add" size={20} color={colors.primaryText} />
+                <Text style={styles.primaryActionText}>{primaryActionLabel || "Add to workout"}</Text>
+              </Pressable>
+            </View>
+          ) : null}
+
           <Pressable style={styles.closeBtn} onPress={onClose}>
             <Ionicons name="close" size={24} color="#fff" />
           </Pressable>
@@ -163,7 +174,7 @@ const styles = StyleSheet.create({
     borderRadius: 2,
   },
   scrollContent: {
-    paddingBottom: 40,
+    paddingBottom: 110,
   },
   videoContainer: {
     width: '100%',
@@ -310,5 +321,32 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.1)',
+  },
+  actionDock: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    bottom: 0,
+    paddingHorizontal: 20,
+    paddingTop: 12,
+    paddingBottom: 22,
+    backgroundColor: 'rgba(10,10,10,0.96)',
+    borderTopWidth: 1,
+    borderTopColor: '#1c1c1e',
+  },
+  primaryActionButton: {
+    minHeight: 56,
+    borderRadius: 18,
+    backgroundColor: colors.primary,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 10,
+  },
+  primaryActionText: {
+    color: colors.primaryText,
+    fontSize: 13,
+    fontWeight: '900',
+    textTransform: 'uppercase',
   }
 });

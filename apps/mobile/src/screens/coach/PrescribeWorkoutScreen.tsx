@@ -11,112 +11,55 @@ import {
     Modal
 } from "react-native";
 import { ScreenShell } from "../../components/ScreenShell";
+import { Typography } from "../../components/Typography";
+import { ExerciseDetailSheet } from "../../components/ExerciseDetailSheet";
 import { colors } from "../../theme/colors";
 import { Ionicons } from "@expo/vector-icons";
 import { savePrescribedWorkout, CoachTemplate, subscribeToCoachTemplates, WorkoutSetType } from "../../services/userSession";
 import { EXERCISE_LIBRARY, ExerciseLibraryItem, t as tEx } from "../../constants/exercises";
-import { auth } from "../../config/firebase";
 import { useNavigation, useRoute } from "@react-navigation/native";
+import { useWorkoutPrescriptionBuilder } from "../../hooks/useWorkoutPrescriptionBuilder";
+import { ExerciseLibraryModal } from "../../components/coach/ExerciseLibraryModal";
+import { TemplateLibraryModal } from "../../components/coach/TemplateLibraryModal";
 
 export function PrescribeWorkoutScreen() {
     const route = useRoute<any>();
     const navigation = useNavigation<any>();
     const { traineeId, traineeName } = route.params;
 
-    const [title, setTitle] = useState("");
-    const [exercises, setExercises] = useState<{name: string; type: WorkoutSetType; targetSets: number; targetReps: string; restTime: string;}[]>([
-        { name: "", type: "WEIGHT_REPS", targetSets: 4, targetReps: "10-12", restTime: "60s" }
-    ]);
-    const [templates, setTemplates] = useState<CoachTemplate[]>([]);
-    const [libModalVisible, setLibModalVisible] = useState(false);
-    const [saveAsTemplate, setSaveAsTemplate] = useState(false);
-    const [isSubmitting, setIsSubmitting] = useState(false);
-    const [libSearchQuery, setLibSearchQuery] = useState("");
-
-    // EXERCISE LIBRARY STATES
-    const [exerciseModalVisible, setExerciseModalVisible] = useState(false);
-    const [exerciseSearchQuery, setExerciseSearchQuery] = useState("");
-    const [activeExerciseIndex, setActiveExerciseIndex] = useState<number | null>(null);
-
-    const filteredTemplates = templates.filter(t =>
-        t.title.toLowerCase().includes(libSearchQuery.toLowerCase())
-    );
-
-    const filteredExercises = EXERCISE_LIBRARY.filter(ex =>
-        tEx(ex.name).toLowerCase().includes(exerciseSearchQuery.toLowerCase()) ||
-        ex.muscleGroup.toLowerCase().includes(exerciseSearchQuery.toLowerCase()) ||
-        ex.equipment.toLowerCase().includes(exerciseSearchQuery.toLowerCase())
-    );
-
-    useEffect(() => {
-        const user = auth.currentUser;
-        if (!user) return;
-        const unsubscribe = subscribeToCoachTemplates(user.uid, "workout", (data) => {
-            setTemplates(data);
-        });
-        return () => unsubscribe();
-    }, []);
-
-    const applyTemplate = (t: CoachTemplate) => {
-        setTitle(t.title);
-        if (t.data.exercises) {
-            setExercises(t.data.exercises);
-        }
-        setLibModalVisible(false);
-    };
-
-    const addExercise = () => {
-        setExercises([...exercises, { name: "", type: "WEIGHT_REPS", targetSets: 4, targetReps: "10-12", restTime: "60s" }]);
-    };
-
-    const updateExercise = (index: number, field: string, value: any) => {
-        const newEx = [...exercises];
-        newEx[index] = { ...newEx[index], [field]: value };
-        setExercises(newEx);
-    };
-
-    const handleSave = async () => {
-        if (!title.trim()) {
-            Alert.alert("Missing Title", "Please give this workout a name (e.g., Upper Body A)");
-            return;
-        }
-        if (exercises.some(e => !e.name.trim())) {
-            Alert.alert("Missing Exercise", "Please fill in all exercise names.");
-            return;
-        }
-
-        try {
-            setIsSubmitting(true);
-            const user = auth.currentUser;
-            if (!user) throw new Error("No coach session");
-
-            await savePrescribedWorkout(traineeId, {
-                coachId: user.uid,
-                coachName: user.displayName || "Your Coach",
-                title: title.trim(),
-                exercises: exercises,
-                isCompleted: false
-            });
-
-            if (saveAsTemplate) {
-                const { saveCoachTemplate } = require("../../services/userSession");
-                await saveCoachTemplate(user.uid, {
-                    title: title.trim(),
-                    type: "workout",
-                    data: { exercises }
-                });
-            }
-
-            Alert.alert("Success", "Workout prescribed successfully!", [
-                { text: "OK", onPress: () => navigation.goBack() }
-            ]);
-        } catch (error) {
-            console.error(error);
-            Alert.alert("Error", "Failed to assign workout.");
-        } finally {
-            setIsSubmitting(false);
-        }
-    };
+    const {
+        title,
+        setTitle,
+        exercises,
+        templates,
+        libModalVisible,
+        setLibModalVisible,
+        saveAsTemplate,
+        setSaveAsTemplate,
+        isSubmitting,
+        libSearchQuery,
+        setLibSearchQuery,
+        filteredTemplates,
+        exerciseModalVisible,
+        setExerciseModalVisible,
+        exerciseSearchQuery,
+        setExerciseSearchQuery,
+        activeExerciseIndex,
+        setActiveExerciseIndex,
+        selectedExerciseInfo,
+        setSelectedExerciseInfo,
+        dbExercises,
+        isSearching,
+        filteredExercises,
+        applyTemplate,
+        findExerciseInfo,
+        applyExerciseSelection,
+        addCustomExercise,
+        addExercise,
+        updateExercise,
+        removeExercise,
+        handleSave
+    } = useWorkoutPrescriptionBuilder(traineeId, navigation);
 
     return (
         <ScreenShell
@@ -156,36 +99,45 @@ export function PrescribeWorkoutScreen() {
                 {exercises.map((ex, idx) => (
                     <View key={idx} style={styles.exerciseCard}>
                         <View style={styles.exHeader}>
-                            <View style={styles.indexCircle}><Text style={styles.indexText}>{idx + 1}</Text></View>
-                            <View style={{ flex: 1, gap: 12 }}>
-                                <Pressable
-                                    style={styles.exInput}
-                                    onPress={() => {
-                                        setActiveExerciseIndex(idx);
-                                        setExerciseSearchQuery("");
-                                        setExerciseModalVisible(true);
-                                    }}
-                                >
-                                    <Text style={{ color: ex.name ? "#fff" : "#444", fontSize: 16, fontWeight: "700" }}>
-                                        {ex.name || "Tap to select exercise..."}
-                                    </Text>
-                                </Pressable>
-                                <View style={styles.typeSelectorRow}>
-                                    {(["WEIGHT_REPS", "TIME", "BODYWEIGHT"] as WorkoutSetType[]).map(t => (
-                                        <Pressable key={t} style={[styles.typePill, ex.type === t && styles.typePillActive]} onPress={() => updateExercise(idx, "type", t)}>
-                                            <Text style={[styles.typePillText, ex.type === t && styles.typePillTextActive]}>{t.replace("_", " ")}</Text>
-                                        </Pressable>
-                                    ))}
-                                </View>
-                            </View>
                             <Pressable
+                                style={styles.exInput}
                                 onPress={() => {
-                                    const newEx = exercises.filter((_, i) => i !== idx);
-                                    setExercises(newEx.length ? newEx : [{ name: "", type: "WEIGHT_REPS", targetSets: 4, targetReps: "10-12", restTime: "60s" }]);
+                                    setActiveExerciseIndex(idx);
+                                    setExerciseSearchQuery("");
+                                    setExerciseModalVisible(true);
                                 }}
                             >
-                                <Ionicons name="close-circle-outline" size={20} color="#ff4444" />
+                                <Text style={{ color: ex.name ? "#fff" : "#444", fontSize: 16, fontWeight: "700" }}>
+                                    {ex.name || "Tap to select exercise..."}
+                                </Text>
                             </Pressable>
+                            <View style={styles.exActions}>
+                                <Pressable
+                                    style={styles.infoIconBtn}
+                                    onPress={() => {
+                                        const info = findExerciseInfo(ex.name);
+                                        if (info) setSelectedExerciseInfo(info);
+                                    }}
+                                    disabled={!ex.name}
+                                >
+                                    <Ionicons name="information-circle-outline" size={20} color={colors.primary} />
+                                </Pressable>
+                                <Pressable
+                                    style={styles.exRemoveBtn}
+                                    onPress={() => {
+                                        removeExercise(idx);
+                                    }}
+                                >
+                                    <Ionicons name="close-circle-outline" size={20} color="#ff4444" />
+                                </Pressable>
+                            </View>
+                        </View>
+                        <View style={styles.typeSelectorRow}>
+                            {(["WEIGHT_REPS", "TIME", "BODYWEIGHT"] as WorkoutSetType[]).map(t => (
+                                <Pressable key={t} style={[styles.typePill, ex.type === t && styles.typePillActive]} onPress={() => updateExercise(idx, "type", t)}>
+                                    <Text style={[styles.typePillText, ex.type === t && styles.typePillTextActive]}>{t.replace("_", " ")}</Text>
+                                </Pressable>
+                            ))}
                         </View>
 
                         <View style={styles.paramGrid}>
@@ -259,120 +211,47 @@ export function PrescribeWorkoutScreen() {
                 </View>
             </ScrollView>
 
-            <Modal
+            <TemplateLibraryModal
                 visible={libModalVisible}
-                animationType="slide"
-                transparent={true}
-                onRequestClose={() => setLibModalVisible(false)}
-            >
-                <View style={styles.modalOverlay}>
-                    <View style={styles.modalContent}>
-                        <View style={styles.modalHeader}>
-                            <Text style={styles.modalTitle}>Select Template</Text>
-                            <Pressable onPress={() => setLibModalVisible(false)} style={styles.closeBtn}>
-                                <Ionicons name="close" size={24} color="#fff" />
-                            </Pressable>
-                        </View>
+                onClose={() => setLibModalVisible(false)}
+                searchQuery={libSearchQuery}
+                onSearchChange={setLibSearchQuery}
+                filteredTemplates={filteredTemplates}
+                onApplyTemplate={applyTemplate}
+            />
 
-                        <View style={styles.modalSearch}>
-                            <Ionicons name="search" size={18} color="#666" />
-                            <TextInput
-                                style={styles.modalSearchInput}
-                                placeholder="Search templates..."
-                                placeholderTextColor="#666"
-                                value={libSearchQuery}
-                                onChangeText={setLibSearchQuery}
-                            />
-                        </View>
-
-                        <ScrollView style={styles.modalList}>
-                            {filteredTemplates.length === 0 ? (
-                                <Text style={styles.emptyText}>No templates found.</Text>
-                            ) : (
-                                filteredTemplates.map(t => (
-                                    <Pressable key={t.id} style={styles.modalItem} onPress={() => applyTemplate(t)}>
-                                        <View style={{ flex: 1 }}>
-                                            <Text style={styles.modalItemTitle}>{t.title}</Text>
-                                            <Text style={styles.modalItemSub}>{t.data.exercises?.length || 0} exercises</Text>
-                                        </View>
-                                        <Ionicons name="add-circle-outline" size={24} color={colors.primary} />
-                                    </Pressable>
-                                ))
-                            )}
-                        </ScrollView>
-                    </View>
-                </View>
-            </Modal>
-
-            {/* EXERCISE LIBRARY MODAL */}
-            <Modal
+            <ExerciseLibraryModal
                 visible={exerciseModalVisible}
-                animationType="slide"
-                transparent={true}
-                onRequestClose={() => setExerciseModalVisible(false)}
-            >
-                <View style={styles.modalOverlay}>
-                    <View style={styles.modalContent}>
-                        <View style={styles.modalHeader}>
-                            <Text style={styles.modalTitle}>Exercise Library</Text>
-                            <Pressable onPress={() => setExerciseModalVisible(false)} style={styles.closeBtn}>
-                                <Ionicons name="close" size={24} color="#fff" />
-                            </Pressable>
-                        </View>
+                onClose={() => setExerciseModalVisible(false)}
+                searchQuery={exerciseSearchQuery}
+                onSearchChange={setExerciseSearchQuery}
+                isSearching={isSearching}
+                filteredExercises={filteredExercises}
+                onAddCustom={(name) => {
+                    addCustomExercise(name);
+                    setExerciseModalVisible(false);
+                    setExerciseSearchQuery("");
+                }}
+                onSelectInfo={(ex) => setSelectedExerciseInfo(ex)}
+                onApplySelection={(ex) => {
+                    applyExerciseSelection(ex);
+                    setExerciseModalVisible(false);
+                    setExerciseSearchQuery("");
+                }}
+            />
 
-                        <View style={styles.modalSearch}>
-                            <Ionicons name="search" size={18} color="#666" />
-                            <TextInput
-                                style={styles.modalSearchInput}
-                                placeholder="Search by name, muscle, or equipment..."
-                                placeholderTextColor="#666"
-                                value={exerciseSearchQuery}
-                                onChangeText={setExerciseSearchQuery}
-                            />
-                        </View>
-
-                        <ScrollView style={styles.modalList}>
-                            {filteredExercises.length === 0 ? (
-                                <Text style={styles.emptyText}>No exercises found.</Text>
-                            ) : (
-                                filteredExercises.map(ex => (
-                                    <Pressable 
-                                        key={ex.id} 
-                                        style={styles.modalItem} 
-                                        onPress={() => {
-                                            if (activeExerciseIndex !== null) {
-                                                const newEx = [...exercises];
-                                                newEx[activeExerciseIndex] = {
-                                                    ...newEx[activeExerciseIndex],
-                                                    name: tEx(ex.name),
-                                                    type: ex.defaultType,
-                                                    targetReps: ex.defaultType === "TIME" ? "60" : "10-12"
-                                                };
-                                                setExercises(newEx);
-                                            }
-                                            setExerciseModalVisible(false);
-                                        }}
-                                    >
-                                        <View style={{ flex: 1, gap: 4 }}>
-                                            <Text style={styles.modalItemTitle}>{tEx(ex.name)}</Text>
-                                            <View style={{ flexDirection: "row", gap: 8 }}>
-                                                <View style={styles.tag}><Text style={styles.tagText}>{ex.muscleGroup.toUpperCase()}</Text></View>
-                                                <View style={styles.tag}><Text style={styles.tagText}>{ex.equipment.toUpperCase()}</Text></View>
-                                                {ex.videoUrl && (
-                                                    <View style={[styles.tag, { backgroundColor: "rgba(255, 204, 0, 0.1)" }]}>
-                                                        <Ionicons name="videocam" size={10} color={colors.primary} />
-                                                    </View>
-                                                )}
-                                            </View>
-                                        </View>
-                                        <Ionicons name="add-circle" size={24} color={colors.primary} />
-                                    </Pressable>
-                                ))
-                            )}
-                        </ScrollView>
-                    </View>
-                </View>
-            </Modal>
+            <ExerciseDetailSheet
+                exercise={selectedExerciseInfo}
+                isVisible={!!selectedExerciseInfo}
+                onClose={() => setSelectedExerciseInfo(null)}
+                primaryActionLabel="Add to workout"
+                onPrimaryAction={(exercise) => {
+                    applyExerciseSelection(exercise);
+                    setSelectedExerciseInfo(null);
+                    setExerciseModalVisible(false);
+                    setExerciseSearchQuery("");
+                }}
+            />
 
         </ScreenShell>
     );
@@ -412,9 +291,24 @@ const styles = StyleSheet.create({
         gap: 16,
         borderWidth: 1,
         borderColor: "#2c2c2e",
+        position: "relative",
     },
-    exHeader: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
-    exNumber: { color: "#444", fontSize: 12, fontWeight: "900" },
+    exHeader: {
+        flexDirection: "row",
+        alignItems: "center",
+        gap: 12,
+    },
+    exActions: {
+        flexDirection: "row",
+        alignItems: "center",
+        gap: 8,
+    },
+    exRemoveBtn: {
+        width: 28,
+        height: 28,
+        alignItems: "center",
+        justifyContent: "center",
+    },
     exInput: {
         backgroundColor: "#161616",
         borderRadius: 12,
@@ -445,16 +339,6 @@ const styles = StyleSheet.create({
         fontWeight: "700",
         borderWidth: 1,
         borderColor: "#2c2c2e",
-    },
-    indexCircle: {
-        width: 30,
-        height: 30,
-        borderRadius: 15,
-        backgroundColor: "#1c1c1e",
-        alignItems: "center",
-        justifyContent: "center",
-        borderWidth: 1,
-        borderColor: "#333",
     },
     indexText: {
         color: "#666",
@@ -529,60 +413,26 @@ const styles = StyleSheet.create({
         backgroundColor: "#000",
         borderTopLeftRadius: 32,
         borderTopRightRadius: 32,
-        height: "70%",
+        height: "85%",
         padding: 24,
         borderWidth: 1,
-        borderColor: "#2c2c2e",
+        borderColor: "#1c1c1e",
     },
-    modalHeader: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 24 },
-    modalTitle: { color: "#fff", fontSize: 20, fontWeight: "900" },
+    modalHeader: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 10 },
+    modalTitle: { color: "#fff", fontSize: 22, fontWeight: "900" },
     closeBtn: { width: 40, height: 40, borderRadius: 20, backgroundColor: "#111", alignItems: "center", justifyContent: "center" },
+    modalSearch: { flexDirection: "row", alignItems: "center", backgroundColor: "#111", borderRadius: 16, paddingHorizontal: 16, height: 50, marginBottom: 16, borderWidth: 1, borderColor: "#2c2c2e", gap: 10 },
+    modalSearchInput: { flex: 1, color: "#fff", fontSize: 16, fontWeight: "600" },
     modalList: { flex: 1 },
-    modalItem: {
-        flexDirection: "row",
-        alignItems: "center",
-        backgroundColor: "#121212",
-        padding: 20,
-        borderRadius: 24,
-        marginBottom: 12,
-        borderWidth: 1,
-        borderColor: "#222",
-    },
+    emptyText: { color: "#666", fontSize: 14, textAlign: "center", marginTop: 40 },
+    modalItem: { flexDirection: "row", alignItems: "center", backgroundColor: "#111", padding: 16, borderRadius: 16, marginBottom: 12, borderWidth: 1, borderColor: "#2c2c2e" },
     modalItemTitle: { color: "#fff", fontSize: 16, fontWeight: "800", marginBottom: 4 },
     modalItemSub: { color: "#666", fontSize: 12, fontWeight: "600" },
-    modalSearch: {
-        flexDirection: "row",
-        alignItems: "center",
-        backgroundColor: "#111",
-        borderRadius: 16,
-        paddingHorizontal: 16,
-        height: 52,
-        gap: 12,
-        borderWidth: 1,
-        borderColor: "#2c2c2e",
-        marginBottom: 20,
-    },
-    modalSearchInput: {
-        flex: 1,
-        color: "#fff",
-        fontSize: 15,
-        fontWeight: "600",
-    },
-    emptyText: {
-        color: "#666",
-        textAlign: "center",
-        marginTop: 40,
-        fontSize: 15,
-    },
-    tag: {
-        backgroundColor: "#2c2c2e",
-        paddingHorizontal: 8,
-        paddingVertical: 4,
-        borderRadius: 6,
-    },
-    tagText: {
-        color: "#aaa",
-        fontSize: 10,
-        fontWeight: "800",
-    }
+    infoIconBtn: { width: 36, height: 36, borderRadius: 12, backgroundColor: "#1c1c1e", alignItems: "center", justifyContent: "center", borderWidth: 1, borderColor: "#2c2c2e" },
+    exerciseSelectItem: { flexDirection: "row", alignItems: "center", backgroundColor: "#1c1c1e", borderRadius: 20, padding: 16, marginBottom: 10, borderWidth: 1, borderColor: "#2c2c2e" },
+    tag: { backgroundColor: "#1c1c1e", paddingHorizontal: 10, paddingVertical: 6, borderRadius: 8, borderWidth: 1, borderColor: "#2c2c2e" },
+    tagText: { color: "#aaa", fontSize: 10, fontWeight: "900" },
+    addIconCircle: { width: 36, height: 36, borderRadius: 18, backgroundColor: colors.primary, alignItems: "center", justifyContent: "center" },
+    addExBtn: { minHeight: 56, backgroundColor: "#161616", padding: 16, borderRadius: 20, flexDirection: "row", alignItems: "center", justifyContent: "center", borderStyle: "dashed", borderWidth: 1, borderColor: "#2c2c2e", gap: 10, marginBottom: 8 },
+    addExText: { color: "#fff", fontWeight: "800" },
 });

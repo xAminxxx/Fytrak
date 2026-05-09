@@ -14,6 +14,7 @@ import {
   serverTimestamp,
 } from "firebase/firestore";
 import { db } from "../config/firebase";
+import { updateClientSummaryAfterWorkout } from "./clientSummaryService";
 
 export type WorkoutSetType = "WEIGHT_REPS" | "TIME" | "BODYWEIGHT" | "REPS_ONLY";
 
@@ -69,6 +70,11 @@ const usersCollection = "users";
 export const saveWorkoutLog = async (uid: string, workout: Omit<WorkoutLog, "id">): Promise<void> => {
   const ref = collection(db, usersCollection, uid, "workouts");
   await addDoc(ref, { ...workout, createdAt: serverTimestamp() });
+  try {
+    await updateClientSummaryAfterWorkout(uid);
+  } catch (error) {
+    console.error("Failed to update workout summary:", error);
+  }
 };
 
 export const subscribeToWorkouts = (uid: string, callback: (workouts: WorkoutLog[]) => void) => {

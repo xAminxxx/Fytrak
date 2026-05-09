@@ -18,111 +18,25 @@ import {
     type CoachClientSignal,
 } from "../../features/coaching/coachIntelligence";
 import { trackEvent } from "../../services/analytics";
+import { useCoachDashboard } from "../../hooks/useCoachDashboard";
+import { RiskCard, QuickAction, ActionQueueCard } from "../../components/coach/CoachDashboardCards";
 
 export function CoachHomeScreen() {
-    const [trainees, setTrainees] = useState<CoachTrainee[]>([]);
-    const [clientSignals, setClientSignals] = useState<CoachClientSignal[]>([]);
-    const [isLoading, setIsLoading] = useState(true);
-    const [isLoadingSignals, setIsLoadingSignals] = useState(false);
     const navigation = useNavigation<CoachHomeNavigation>();
-
-    useEffect(() => {
-        const user = auth.currentUser;
-        if (!user) return;
-
-        const unsubscribe = subscribeToCoachTrainees(user.uid, (data) => {
-            setTrainees(data);
-            setIsLoading(false);
-        });
-
-        return () => unsubscribe();
-    }, []);
-
-    const pending = useMemo(() => trainees.filter(t => t.assignmentStatus === "pending"), [trainees]);
-    const assigned = useMemo(() => trainees.filter(t => t.assignmentStatus === "assigned"), [trainees]);
-
-    useEffect(() => {
-        let isMounted = true;
-
-        if (assigned.length === 0) {
-            setClientSignals([]);
-            return;
-        }
-
-        setIsLoadingSignals(true);
-        fetchCoachClientSignals(assigned)
-            .then((signals) => {
-                if (isMounted) setClientSignals(signals);
-            })
-            .catch((error) => {
-                console.error("Failed to load coach intelligence:", error);
-                if (isMounted) setClientSignals([]);
-            })
-            .finally(() => {
-                if (isMounted) setIsLoadingSignals(false);
-            });
-
-        return () => {
-            isMounted = false;
-        };
-    }, [assigned]);
-
-    const dashboard = useMemo(() => buildCoachDashboardIntelligence(clientSignals), [clientSignals]);
-
-    const clientIntelligenceById = useMemo(() => {
-        return new Map(dashboard.clients.map((client) => [client.traineeId, client]));
-    }, [dashboard.clients]);
-
-    const atRiskClients = useMemo(() => {
-        return dashboard.clients.filter((client) => client.risk !== "low").slice(0, 3);
-    }, [dashboard.clients]);
-
-    const stats = useMemo(() => {
-        return {
-            totalClients: assigned.length,
-            newLeads: pending.length,
-            consistency: dashboard.avgCompliance,
-        };
-    }, [assigned.length, dashboard.avgCompliance, pending.length]);
-
-    const insights = useMemo(() => {
-        if (pending.length > 0) {
-            return [
-                {
-                    title: "New Opportunity",
-                    sub: `${pending.length} pending request${pending.length === 1 ? "" : "s"} waiting for your review.`,
-                    icon: "mail-outline",
-                    tone: "warning" as const,
-                },
-                ...dashboard.insights,
-            ];
-        }
-
-        return dashboard.insights;
-    }, [dashboard.insights, pending.length]);
-
-    const handleAction = async (traineeId: string, name: string, accept: boolean) => {
-        const action = accept ? "Accept" : "Reject";
-        Alert.alert(
-            `${action} Request`,
-            `Do you want to ${action.toLowerCase()} ${name}'s request?`,
-            [
-                { text: "Cancel", style: "cancel" },
-                {
-                    text: action,
-                    style: accept ? "default" : "destructive",
-                    onPress: async () => {
-                        try {
-                            await respondToTraineeRequest(traineeId, accept);
-                        } catch (error) {
-                            console.error(`Failed to ${action} trainee:`, error);
-                            Alert.alert("Error", `Could not ${action.toLowerCase()} request.`);
-                        }
-                    }
-                }
-            ]
-        );
-    };
+    const {
+        pending,
+        assigned,
+        isLoading,
+        isLoadingSignals,
+        stats,
+        insights,
+        unreadMessages,
+        checkInsDue,
+        atRiskClients,
+        recentActivity,
+        clientIntelligenceById,
+        handleAction,
+    } = useCoachDashboard();
 
     return (
         <ScreenShell 
@@ -137,6 +51,52 @@ export function CoachHomeScreen() {
                 </View>
             ) : (
                 <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scroll}>
+                    {/* ACTION QUEUE */}
+                    <View style={styles.actionQueue}>
+                        <ActionQueueCard
+                            label="Pending Requests"
+                            value={pending.length}
+                            tone="warning"
+                            icon="mail-outline"
+                        />
+                        <ActionQueueCard
+                            label="Unread Messages"
+                            value={unreadMessages}
+                            tone="neutral"
+                            icon="chatbubbles-outline"
+                        />
+                        <ActionQueueCard
+                            label="Check-ins Due"
+                            value={checkInsDue}
+                            tone="danger"
+                            icon="alert-circle-outline"
+                        />
+                    </View>
+
+                    {/* QUICK ACTIONS */}
+                    <View style={styles.quickActions}>
+                        <QuickAction
+                            label="Message"
+                            icon="chatbox-ellipses-outline"
+                            onPress={() => navigation.navigate("CoachInbox")}
+                        />
+                        <QuickAction
+                            label="Assign Workout"
+                            icon="barbell-outline"
+                            onPress={() => navigation.navigate("CoachClients")}
+                        />
+                        <QuickAction
+                            label="Assign Meal"
+                            icon="nutrition-outline"
+                            onPress={() => navigation.navigate("CoachClients")}
+                        />
+                        <QuickAction
+                            label="Build Program"
+                            icon="calendar-outline"
+                            onPress={() => navigation.navigate("CoachClients")}
+                        />
+                    </View>
+
                     {/* STATS OVERVIEW */}
                     <View style={styles.statRow}>
                         <View style={styles.pulseCard}>
@@ -182,11 +142,11 @@ export function CoachHomeScreen() {
                         </View>
                     )}
 
-                    {/* COACH INTELLIGENCE */}
+                    {/* URGENT CLIENTS */}
                     {assigned.length > 0 && (
                         <View style={styles.section}>
                             <View style={styles.sectionHeader}>
-                                <Text style={styles.sectionTitle}>Client Risk Radar</Text>
+                                <Text style={styles.sectionTitle}>Urgent Clients</Text>
                                 {isLoadingSignals ? <ActivityIndicator color={colors.primary} size="small" /> : null}
                             </View>
                             {atRiskClients.length === 0 ? (
@@ -213,6 +173,39 @@ export function CoachHomeScreen() {
                                     );
                                 })
                             )}
+                        </View>
+                    )}
+
+                    {/* RECENT ACTIVITY */}
+                    {recentActivity.length > 0 && (
+                        <View style={styles.section}>
+                            <View style={styles.sectionHeader}>
+                                <Text style={styles.sectionTitle}>Recent Activity</Text>
+                                <Pressable onPress={() => navigation.navigate("CoachClients")}>
+                                    <Text style={styles.seeAll}>View All</Text>
+                                </Pressable>
+                            </View>
+                            {recentActivity.map((client) => {
+                                const trainee = assigned.find((item) => item.id === client.traineeId);
+                                const lastWorkoutLabel = client.lastWorkoutAt
+                                    ? client.lastWorkoutAt.toLocaleDateString()
+                                    : "No workout";
+
+                                return (
+                                    <View key={client.traineeId} style={styles.activityItem}>
+                                        <View style={styles.activityAvatar}>
+                                            <Text style={styles.avatarTextSmall}>{trainee?.name?.[0] || "?"}</Text>
+                                        </View>
+                                        <View style={{ flex: 1 }}>
+                                            <Text style={styles.activityName}>{trainee?.name || "Anonymous"}</Text>
+                                            <Text style={styles.activityMeta}>Last workout: {lastWorkoutLabel}</Text>
+                                        </View>
+                                        <View style={styles.activityBadge}>
+                                            <Text style={styles.activityBadgeText}>{client.workoutsLast7Days}x</Text>
+                                        </View>
+                                    </View>
+                                );
+                            })}
                         </View>
                     )}
 
@@ -294,40 +287,7 @@ export function CoachHomeScreen() {
     );
 }
 
-function RiskCard({
-    client,
-    name,
-    onOpen,
-}: {
-    client: CoachClientIntelligence;
-    name: string;
-    onOpen: () => void;
-}) {
-    const isHighRisk = client.risk === "high";
 
-    return (
-        <Pressable style={[styles.riskCard, isHighRisk && styles.riskCardHigh]} onPress={onOpen}>
-            <View style={styles.riskHeader}>
-                <View style={styles.riskIdentity}>
-                    <View style={[styles.riskAvatar, isHighRisk && styles.riskAvatarHigh]}>
-                        <Text style={styles.avatarTextSmall}>{name[0]?.toUpperCase() || "?"}</Text>
-                    </View>
-                    <View style={{ flex: 1 }}>
-                        <Text style={styles.name}>{name}</Text>
-                        <Text style={styles.goal}>{client.riskReason}</Text>
-                    </View>
-                </View>
-                <View style={[styles.scorePill, isHighRisk && styles.scorePillHigh]}>
-                    <Text style={[styles.scoreText, isHighRisk && styles.scoreTextHigh]}>{client.complianceScore}%</Text>
-                </View>
-            </View>
-            <View style={styles.nudgeBox}>
-                <Ionicons name="chatbubble-ellipses-outline" size={15} color={isHighRisk ? "#ff7777" : colors.primary} />
-                <Text style={styles.nudgeText}>{client.suggestedNudge}</Text>
-            </View>
-        </Pressable>
-    );
-}
 
 const styles = StyleSheet.create({
     shellContent: {
@@ -341,6 +301,67 @@ const styles = StyleSheet.create({
     scroll: {
         paddingBottom: 120,
         gap: 24,
+    },
+    actionQueue: {
+        flexDirection: "row",
+        gap: 12,
+        marginTop: 6,
+    },
+    queueCard: {
+        flex: 1,
+        borderRadius: 18,
+        padding: 14,
+        borderWidth: 1,
+        gap: 6,
+    },
+    queueIcon: {
+        width: 28,
+        height: 28,
+        borderRadius: 10,
+        alignItems: "center",
+        justifyContent: "center",
+        backgroundColor: "#111",
+    },
+    queueValue: {
+        fontSize: 18,
+        fontWeight: "900",
+        color: "#fff",
+    },
+    queueLabel: {
+        fontSize: 10,
+        fontWeight: "800",
+        color: "#666",
+        textTransform: "uppercase",
+        letterSpacing: 0.5,
+    },
+    quickActions: {
+        flexDirection: "row",
+        gap: 12,
+        marginTop: 6,
+    },
+    quickActionCard: {
+        flex: 1,
+        backgroundColor: "#161616",
+        borderRadius: 18,
+        paddingVertical: 12,
+        alignItems: "center",
+        borderWidth: 1,
+        borderColor: "#2c2c2e",
+        gap: 8,
+    },
+    quickActionIcon: {
+        width: 32,
+        height: 32,
+        borderRadius: 12,
+        backgroundColor: "#1c1c1e",
+        alignItems: "center",
+        justifyContent: "center",
+    },
+    quickActionText: {
+        color: "#ccc",
+        fontSize: 11,
+        fontWeight: "700",
+        textAlign: "center",
     },
     statRow: {
         flexDirection: "row",
@@ -511,6 +532,50 @@ const styles = StyleSheet.create({
         flexDirection: "row",
         alignItems: "center",
         gap: 12,
+    },
+    activityItem: {
+        flexDirection: "row",
+        alignItems: "center",
+        backgroundColor: "#161616",
+        borderRadius: 20,
+        padding: 14,
+        borderWidth: 1,
+        borderColor: "#2c2c2e",
+        gap: 12,
+    },
+    activityAvatar: {
+        width: 40,
+        height: 40,
+        borderRadius: 20,
+        backgroundColor: "#1c1c1e",
+        alignItems: "center",
+        justifyContent: "center",
+        borderWidth: 1,
+        borderColor: "#333",
+    },
+    activityName: {
+        color: "#fff",
+        fontSize: 15,
+        fontWeight: "700",
+    },
+    activityMeta: {
+        color: "#666",
+        fontSize: 12,
+        fontWeight: "600",
+        marginTop: 2,
+    },
+    activityBadge: {
+        backgroundColor: "#1c1c1e",
+        borderRadius: 12,
+        paddingHorizontal: 10,
+        paddingVertical: 6,
+        borderWidth: 1,
+        borderColor: "#333",
+    },
+    activityBadgeText: {
+        color: colors.primary,
+        fontSize: 12,
+        fontWeight: "800",
     },
     metricItem: {
         flexDirection: "row",

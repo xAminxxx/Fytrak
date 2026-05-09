@@ -22,7 +22,12 @@ const src = path.join(__dirname, "..", "src");
 
 const { buildTodayMission } = require(path.join(src, "features", "retention", "todayMission.ts"));
 const { scoreCoachClient, buildCoachDashboardIntelligence } = require(path.join(src, "features", "coaching", "coachIntelligence.ts"));
-const { detectWorkoutPersonalRecords, duplicateSetForNextEntry } = require(path.join(src, "features", "workouts", "workoutPerformance.ts"));
+const {
+  detectWorkoutPersonalRecords,
+  duplicateSetForNextEntry,
+  getBestEstimatedOneRepMaxForExercise,
+  getLatestExercisePerformance,
+} = require(path.join(src, "features", "workouts", "workoutPerformance.ts"));
 const { getExerciseVideoLink } = require(path.join(src, "utils", "videoLinks.ts"));
 
 const mission = buildTodayMission({
@@ -72,6 +77,34 @@ assert.deepEqual(duplicateSetForNextEntry({ type: "weighted", reps: 8, weight: 5
   rpe: undefined,
   isCompleted: false,
 });
+
+const previousPerformance = getLatestExercisePerformance("Bench Press", [
+  {
+    name: "Push Day",
+    exercises: [
+      {
+        name: "Bench Press",
+        sets: [
+          { type: "WEIGHT_REPS", reps: 8, weight: 80, isCompleted: true },
+          { type: "WEIGHT_REPS", reps: 6, weight: 85, isCompleted: true },
+        ],
+      },
+    ],
+  },
+]);
+
+assert.equal(previousPerformance.workoutName, "Push Day");
+assert.equal(previousPerformance.sets.length, 2);
+assert.ok(getBestEstimatedOneRepMaxForExercise("Bench Press", [
+  {
+    exercises: [
+      {
+        name: "Bench Press",
+        sets: [{ type: "WEIGHT_REPS", reps: 5, weight: 100, isCompleted: true }],
+      },
+    ],
+  },
+]) > 110);
 
 const youtubeUrl = "https://www.youtube.com/watch?v=dQw4w9WgXcQ";
 const videoLink = getExerciseVideoLink(youtubeUrl);

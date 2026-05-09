@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Pressable, StyleSheet, TextInput, View, Alert, ActivityIndicator, Image, ScrollView, Text } from "react-native";
+import { Pressable, StyleSheet, TextInput, View, ActivityIndicator, Image, ScrollView, Text } from "react-native";
 import * as ImagePicker from 'expo-image-picker';
 import { ScreenShell } from "../../components/ScreenShell";
 import { colors } from "../../theme/colors";
@@ -10,6 +10,7 @@ import { useNavigation } from "@react-navigation/native";
 import { auth } from "../../config/firebase";
 import { subscribeToUserProfile, type UserProfile, saveAssignmentStatus, saveUserProfile, uploadProfileImage } from "../../services/userSession";
 import { Typography } from "../../components/Typography";
+import { ToastService } from "../../components/Toast";
 import { SessionState } from "../../state/types";
 import { calculateEarnedBadges, Badge } from "../../services/badgeService";
 import { subscribeToWorkouts, type WorkoutLog } from "../../services/workoutService";
@@ -48,10 +49,20 @@ export function ProfileScreen({ session }: { session: SessionState }) {
   }, []);
 
   const handleLogout = () => {
-    Alert.alert("Logout", "Are you sure you want to sign out?", [
-      { text: "Cancel", style: "cancel" },
-      { text: "Logout", style: "destructive", onPress: () => void logOut() },
-    ]);
+    ToastService.confirm({
+      title: "Sign out",
+      message: "Are you sure you want to leave Fytrak?",
+      confirmLabel: "Sign out",
+      destructive: true,
+      onConfirm: async () => {
+        try {
+          await logOut();
+          ToastService.info("Signed out", "Your Fytrak session has been closed.");
+        } catch (error) {
+          ToastService.error("Sign out failed", error instanceof Error ? error.message : "Please try again.");
+        }
+      },
+    });
   };
 
   const handleUpdateGoal = async () => {
@@ -60,7 +71,7 @@ export function ProfileScreen({ session }: { session: SessionState }) {
       await saveUserProfile(auth.currentUser.uid, { goal: tempGoal.trim() });
       setIsEditingGoal(false);
     } catch (e) {
-      Alert.alert("Error", "Could not update goal.");
+      ToastService.error("Error", "Could not update goal.");
     }
   };
 
@@ -70,27 +81,22 @@ export function ProfileScreen({ session }: { session: SessionState }) {
       await saveUserProfile(auth.currentUser.uid, { name: tempName.trim() });
       setIsEditingName(false);
     } catch (e) {
-      Alert.alert("Error", "Could not update name.");
+      ToastService.error("Error", "Could not update name.");
     }
   };
 
   const handleDisconnect = () => {
-    Alert.alert(
-      "End Relation",
-      `Are you sure you want to disconnect from ${session.selectedCoachName || "your coach"}?`,
-      [
-        { text: "Cancel", style: "cancel" },
-        {
-          text: "Disconnect",
-          style: "destructive",
-          onPress: async () => {
-            if (auth.currentUser) {
-              await saveAssignmentStatus(auth.currentUser.uid, "unassigned");
-            }
-          }
-        },
-      ]
-    );
+    ToastService.confirm({
+      title: "End Relation",
+      message: `Are you sure you want to disconnect from ${session.selectedCoachName || "your coach"}?`,
+      confirmLabel: "Disconnect",
+      destructive: true,
+      onConfirm: async () => {
+        if (auth.currentUser) {
+          await saveAssignmentStatus(auth.currentUser.uid, "unassigned");
+        }
+      },
+    });
   };
 
 
@@ -110,7 +116,7 @@ export function ProfileScreen({ session }: { session: SessionState }) {
       }
     } catch (e) {
       setIsLoading(false);
-      Alert.alert("Upload Failed", "Could not update your profile photo.");
+      ToastService.error("Upload Failed", "Could not update your profile photo.");
     }
   };
 
@@ -594,4 +600,3 @@ const styles = StyleSheet.create({
     flex: 1,
   }
 });
-

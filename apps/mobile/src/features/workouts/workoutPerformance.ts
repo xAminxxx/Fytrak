@@ -12,6 +12,11 @@ export type WorkoutPersonalRecord = {
   previousBest: number;
 };
 
+export type ExercisePreviousPerformance = {
+  workoutName: string;
+  sets: WorkoutSet[];
+};
+
 export function getCompletedWorkoutExercises(exercises: ActiveWorkoutExerciseDraft[]): CompletedWorkoutExercise[] {
   return exercises
     .map((exercise) => ({
@@ -40,9 +45,51 @@ export function duplicateSetForNextEntry(set: WorkoutSet, type: WorkoutSet["type
   };
 }
 
-function estimateOneRepMax(set: WorkoutSet): number {
+export function getLatestExercisePerformance(
+  exerciseName: string,
+  workoutHistory: WorkoutLog[]
+): ExercisePreviousPerformance | null {
+  const normalizedName = exerciseName.trim().toLowerCase();
+  if (!normalizedName) return null;
+
+  for (const workout of workoutHistory) {
+    const match = workout.exercises.find((exercise) => {
+      return exercise.name.trim().toLowerCase() === normalizedName;
+    });
+
+    if (match) {
+      return {
+        workoutName: workout.name,
+        sets: match.sets.filter((set) => set.isCompleted),
+      };
+    }
+  }
+
+  return null;
+}
+
+export function estimateOneRepMax(set: WorkoutSet): number {
   if (!set.weight || !set.reps || set.reps <= 0) return 0;
   return set.weight / (1.0278 - 0.0278 * set.reps);
+}
+
+export function getBestEstimatedOneRepMaxForExercise(
+  exerciseName: string,
+  workoutHistory: WorkoutLog[]
+): number {
+  const normalizedName = exerciseName.trim().toLowerCase();
+  if (!normalizedName) return 0;
+
+  return workoutHistory.reduce((best, workout) => {
+    const exercise = workout.exercises.find((item) => item.name.trim().toLowerCase() === normalizedName);
+    if (!exercise) return best;
+
+    const bestInWorkout = exercise.sets.reduce((setBest, set) => {
+      return Math.max(setBest, estimateOneRepMax(set));
+    }, 0);
+
+    return Math.max(best, bestInWorkout);
+  }, 0);
 }
 
 export function detectWorkoutPersonalRecords(

@@ -20,6 +20,7 @@ import { colors } from "../../theme/colors";
 import { Ionicons } from "@expo/vector-icons";
 import { auth } from "../../config/firebase";
 import { getChatThreadId, sendChatMessage, subscribeToChatMessages } from "../../services/chatService";
+import { clearCoachUnread } from "../../services/userSession";
 
 const formatTime = (value: string): string => {
   return new Date(value).toLocaleTimeString([], {
@@ -63,6 +64,14 @@ export function CoachChatScreen({ traineeId, coachId, traineeName }: CoachChatSc
       () => setErrorText("Could not load chat messages.")
     );
   }, [threadId]);
+
+  useEffect(() => {
+    const isCoach = auth.currentUser?.uid === coachId;
+    if (!isCoach) return;
+    clearCoachUnread(traineeId).catch((error) => {
+      console.error("Failed to clear unread count:", error);
+    });
+  }, [coachId, traineeId, threadId]);
 
   const sendTextMessage = async () => {
     if (!draft.trim()) return;

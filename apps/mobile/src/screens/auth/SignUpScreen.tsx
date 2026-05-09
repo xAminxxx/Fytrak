@@ -6,17 +6,21 @@ import { Ionicons } from "@expo/vector-icons";
 import { Typography } from "../../components/Typography";
 import { PrimaryButton } from "../../components/Button";
 import * as WebBrowser from "expo-web-browser";
+import { ResponseType } from "expo-auth-session";
 import * as Google from "expo-auth-session/providers/google";
+import * as Facebook from "expo-auth-session/providers/facebook";
 import { appEnv } from "../../config/env";
+import { expoAuthProxyRedirectUri } from "../../utils/authRedirect";
 
 WebBrowser.maybeCompleteAuthSession();
 
 type SignUpScreenProps = {
   onSignUp: (payload: { name: string; email: string; password: string; role: "trainee" | "coach" }) => Promise<void>;
-  onGoogleLogin: (idToken: string) => Promise<void>;
+  onGoogleLogin: (idToken: string, role: "trainee" | "coach") => Promise<void>;
+  onFacebookLogin: (accessToken: string, role: "trainee" | "coach") => Promise<void>;
 };
 
-export function SignUpScreen({ onSignUp, onGoogleLogin }: SignUpScreenProps) {
+export function SignUpScreen({ onSignUp, onGoogleLogin, onFacebookLogin }: SignUpScreenProps) {
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [phone, setPhone] = useState("");
@@ -26,9 +30,17 @@ export function SignUpScreen({ onSignUp, onGoogleLogin }: SignUpScreenProps) {
   const [acceptedTerms, setAcceptedTerms] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errorText, setErrorText] = useState<string | null>(null);
-  const [request, _response, promptAsync] = Google.useIdTokenAuthRequest({
+  const [request, _response, promptAsync] = Google.useAuthRequest({
     clientId: appEnv.google.webClientId,
-    androidClientId: appEnv.google.androidClientId || appEnv.google.webClientId,
+    webClientId: appEnv.google.webClientId,
+    androidClientId: appEnv.google.webClientId,
+    scopes: ["openid", "profile", "email"],
+    responseType: ResponseType.IdToken,
+    redirectUri: expoAuthProxyRedirectUri,
+  });
+  const [facebookRequest, _facebookResponse, promptFacebookAsync] = Facebook.useAuthRequest({
+    clientId: appEnv.facebook.appId || "missing-facebook-app-id",
+    redirectUri: expoAuthProxyRedirectUri,
   });
 
   const canSubmit = useMemo(() => {
@@ -63,7 +75,12 @@ export function SignUpScreen({ onSignUp, onGoogleLogin }: SignUpScreenProps) {
   };
 
   const handleGoogleLogin = async () => {
-    if (!request || isSubmitting) {
+    if (!appEnv.google.webClientId || !request) {
+      setErrorText("Google Authentication is not configured.");
+      return;
+    }
+
+    if (isSubmitting) {
       return;
     }
 
@@ -83,9 +100,41 @@ export function SignUpScreen({ onSignUp, onGoogleLogin }: SignUpScreenProps) {
         return;
       }
 
-      await onGoogleLogin(idToken);
+      await onGoogleLogin(idToken, role);
     } catch (error) {
       setErrorText(error instanceof Error ? error.message : "Google sign-in failed.");
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const handleFacebookLogin = async () => {
+    if (!appEnv.facebook.appId || !facebookRequest) {
+      setErrorText("Facebook Authentication is not configured.");
+      return;
+    }
+
+    if (isSubmitting) return;
+
+    try {
+      setIsSubmitting(true);
+      setErrorText(null);
+      const result = await promptFacebookAsync();
+
+      if (result.type !== "success") {
+        setErrorText("Facebook sign-in was cancelled.");
+        return;
+      }
+
+      const accessToken = result.authentication?.accessToken || result.params?.access_token;
+      if (!accessToken) {
+        setErrorText("Facebook sign-in failed: missing access token.");
+        return;
+      }
+
+      await onFacebookLogin(accessToken, role);
+    } catch (error) {
+      setErrorText(error instanceof Error ? error.message : "Facebook sign-in failed.");
     } finally {
       setIsSubmitting(false);
     }
@@ -225,10 +274,22 @@ export function SignUpScreen({ onSignUp, onGoogleLogin }: SignUpScreenProps) {
 
           <Text style={styles.socialLabel}>or sign up with</Text>
           <View style={styles.socialRow}>
-            <Pressable style={styles.socialIconBtn} onPress={() => void handleGoogleLogin()}>
+            <Pressable
+              style={[styles.socialIconBtn, isSubmitting && styles.socialIconBtnDisabled]}
+              disabled={isSubmitting}
+              accessibilityRole="button"
+              accessibilityLabel="Sign up with Google"
+              onPress={() => void handleGoogleLogin()}
+            >
               <Ionicons name="logo-google" size={24} color="#4285F4" />
             </Pressable>
-            <Pressable style={styles.socialIconBtn} disabled>
+            <Pressable
+              style={[styles.socialIconBtn, isSubmitting && styles.socialIconBtnDisabled]}
+              disabled={isSubmitting}
+              accessibilityRole="button"
+              accessibilityLabel="Sign up with Facebook"
+              onPress={() => void handleFacebookLogin()}
+            >
               <Ionicons name="logo-facebook" size={24} color="#1877F2" />
             </Pressable>
           </View>
@@ -395,6 +456,9 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.1,
     shadowRadius: 4,
     elevation: 3,
+  },
+  socialIconBtnDisabled: {
+    opacity: 0.55,
   },
 });
 

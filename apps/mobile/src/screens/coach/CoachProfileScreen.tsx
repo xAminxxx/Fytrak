@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { ScrollView, StyleSheet, Text, View, Pressable, Alert, ActivityIndicator } from "react-native";
+import { ScrollView, StyleSheet, Text, View, Pressable, ActivityIndicator } from "react-native";
 import { useNavigation } from "@react-navigation/native";
 import { ScreenShell } from "../../components/ScreenShell";
 import { colors } from "../../theme/colors";
@@ -8,6 +8,7 @@ import { auth } from "../../config/firebase";
 import { subscribeToUserProfile, saveUserRole, subscribeToCoachTrainees, subscribeToCoachTemplates } from "../../services/userSession";
 import { logOut } from "../../services/auth";
 import { SessionState } from "../../state/types";
+import { ToastService } from "../../components/Toast";
 
 export function CoachProfileScreen({ session }: { session: SessionState }) {
     const navigation = useNavigation<any>();
@@ -42,17 +43,29 @@ export function CoachProfileScreen({ session }: { session: SessionState }) {
     }, []);
 
     const handleLogout = () => {
-        Alert.alert("Logout", "Are you sure you want to sign out?", [
-            { text: "Cancel", style: "cancel" },
-            { text: "Logout", style: "destructive", onPress: () => void logOut() }
-        ]);
+        ToastService.confirm({
+            title: "Sign out",
+            message: "Are you sure you want to leave Fytrak?",
+            confirmLabel: "Sign out",
+            destructive: true,
+            onConfirm: async () => {
+                try {
+                    await logOut();
+                    ToastService.info("Signed out", "Your Fytrak session has been closed.");
+                } catch (error) {
+                    ToastService.error("Sign out failed", error instanceof Error ? error.message : "Please try again.");
+                }
+            },
+        });
     };
 
     const handleSwitchRole = () => {
-        Alert.alert("Switch Mode", "Switch to Trainee mode to log your own personal workouts?", [
-            { text: "Cancel", style: "cancel" },
-            { text: "Switch", onPress: () => auth.currentUser && saveUserRole(auth.currentUser.uid, "trainee") }
-        ]);
+        ToastService.confirm({
+            title: "Switch Mode",
+            message: "Switch to Trainee mode to log your own personal workouts?",
+            confirmLabel: "Switch",
+            onConfirm: () => auth.currentUser && saveUserRole(auth.currentUser.uid, "trainee"),
+        });
     };
 
     if (isLoading) return (
@@ -69,7 +82,7 @@ export function CoachProfileScreen({ session }: { session: SessionState }) {
             subtitle="Professional identity & settings"
             contentStyle={styles.shellContent}
             rightActionIcon="settings-outline"
-            onRightAction={() => Alert.alert("Settings", "App settings coming soon (Theme, Notifications, Privacy).")}
+            onRightAction={() => ToastService.info("Settings", "App settings coming soon (Theme, Notifications, Privacy).")}
         >
             <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scroll}>
                 {/* HEADER */}

@@ -1,6 +1,8 @@
 import {
   addDoc,
   collection,
+  getDocs,
+  limit,
   onSnapshot,
   orderBy,
   query,
@@ -9,6 +11,7 @@ import {
 } from "firebase/firestore";
 import { auth, db } from "../config/firebase";
 import type { ChatImage, ChatMessage, ChatMessageType } from "../types/chat";
+import { updateClientSummaryAfterMessage } from "./clientSummaryService";
 
 const chatsCollection = "chats";
 
@@ -38,6 +41,14 @@ const parseChatMessage = (id: string, data: Record<string, unknown>): ChatMessag
     createdAt: toIsoString(data.createdAt),
     readAt: data.readAt ? toIsoString(data.readAt) : null,
   };
+};
+
+export type ChatThreadSummary = {
+  threadId: string;
+  lastMessageText: string;
+  lastMessageType: ChatMessageType;
+  lastMessageAt: string | null;
+  lastSenderId: string | null;
 };
 
 export const subscribeToChatMessages = (
@@ -95,4 +106,37 @@ export const sendChatMessage = async ({
     createdAt: serverTimestamp(),
     readAt: null,
   });
+
+  const summaryText = type === "image" ? "Image" : text;
+  try {
+    await updateClientSummaryAfterMessage({
+      traineeId,
+      senderId,
+      text: summaryText,
+      incrementUnreadForCoach: senderId === traineeId,
+    });
+  } catch (error) {
+    console.error("Failed to update message summary:", error);
+  }
+};
+
+export const fetchLatestThreadMessage = async (threadId: string): Promise<ChatThreadSummary | null> => {
+  const messagesQuery = query(
+    collection(db, chatsCollection, threadId, "messages"),
+    orderBy("createdAt", "desc"),
+    limit(1)
+  );
+
+  const snapshot = await getDocs(messagesQuery);
+  if (snapshot.empty) return null;
+
+  const docSnap = snapshot.docs[0];
+  const message = parseChatMessage(docSnap.id, docSnap.data());
+  return {
+    threadId,
+    lastMessageText: message.type === "image" ? "Image" : message.text,
+    lastMessageType: message.type,
+    lastMessageAt: message.createdAt,
+    lastSenderId: message.senderId,
+  };
 };

@@ -1,168 +1,95 @@
 import { useEffect, useMemo, useState } from "react";
-import { Alert, Pressable, StyleSheet, View, ActivityIndicator, ScrollView, Text, Modal } from "react-native";
+import { Alert, Pressable, StyleSheet, View, ActivityIndicator, ScrollView, Text } from "react-native";
 import { ScreenShell } from "../../components/ScreenShell";
 import { colors } from "../../theme/colors";
 import { Ionicons } from "@expo/vector-icons";
-import { logOut } from "../../services/auth";
 import { useNavigation } from "@react-navigation/native";
 import type { TraineeHomeNavigation } from "../../navigation/types";
-import { auth } from "../../config/firebase";
 import { Typography } from "../../components/Typography";
-import Svg, { Circle, G, Defs, LinearGradient as SvgLinearGradient, Stop } from "react-native-svg";
-import {
-  subscribeToDailyMeals,
-  subscribeToWorkouts,
-  subscribeToUserProfile,
-  subscribeToPrescribedWorkouts,
-  subscribeToPrescribedMeals,
-  subscribeToLatestMetrics,
-  subscribeToTraineePrograms,
-  type Meal,
-  type WorkoutLog,
-  type UserProfile,
-  type PrescribedWorkout,
-  type PrescribedMeal,
-  type BodyMetric,
-  type Program
-} from "../../services/userSession";
+import { MacroRing } from "../../components/MacroRing";
 import { ExerciseDetailSheet } from "../../components/ExerciseDetailSheet";
 import { EXERCISE_LIBRARY, ExerciseLibraryItem } from "../../constants/exercises";
-import { buildTodayMission, type TodayMissionItemId } from "../../features/retention/todayMission";
+import type { TodayMissionItemId } from "../../features/retention/todayMission";
 import { trackEvent } from "../../services/analytics";
-import { toLocalDateKey } from "../../utils/dateKeys";
-
+import { useTraineeDashboard } from "../../hooks/useTraineeDashboard";
 type TraineeHomeScreenProps = {
   onQuickAskCoach: () => void;
 };
 
-// Premium macro ring component.
-const MacroRing = ({ current, target, label }: { current: number, target: number, label: string }) => {
-  const size = 120;
-  const strokeWidth = 12;
-  const radius = (size - strokeWidth) / 2;
-  const circumference = radius * 2 * Math.PI;
-  const safeTarget = target > 0 ? target : 2000;
-  const progress = Math.min(current / safeTarget, 1);
-  const strokeDashoffset = circumference - progress * circumference;
 
-  return (
-    <View style={{ alignItems: 'center' }}>
-      <View style={{ width: size, height: size, alignItems: 'center', justifyContent: 'center' }}>
-        <Svg width={size} height={size}>
-          <Defs>
-            <SvgLinearGradient id="grad" x1="0" y1="0" x2="1" y2="1">
-              <Stop offset="0" stopColor={colors.primary} stopOpacity="1" />
-              <Stop offset="1" stopColor="#d97706" stopOpacity="1" />
-            </SvgLinearGradient>
-          </Defs>
-          <Circle stroke="#1c1c1e" cx={size / 2} cy={size / 2} r={radius} strokeWidth={strokeWidth} fill="none" />
-          <Circle
-            stroke="url(#grad)"
-            cx={size / 2}
-            cy={size / 2}
-            r={radius}
-            strokeWidth={strokeWidth}
-            fill="none"
-            strokeDasharray={circumference}
-            strokeDashoffset={strokeDashoffset}
-            strokeLinecap="round"
-            rotation="-90"
-            originX={size / 2}
-            originY={size / 2}
-          />
-        </Svg>
-        <View style={{ position: 'absolute', alignItems: 'center' }}>
-          <Typography variant="h2" style={{ fontSize: 24, lineHeight: 28 }}>{current}</Typography>
-          <Typography variant="label" style={{ color: '#888', fontSize: 10 }}>/ {target} kcal</Typography>
-        </View>
-      </View>
-      <Typography variant="label" style={{ color: '#fff', fontSize: 14, marginTop: 8, fontWeight: '700' }}>{label}</Typography>
-    </View>
-  );
-};
 
 export function TraineeHomeScreen({ onQuickAskCoach }: TraineeHomeScreenProps) {
   const navigation = useNavigation<TraineeHomeNavigation>();
-  const [meals, setMeals] = useState<Meal[]>([]);
-  const [workouts, setWorkouts] = useState<WorkoutLog[]>([]);
-  const [profile, setProfile] = useState<UserProfile | null>(null);
-  const [prescribed, setPrescribed] = useState<PrescribedWorkout[]>([]);
-  const [prescribedMeals, setPrescribedMeals] = useState<PrescribedMeal[]>([]);
-  const [metrics, setMetrics] = useState<BodyMetric[]>([]);
-  const [programs, setPrograms] = useState<Program[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
-  const [showLogoutModal, setShowLogoutModal] = useState(false);
   const [selectedEx, setSelectedEx] = useState<ExerciseLibraryItem | null>(null);
 
-  useEffect(() => {
-    const user = auth.currentUser;
-    if (!user) return;
+  const {
+    profile,
+    workouts,
+    prescribed,
+    prescribedMeals,
+    metrics,
+    programs,
+    isLoading,
+    isPremium,
+    nutritionStats,
+    workoutStatus,
+    greeting,
+    todayMission,
+  } = useTraineeDashboard();
+  const primaryAction = useMemo(() => {
+    if (prescribed.length > 0) {
+      return {
+        eyebrow: "Coach assigned",
+        title: prescribed[0].title,
+        subtitle: `${prescribed[0].exercises.length} exercises ready`,
+        icon: "play" as const,
+        actionLabel: "Start session",
+        onPress: () => navigation.navigate("Workouts", { autoLoadPrescriptionId: prescribed[0].id }),
+      };
+    }
 
-    const unsubMeals = subscribeToDailyMeals(user.uid, setMeals);
-    const unsubWorkouts = subscribeToWorkouts(user.uid, (data) => {
-      const today = toLocalDateKey();
-      const todayFlows = data.filter(w => {
-        const wDate = toLocalDateKey(w.createdAt?.toDate ? w.createdAt.toDate() : new Date());
-        return wDate === today;
-      });
-      setWorkouts(todayFlows);
-    });
+    if (workouts.length === 0) {
+      return {
+        eyebrow: "Training focus",
+        title: "Log today's workout",
+        subtitle: "Keep the streak alive with a fast session log.",
+        icon: "barbell" as const,
+        actionLabel: "Start workout",
+        onPress: () => navigation.navigate("Workouts"),
+      };
+    }
 
-    const unsubPrescribed = subscribeToPrescribedWorkouts(user.uid, setPrescribed);
-    const unsubPrescribedMeals = subscribeToPrescribedMeals(user.uid, setPrescribedMeals);
+    if (nutritionStats.current < nutritionStats.target * 0.6) {
+      return {
+        eyebrow: "Recovery support",
+        title: "Log nutrition",
+        subtitle: `${nutritionStats.current}/${nutritionStats.target} kcal tracked today`,
+        icon: "nutrition" as const,
+        actionLabel: "Open nutrition",
+        onPress: () => navigation.navigate("Nutrition"),
+      };
+    }
 
-    const unsubProfile = subscribeToUserProfile(user.uid, (data) => {
-      setProfile(data);
-      setIsLoading(false);
-    });
+    if (profile?.assignmentStatus === "assigned") {
+      return {
+        eyebrow: "Accountability",
+        title: "Send a coach update",
+        subtitle: "Share how the session felt while it is fresh.",
+        icon: "chatbubble-ellipses" as const,
+        actionLabel: "Ask coach",
+        onPress: onQuickAskCoach,
+      };
+    }
 
-    const unsubMetrics = subscribeToLatestMetrics(user.uid, setMetrics);
-    const unsubPrograms = subscribeToTraineePrograms(user.uid, setPrograms);
-
-    return () => {
-      unsubMeals();
-      unsubWorkouts();
-      unsubPrescribed();
-      unsubPrescribedMeals();
-      unsubProfile();
-      unsubMetrics();
-      unsubPrograms();
+    return {
+      eyebrow: "Transformation",
+      title: "Review progress",
+      subtitle: "See what your consistency is building.",
+      icon: "stats-chart" as const,
+      actionLabel: "View progress",
+      onPress: () => navigation.navigate("Progress"),
     };
-  }, []);
-
-  const isPremium = profile?.isPremium === true;
-
-  const nutritionStats = useMemo(() => {
-    const totalCals = meals.reduce((sum, m) => sum + (m.calories || 0), 0);
-    const targetCals = profile?.macroTargets?.calories || 2100;
-    return { current: totalCals, target: targetCals };
-  }, [meals, profile]);
-
-  const workoutStatus = useMemo(() => {
-    return workouts.length > 0 ? "Completed" : "Pending";
-  }, [workouts]);
-
-  const greeting = useMemo(() => {
-    const hour = new Date().getHours();
-    if (hour < 12) return "Good Morning";
-    if (hour < 18) return "Good Afternoon";
-    return "Good Evening";
-  }, []);
-
-  const todayMission = useMemo(() => {
-    const today = toLocalDateKey();
-    const latestMetricDate = metrics[0]?.date;
-
-    return buildTodayMission({
-      hasWorkoutToday: workouts.length > 0,
-      caloriesLogged: nutritionStats.current,
-      calorieTarget: nutritionStats.target,
-      hasCoachAssigned: profile?.assignmentStatus === "assigned",
-      hasPendingWorkoutPlan: prescribed.length > 0,
-      hasPendingMealPlan: prescribedMeals.length > 0,
-      hasBodyMetricToday: latestMetricDate === today,
-    });
-  }, [metrics, nutritionStats.current, nutritionStats.target, prescribed.length, prescribedMeals.length, profile?.assignmentStatus, workouts.length]);
+  }, [navigation, nutritionStats.current, nutritionStats.target, onQuickAskCoach, prescribed, profile?.assignmentStatus, workouts.length]);
 
   const handleMissionAction = (missionId: TodayMissionItemId) => {
     trackEvent("today_mission_action_pressed", {
@@ -250,6 +177,23 @@ export function TraineeHomeScreen({ onQuickAskCoach }: TraineeHomeScreenProps) {
               </View>
               {isPremium && <PremiumBadge />}
             </View>
+
+            <Pressable style={styles.primaryActionCard} onPress={primaryAction.onPress}>
+              <View style={styles.primaryActionIcon}>
+                <Ionicons name={primaryAction.icon} size={24} color={colors.primaryText} />
+              </View>
+              <View style={styles.primaryActionCopy}>
+                <Typography variant="label" color="rgba(0,0,0,0.62)">{primaryAction.eyebrow}</Typography>
+                <Typography variant="h2" style={styles.primaryActionTitle}>{primaryAction.title}</Typography>
+                <Typography variant="label" color="#8c8c8c" style={styles.primaryActionSubtitle}>
+                  {primaryAction.subtitle}
+                </Typography>
+              </View>
+              <View style={styles.primaryActionCta}>
+                <Typography style={styles.primaryActionCtaText}>{primaryAction.actionLabel}</Typography>
+                <Ionicons name="arrow-forward" size={16} color={colors.primaryText} />
+              </View>
+            </Pressable>
 
             <View style={styles.missionCard}>
               <View style={styles.missionHeader}>
@@ -438,10 +382,17 @@ export function TraineeHomeScreen({ onQuickAskCoach }: TraineeHomeScreenProps) {
 
             <View style={styles.card}>
               <View style={styles.cardHeader}>
-                <Ionicons name="flash" size={18} color={colors.primary} />
-                <Typography variant="h2">Quick actions</Typography>
+                <Ionicons name="compass" size={18} color={colors.primary} />
+                <Typography variant="h2">Support tools</Typography>
               </View>
               <View style={styles.actionsGrid}>
+                <Pressable
+                  style={[styles.actionButton, { backgroundColor: "#1a1a1a", borderWidth: 1, borderColor: "#333" }]}
+                  onPress={() => navigation.navigate("Nutrition")}
+                >
+                  <Ionicons name="nutrition" size={20} color={colors.primary} />
+                  <Typography style={[styles.actionButtonText, { color: colors.primary }] as any}>Nutrition</Typography>
+                </Pressable>
                 {profile?.assignmentStatus === 'assigned' ? (
                   <Pressable 
                     style={[styles.actionButton, !isPremium && styles.disabledAction]} 
@@ -459,40 +410,11 @@ export function TraineeHomeScreen({ onQuickAskCoach }: TraineeHomeScreenProps) {
                     <Typography style={styles.actionButtonText}>Find Coach</Typography>
                   </Pressable>
                 )}
-
-                <Pressable
-                  style={[styles.actionButton, { backgroundColor: "#1a1a1a", borderWidth: 1, borderColor: "#333" }]}
-                  onPress={() => setShowLogoutModal(true)}
-                >
-                  <Ionicons name="log-out-outline" size={20} color="#ff4444" />
-                  <Typography style={[styles.actionButtonText, { color: "#ff4444" }] as any}>Log Out</Typography>
-                </Pressable>
               </View>
             </View>
           </View>
         </ScrollView>
       )}
-
-      {/* CUSTOM LOGOUT OVERLAY */}
-      <Modal transparent={true} visible={showLogoutModal} animationType="fade" onRequestClose={() => setShowLogoutModal(false)}>
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalContent}>
-            <View style={styles.modalIconBg}>
-              <Ionicons name="log-out-outline" size={28} color="#ff4444" />
-            </View>
-            <Typography variant="h2" style={styles.modalTitle}>Log Out</Typography>
-            <Typography style={styles.modalDesc as any}>Are you sure you want to sign out?</Typography>
-            <View style={styles.modalActions}>
-              <Pressable style={styles.modalCancelBtn} onPress={() => setShowLogoutModal(false)}>
-                <Typography style={styles.modalBtnText as any}>CANCEL</Typography>
-              </Pressable>
-              <Pressable style={styles.modalConfirmBtn} onPress={() => { setShowLogoutModal(false); void logOut(); }}>
-                <Typography style={styles.modalBtnText as any}>LOGOUT</Typography>
-              </Pressable>
-            </View>
-          </View>
-        </View>
-      </Modal>
 
       <ExerciseDetailSheet 
         exercise={selectedEx}
@@ -540,6 +462,55 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: "#333333",
     gap: 16,
+  },
+  primaryActionCard: {
+    backgroundColor: colors.primary,
+    borderRadius: 24,
+    padding: 18,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 14,
+    shadowColor: colors.primary,
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.22,
+    shadowRadius: 14,
+    elevation: 8,
+  },
+  primaryActionIcon: {
+    width: 50,
+    height: 50,
+    borderRadius: 16,
+    backgroundColor: "rgba(0,0,0,0.12)",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  primaryActionCopy: {
+    flex: 1,
+    gap: 3,
+  },
+  primaryActionTitle: {
+    color: colors.primaryText,
+    fontSize: 18,
+    lineHeight: 23,
+  },
+  primaryActionSubtitle: {
+    color: "rgba(0,0,0,0.62)",
+    fontSize: 10,
+  },
+  primaryActionCta: {
+    minHeight: 38,
+    borderRadius: 999,
+    backgroundColor: "rgba(0,0,0,0.1)",
+    paddingHorizontal: 12,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+  },
+  primaryActionCtaText: {
+    color: colors.primaryText,
+    fontSize: 11,
+    fontWeight: "900",
+    textTransform: "uppercase",
   },
   missionCard: {
     backgroundColor: "#101010",
@@ -679,15 +650,6 @@ const styles = StyleSheet.create({
   ringContainer: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#0a0a0a', padding: 20, borderRadius: 24, borderWidth: 1, borderColor: '#1c1c1e' },
   ringSideStats: { flex: 1, marginLeft: 24, gap: 16 },
   sideStatBox: { flexDirection: 'row', alignItems: 'flex-start', gap: 10 },
-  modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.75)', justifyContent: 'center', alignItems: 'center', padding: 20 },
-  modalContent: { width: '100%', backgroundColor: '#111', borderRadius: 32, padding: 32, alignItems: 'center', borderWidth: 1, borderColor: '#2c2c2e' },
-  modalIconBg: { width: 64, height: 64, borderRadius: 32, backgroundColor: 'rgba(255, 68, 68, 0.1)', justifyContent: 'center', alignItems: 'center', marginBottom: 20 },
-  modalTitle: { fontSize: 24, marginBottom: 8 },
-  modalDesc: { color: '#8c8c8c', fontSize: 16, textAlign: 'center', marginBottom: 32, fontWeight: '600' },
-  modalActions: { flexDirection: 'row', gap: 12, width: '100%' },
-  modalCancelBtn: { flex: 1, padding: 18, borderRadius: 16, backgroundColor: '#222', alignItems: 'center' },
-  modalConfirmBtn: { flex: 1, padding: 18, borderRadius: 16, backgroundColor: '#ff4444', alignItems: 'center' },
-  modalBtnText: { color: '#fff', fontWeight: '900', fontSize: 14, textTransform: 'uppercase' },
   previewRow: { flexDirection: 'row', marginTop: 12, marginBottom: 4 },
   previewItem: { alignItems: 'center', width: 80, gap: 6, marginRight: 12 },
   previewIcon: { width: 44, height: 44, borderRadius: 12, backgroundColor: 'rgba(255,204,0,0.1)', alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: 'rgba(255,204,0,0.2)' },

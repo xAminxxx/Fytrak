@@ -5,6 +5,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { saveAssignmentStatus } from "../../services/userSession";
 import { auth } from "../../config/firebase";
 import { signOut } from "firebase/auth";
+import { ToastService } from "../../components/Toast";
 
 type PendingCoachScreenProps = {
   coachName: string | null;
@@ -15,8 +16,9 @@ export function PendingCoachScreen({ coachName, onSimulateApprove }: PendingCoac
   const handleLogout = async () => {
     try {
       await signOut(auth);
+      ToastService.info("Signed out", "Your Fytrak session has been closed.");
     } catch (error) {
-      Alert.alert("Error", "Failed to sign out.");
+      ToastService.error("Sign out failed", "Please try again.");
     }
   };
 

@@ -42,32 +42,72 @@ import {
   calculateWorkoutVolume,
   detectWorkoutPersonalRecords,
   duplicateSetForNextEntry,
+  estimateOneRepMax,
+  getBestEstimatedOneRepMaxForExercise,
+  getLatestExercisePerformance,
   getCompletedWorkoutExercises,
 } from "../../features/workouts/workoutPerformance";
 import { trackEvent } from "../../services/analytics";
 import { toLocalDateKey } from "../../utils/dateKeys";
 import { radius, spacing, touchTarget, typography } from "../../theme/tokens";
+import { searchAscendExercises } from "../../services/exerciseMediaService";
+
+import { useActiveWorkout } from "../../hooks/useActiveWorkout";
+import { WorkoutExerciseCard } from "../../components/WorkoutExerciseCard";
 
 type ExerciseLog = ActiveWorkoutExerciseDraft;
 
 export function WorkoutLogScreen() {
-  const [workoutName, setWorkoutName] = useState("Today's Session");
-  const [exercises, setExercises] = useState<ExerciseLog[]>([createEmptyWorkoutExercise()]);
   const [prescribed, setPrescribed] = useState<PrescribedWorkout[]>([]);
-  const [activePrescriptionId, setActivePrescriptionId] = useState<string | null>(null);
-  const [workoutStartedAt, setWorkoutStartedAt] = useState(new Date().toISOString());
   const [workouts, setWorkouts] = useState<WorkoutLog[]>([]);
   const [profile, setProfile] = useState<UserProfile | null>(null);
-  const hasLoadedDraftRef = useRef(false);
-  const isCompletingWorkoutRef = useRef(false);
+
+  const {
+    workoutName, setWorkoutName,
+    exercises, setExercises,
+    activePrescriptionId, setActivePrescriptionId,
+    workoutStartedAt, setWorkoutStartedAt,
+    isCompletingWorkoutRef,
+    restTimeLeft, setRestTimeLeft,
+    timerActive, setTimerActive,
+    initFromPrescribed,
+    addExerciseCard,
+    toggleSet,
+    updateSet,
+    duplicateSet,
+    applyPreviousValues,
+    removeExercise,
+    updateExerciseType,
+    undoLastCompletedSet,
+  } = useActiveWorkout(workouts);
 
   // EXERCISE INFO MODAL
   const [selectedExerciseInfo, setSelectedExerciseInfo] = useState<ExerciseLibraryItem | null>(null);
   const [isExerciseModalVisible, setIsExerciseModalVisible] = useState(false);
   const [exerciseSearchQuery, setExerciseSearchQuery] = useState("");
+  const [activeExerciseIndex, setActiveExerciseIndex] = useState<number | null>(null);
 
   const [dbExercises, setDbExercises] = useState<ExerciseLibraryItem[]>([]);
   const [isSearching, setIsSearching] = useState(false);
+
+  const applyExerciseSelection = useCallback((exercise: ExerciseLog) => {
+    setExercises((current) => {
+      if (activeExerciseIndex === null) {
+        return [...current, exercise];
+      }
+
+      return current.map((item, index) => (index === activeExerciseIndex ? exercise : item));
+    });
+  }, [activeExerciseIndex]);
+
+  const addCustomExercise = useCallback((name: string) => {
+    const customName = name.trim() || "Custom Exercise";
+    applyExerciseSelection({
+      name: customName,
+      type: "WEIGHT_REPS",
+      sets: [{ type: "WEIGHT_REPS", isCompleted: false }],
+    });
+  }, [applyExerciseSelection]);
 
   useEffect(() => {
     if (exerciseSearchQuery.length < 2) {
@@ -89,7 +129,16 @@ export function WorkoutLogScreen() {
         querySnapshot.forEach((exerciseDoc) => {
           results.push(exerciseDoc.data() as ExerciseLibraryItem);
         });
-        setDbExercises(results);
+        const apiResults = await searchAscendExercises(exerciseSearchQuery, 20).catch((error) => {
+          console.warn("AscendAPI search failed:", error);
+          return [] as ExerciseLibraryItem[];
+        });
+        const seenIds = new Set(results.map((exercise) => exercise.id));
+        const merged = [
+          ...results,
+          ...apiResults.filter((exercise) => !seenIds.has(exercise.id)),
+        ];
+        setDbExercises(merged);
       } catch (err) {
         console.error("Search failed:", err);
       } finally {
@@ -124,10 +173,19 @@ export function WorkoutLogScreen() {
     setSelectedExerciseInfo(exercise);
   }, []);
 
-  // REST TIMER
-  const [restTimeLeft, setRestTimeLeft] = useState(0);
-  const [timerActive, setTimerActive] = useState(false);
-  const timerRef = useRef<NodeJS.Timeout | null>(null);
+  const addLibraryExerciseToWorkout = useCallback((exercise: ExerciseLibraryItem) => {
+    applyExerciseSelection({
+      exerciseId: exercise.id,
+      name: tEx(exercise.name),
+      type: exercise.defaultType,
+      sets: [{ type: exercise.defaultType, isCompleted: false }],
+    });
+    setSelectedExerciseInfo(null);
+    setExerciseSearchQuery("");
+    ToastService.success("Added", `${tEx(exercise.name)} is ready to log.`);
+  }, [applyExerciseSelection]);
+
+
 
   // NAVIGATION
   const navigation = useNavigation<any>();
@@ -200,82 +258,10 @@ export function WorkoutLogScreen() {
     const unsubProfile = subscribeToUserProfile(user.uid, setProfile);
     return () => {
       unsubHistory(); unsubPrescribed(); unsubProfile();
-      if (timerRef.current) clearInterval(timerRef.current);
     };
   }, []);
 
-  // LOCAL ACTIVE WORKOUT DRAFT
-  useEffect(() => {
-    const user = auth.currentUser;
-    if (!user) {
-      hasLoadedDraftRef.current = true;
-      return;
-    }
 
-    let isMounted = true;
-
-    loadActiveWorkoutDraft(user.uid).then((draft) => {
-      if (!isMounted) return;
-
-      hasLoadedDraftRef.current = true;
-      if (!draft || !hasMeaningfulWorkoutDraft(draft)) return;
-
-      Alert.alert(
-        "Resume Workout?",
-        "You have an unfinished workout saved on this device.",
-        [
-          {
-            text: "Discard",
-            style: "destructive",
-            onPress: () => void clearActiveWorkoutDraft(user.uid),
-          },
-          {
-            text: "Resume",
-            onPress: () => {
-              const ageMinutes = Math.max(0, Math.round((Date.now() - new Date(draft.updatedAt).getTime()) / 60000));
-              trackEvent("active_workout_resumed", {
-                exerciseCount: draft.exercises.length,
-                ageMinutes,
-              });
-              setWorkoutName(draft.workoutName);
-              setActivePrescriptionId(draft.activePrescriptionId);
-              setWorkoutStartedAt(draft.startedAt);
-              setExercises(draft.exercises.length > 0 ? draft.exercises : [createEmptyWorkoutExercise()]);
-            },
-          },
-        ]
-      );
-    });
-
-    return () => {
-      isMounted = false;
-    };
-  }, []);
-
-  useEffect(() => {
-    const user = auth.currentUser;
-    if (!user || !hasLoadedDraftRef.current || isCompletingWorkoutRef.current) return;
-
-    const draft = {
-      version: 1 as const,
-      userId: user.uid,
-      workoutName,
-      activePrescriptionId,
-      exercises,
-      startedAt: workoutStartedAt,
-      updatedAt: new Date().toISOString(),
-    };
-
-    const autosave = setTimeout(() => {
-      if (hasMeaningfulWorkoutDraft(draft)) {
-        void saveActiveWorkoutDraft(draft);
-      } else {
-        void clearActiveWorkoutDraft(user.uid);
-      }
-    }, 400);
-
-    return () => clearTimeout(autosave);
-  }, [activePrescriptionId, exercises, workoutName, workoutStartedAt]);
 
   // INTAKE AUTO-SHOW
   useEffect(() => {
@@ -294,42 +280,7 @@ export function WorkoutLogScreen() {
     }
   }, [route.params?.autoLoadPrescriptionId, prescribed]);
 
-  // TIMER LOGIC
-  useEffect(() => {
-    if (timerActive && restTimeLeft > 0) {
-      timerRef.current = setInterval(() => {
-        setRestTimeLeft(prev => {
-          if (prev <= 1) {
-            setTimerActive(false);
-            if (timerRef.current) clearInterval(timerRef.current);
-            Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
-            return 0;
-          }
-          return prev - 1;
-        });
-      }, 1000);
-    }
-    return () => { if (timerRef.current) clearInterval(timerRef.current); };
-  }, [timerActive]);
 
-  const initFromPrescribed = (p: PrescribedWorkout) => {
-    setWorkoutName(p.title);
-    setActivePrescriptionId(p.id);
-    setWorkoutStartedAt(new Date().toISOString());
-    setExercises(p.exercises.map(ex => {
-      const exType = ex.type || "WEIGHT_REPS";
-      return {
-        name: ex.name,
-        type: exType,
-        sets: Array(ex.targetSets).fill(0).map(() => ({
-          type: exType,
-          reps: exType === "TIME" ? undefined : Number(ex.targetReps) || 0,
-          durationSec: exType === "TIME" ? parseInt(ex.targetReps) || 60 : undefined,
-          isCompleted: false
-        }))
-      };
-    }));
-  };
 
   const handleSaveIntake = async () => {
     if (!auth.currentUser) return;
@@ -354,20 +305,7 @@ export function WorkoutLogScreen() {
     finally { setIsSavingIntake(false); }
   };
 
-  const toggleSet = (exIdx: number, sIdx: number) => {
-    const newEx = [...exercises];
-    const wasCompleted = newEx[exIdx].sets[sIdx].isCompleted;
-    newEx[exIdx].sets[sIdx].isCompleted = !wasCompleted;
-    setExercises(newEx);
 
-    if (!wasCompleted) {
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-      setRestTimeLeft(60); setTimerActive(true);
-    } else {
-      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-      setTimerActive(false); setRestTimeLeft(0);
-    }
-  };
 
   const handleCompleteWithCheckIn = async () => {
     const user = auth.currentUser;
@@ -404,10 +342,15 @@ export function WorkoutLogScreen() {
       );
       navigation.navigate("Home");
     } catch (error) {
+      console.error("Workout submission error:", error);
       isCompletingWorkoutRef.current = false;
       ToastService.error("Error", "Could not save log. Your workout draft is still saved.");
     }
   };
+
+  const reviewCompletedExercises = getCompletedWorkoutExercises(exercises);
+  const reviewPersonalRecords = detectWorkoutPersonalRecords(reviewCompletedExercises, workouts);
+  const reviewDuration = Math.max(1, Math.round((Date.now() - new Date(workoutStartedAt).getTime()) / 60000));
 
   if (showIntake) {
     return (
@@ -460,6 +403,42 @@ export function WorkoutLogScreen() {
     return (
       <ScreenShell title="Check-in" subtitle="Feedback" contentStyle={styles.shellContent}>
         <ScrollView contentContainerStyle={styles.scroll}>
+          <View style={styles.completionSummaryCard}>
+            <View style={styles.completionHeader}>
+              <View>
+                <Typography variant="label" color={colors.primary}>SESSION COMPLETE</Typography>
+                <Typography variant="h2" style={styles.completionTitle}>{workoutName}</Typography>
+              </View>
+              {reviewPersonalRecords.length > 0 ? (
+                <View style={styles.prPill}>
+                  <Ionicons name="trophy" size={14} color={colors.primaryText} />
+                  <Text style={styles.prPillText}>{reviewPersonalRecords.length} PR</Text>
+                </View>
+              ) : null}
+            </View>
+            <View style={styles.completionStatsRow}>
+              <View style={styles.completionStat}>
+                <Text style={styles.completionValue}>{totalSetsCompleted}</Text>
+                <Text style={styles.completionLabel}>sets</Text>
+              </View>
+              <View style={styles.completionStat}>
+                <Text style={styles.completionValue}>{totalVolume}</Text>
+                <Text style={styles.completionLabel}>kg volume</Text>
+              </View>
+              <View style={styles.completionStat}>
+                <Text style={styles.completionValue}>{reviewDuration}</Text>
+                <Text style={styles.completionLabel}>minutes</Text>
+              </View>
+            </View>
+            {reviewPersonalRecords[0] ? (
+              <View style={styles.prCallout}>
+                <Ionicons name="flash" size={16} color={colors.primary} />
+                <Text style={styles.prCalloutText}>
+                  {reviewPersonalRecords[0].exerciseName}: {reviewPersonalRecords[0].estimatedOneRepMax}kg estimated 1RM
+                </Text>
+              </View>
+            ) : null}
+          </View>
           <CheckInRating label="Energy Level" value={energy} onSelect={setEnergy} />
           <CheckInRating label="Muscle Soreness" value={soreness} onSelect={setSoreness} />
           <View style={styles.checkInCard}>
@@ -492,22 +471,51 @@ export function WorkoutLogScreen() {
         <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scroll}>
           {profile?.isPremium && prescribed.length > 0 && workoutName !== prescribed[0].title && (
             <Pressable style={styles.prescribedBanner} onPress={() => initFromPrescribed(prescribed[0])}>
-              <Ionicons name="flash" size={18} color="#000" /><Text style={styles.bannerText}>LOAD COACH'S PLAN: {prescribed[0].title}</Text>
+              <Ionicons name="flash" size={18} color="#000" />
+              <Text style={styles.bannerText}>LOAD COACH'S PLAN: {prescribed[0].title}</Text>
             </Pressable>
           )}
 
-          <View style={styles.liveStatsRow}>
-            <View style={styles.liveStatBox}>
-              <Typography variant="label" color="#8c8c8c">SETS COMPLETED</Typography>
-              <Typography variant="metric">{totalSetsCompleted}</Typography>
+          <View style={styles.sessionFocusCard}>
+            <View style={styles.sessionFocusHeader}>
+              <View style={{ flex: 1 }}>
+                <Typography variant="label" color={colors.primary}>ACTIVE SESSION</Typography>
+                <TextInput
+                  style={styles.workoutNameInput}
+                  value={workoutName}
+                  onChangeText={setWorkoutName}
+                  placeholder="Workout Name"
+                  placeholderTextColor="#444"
+                />
+              </View>
+              <View style={styles.autosavePill}>
+                <Ionicons name="cloud-done-outline" size={14} color={colors.success} />
+                <Text style={styles.autosaveText}>Saved</Text>
+              </View>
             </View>
-            <View style={styles.liveStatBox}>
-              <Typography variant="label" color="#8c8c8c">TOTAL VOLUME</Typography>
-              <Typography variant="metric">{totalVolume} <Typography variant="label" color="#444">kg</Typography></Typography>
+            <View style={styles.liveStatsRow}>
+              <View style={styles.liveStatBox}>
+                <Typography variant="label" color="#8c8c8c">SETS</Typography>
+                <Typography variant="metric">{totalSetsCompleted}</Typography>
+              </View>
+              <View style={styles.liveStatBox}>
+                <Typography variant="label" color="#8c8c8c">VOLUME</Typography>
+                <Typography variant="metric">{totalVolume} <Typography variant="label" color="#444">kg</Typography></Typography>
+              </View>
+              <View style={styles.liveStatBox}>
+                <Typography variant="label" color="#8c8c8c">REST</Typography>
+                <Typography variant="metric" style={styles.restMetric}>
+                  {timerActive && restTimeLeft > 0 ? `${Math.floor(restTimeLeft / 60)}:${String(restTimeLeft % 60).padStart(2, "0")}` : "--"}
+                </Typography>
+              </View>
             </View>
+            {totalSetsCompleted > 0 ? (
+              <Pressable style={styles.undoLastSetBtn} onPress={undoLastCompletedSet}>
+                <Ionicons name="arrow-undo" size={16} color={colors.textMuted} />
+                <Text style={styles.undoLastSetText}>Undo last completed set</Text>
+              </Pressable>
+            ) : null}
           </View>
-
-          <TextInput style={styles.workoutNameInput} value={workoutName} onChangeText={setWorkoutName} placeholder="Workout Name" placeholderTextColor="#444" />
 
           {exercises.length === 0 ? (
             <View style={styles.emptyState}>
@@ -516,118 +524,83 @@ export function WorkoutLogScreen() {
               <Typography variant="bodySmall" color={colors.textFaint}>Add your first exercise to start tracking.</Typography>
             </View>
           ) : (
-            exercises.map((ex, exIdx) => (
-              <View key={exIdx} style={styles.exerciseCard}>
-                <View style={styles.exerciseHeader}>
-                  <View style={{ flex: 1, gap: 12 }}>
-                    <View style={styles.exerciseNameRow}>
-                      <TextInput style={styles.exerciseNameInput} value={ex.name} onChangeText={(v) => { const n = [...exercises]; n[exIdx].name = v; setExercises(n); }} placeholder="Exercise Name" placeholderTextColor="#444" />
-                      <Pressable
-                        accessibilityRole="button"
-                        accessibilityLabel={`Open details for ${ex.name || "exercise"}`}
-                        hitSlop={8}
-                        style={styles.infoTapTarget}
-                        onPress={() => {
-                        const info = findExerciseInfo(ex);
-                        if (info) openExerciseDetails(info);
-                        else ToastService.info("Not Found", "No detailed instructions available for this exercise.");
-                      }}>
-                        <Ionicons
-                          name={findExerciseInfo(ex)?.videoUrl ? "videocam" : "information-circle-outline"}
-                          size={24}
-                          color={colors.primary}
-                        />
-                      </Pressable>
-                    </View>
-                    <View style={styles.typeSelectorRow}>
-                      {(["WEIGHT_REPS", "TIME", "BODYWEIGHT"] as WorkoutSetType[]).map(t => (
-                        <Pressable key={t} style={[styles.typePill, ex.type === t && styles.typePillActive]} onPress={() => {
-                          const n = [...exercises];
-                          n[exIdx].type = t;
-                          n[exIdx].sets.forEach(s => s.type = t); // cascade to all sets
-                          setExercises(n);
-                        }}>
-                          <Text style={[styles.typePillText, ex.type === t && styles.typePillTextActive]}>{t.replace("_", " ")}</Text>
-                        </Pressable>
-                      ))}
-                    </View>
-                  </View>
-                  <Pressable
-                    accessibilityRole="button"
-                    accessibilityLabel={`Remove ${ex.name || "exercise"}`}
-                    hitSlop={8}
-                    style={styles.removeExerciseBtn}
-                    onPress={() => setExercises(exercises.filter((_, i) => i !== exIdx))}
-                  >
-                    <Ionicons name="close-circle-outline" size={26} color={colors.danger} />
-                  </Pressable>
-                </View>
+            exercises.map((ex, exIdx) => {
+              const previousPerformance = getLatestExercisePerformance(ex.name, workouts);
+              const previousSummary = previousPerformance?.sets
+                .slice(0, 3)
+                .map((set) => {
+                  if (set.type === "TIME") return `${set.durationSec || 0}s`;
+                  if (set.type === "BODYWEIGHT" || set.type === "REPS_ONLY") return `${set.reps || 0} reps`;
+                  return `${set.weight || 0}kg x ${set.reps || 0}`;
+                })
+                .join("  |  ");
 
-                <View style={styles.tableHeader}>
-                  <Text style={[styles.columnLabel, { flex: 0.5 }]}>SET</Text>
-                  {ex.type === "TIME" ? (
-                    <Text style={styles.columnLabel}>SECONDS</Text>
-                  ) : ex.type === "BODYWEIGHT" || ex.type === "REPS_ONLY" ? (
-                    <Text style={styles.columnLabel}>REPS</Text>
-                  ) : (
-                    <>
-                      <Text style={styles.columnLabel}>KG</Text>
-                      <Text style={styles.columnLabel}>REPS</Text>
-                    </>
-                  )}
-                  <Text style={{ flex: 0.5 }} />
-                </View>
-                {ex.sets.map((set, sIdx) => (
-                  <View key={sIdx} style={[styles.setRow, set.isCompleted && styles.setRowCompleted]}>
-                    <Text style={[styles.setText, { flex: 0.5 }]}>{sIdx + 1}</Text>
-
-                    {ex.type === "TIME" ? (
-                      <TextInput style={styles.setInput} value={set.durationSec?.toString()} keyboardType="number-pad" placeholder="-" placeholderTextColor="#444" onChangeText={(v) => { const n = [...exercises]; n[exIdx].sets[sIdx].durationSec = Number(v); setExercises(n); }} editable={!set.isCompleted} />
-                    ) : ex.type === "BODYWEIGHT" || ex.type === "REPS_ONLY" ? (
-                      <TextInput style={styles.setInput} value={set.reps?.toString()} keyboardType="number-pad" placeholder="-" placeholderTextColor="#444" onChangeText={(v) => { const n = [...exercises]; n[exIdx].sets[sIdx].reps = Number(v); setExercises(n); }} editable={!set.isCompleted} />
-                    ) : (
-                      <>
-                        <TextInput style={styles.setInput} value={set.weight?.toString()} keyboardType="decimal-pad" placeholder="-" placeholderTextColor="#444" onChangeText={(v) => { const n = [...exercises]; n[exIdx].sets[sIdx].weight = Number(v); setExercises(n); }} editable={!set.isCompleted} />
-                        <TextInput style={styles.setInput} value={set.reps?.toString()} keyboardType="number-pad" placeholder="-" placeholderTextColor="#444" onChangeText={(v) => { const n = [...exercises]; n[exIdx].sets[sIdx].reps = Number(v); setExercises(n); }} editable={!set.isCompleted} />
-                      </>
-                    )}
-
-                    <Pressable
-                      accessibilityRole="button"
-                      accessibilityLabel={set.isCompleted ? `Mark set ${sIdx + 1} incomplete` : `Complete set ${sIdx + 1}`}
-                      accessibilityState={{ checked: set.isCompleted }}
-                      hitSlop={8}
-                      style={styles.checkBtn}
-                      onPress={() => {
-                      if (!set.isCompleted && ex.type === "WEIGHT_REPS" && (!set.reps || !set.weight)) {
-                        ToastService.info("Missing Data", "Please enter weight and reps.");
-                        return;
-                      }
-                      toggleSet(exIdx, sIdx);
-                    }}><Ionicons name={set.isCompleted ? "checkmark-circle" : "ellipse-outline"} size={24} color={set.isCompleted ? colors.primary : "#333"} /></Pressable>
-                  </View>
-                ))}
-                <Pressable style={styles.addSetBtn} onPress={() => {
-                  const n = [...exercises];
-                  const previousSet = n[exIdx].sets[n[exIdx].sets.length - 1];
-                  n[exIdx].sets.push(previousSet ? duplicateSetForNextEntry(previousSet, ex.type) : { type: ex.type, isCompleted: false });
-                  setExercises(n);
-                }}><Ionicons name="copy-outline" size={18} color={colors.primary} /><Text style={styles.addSetText}>DUPLICATE SET</Text></Pressable>
-              </View>
-            ))
+              return (
+                <WorkoutExerciseCard
+                  key={exIdx}
+                  ex={ex}
+                  exIdx={exIdx}
+                  previousSummary={previousSummary}
+                  previousSets={previousPerformance?.sets}
+                  hasVideoUrl={!!findExerciseInfo(ex)?.videoUrl}
+                  onSearchExercise={() => {
+                    setActiveExerciseIndex(exIdx);
+                    setExerciseSearchQuery("");
+                    setIsExerciseModalVisible(true);
+                  }}
+                  onOpenDetails={() => {
+                    const info = findExerciseInfo(ex);
+                    if (info) openExerciseDetails(info);
+                  }}
+                  onRemove={() => removeExercise(exIdx)}
+                  onUpdateType={(type) => updateExerciseType(exIdx, type)}
+                  onUpdateSet={(sIdx, field, value) => updateSet(exIdx, sIdx, field, value)}
+                  onToggleSet={(sIdx) => toggleSet(exIdx, sIdx)}
+                  onDuplicateSet={() => duplicateSet(exIdx)}
+                  onApplyPrevious={(sets) => applyPreviousValues(exIdx, sets)}
+                />
+              );
+            })
           )}
 
-          <Pressable style={styles.addExBtn} onPress={() => setIsExerciseModalVisible(true)}><Ionicons name="search-circle" size={26} color={colors.primary} /><Text style={styles.addExText}>ADD EXERCISE</Text></Pressable>
-          <Pressable style={styles.finishBtn} onPress={() => {
-            if (totalSetsCompleted === 0) {
-              ToastService.error("Empty Workout", "Please complete at least one set before checking in.");
-              return;
-            }
-            setIsCheckingIn(true);
-          }}><Text style={styles.finishBtnText}>FINISH WORKOUT</Text><Ionicons name="checkbox" size={20} color={colors.primaryText} /></Pressable>
+          <Pressable
+            style={styles.addExBtn}
+            onPress={() => {
+              setActiveExerciseIndex(null);
+              setExerciseSearchQuery("");
+              setIsExerciseModalVisible(true);
+            }}
+          >
+            <Ionicons name="add-circle" size={22} color={colors.primary} />
+            <Text style={styles.addExText}>ADD EXERCISE</Text>
+          </Pressable>
         </ScrollView>
+        <View style={styles.workoutActionDock}>
+          <Pressable
+            style={styles.dockFinishBtn}
+            onPress={() => {
+              if (totalSetsCompleted === 0) {
+                ToastService.error("Empty Workout", "Please complete at least one set before checking in.");
+                return;
+              }
+              setIsCheckingIn(true);
+            }}
+          >
+            <Text style={styles.finishBtnText}>FINISH</Text>
+            <Ionicons name="checkbox" size={20} color={colors.primaryText} />
+          </Pressable>
+        </View>
       </KeyboardAvoidingView>
-      {timerActive && restTimeLeft > 0 && <RestTimer value={restTimeLeft} onAdjust={(d: number) => setRestTimeLeft(prev => prev + d)} onSkip={() => { setTimerActive(false); setRestTimeLeft(0); }} />}
+      {timerActive && restTimeLeft > 0 && (
+        <RestTimer
+          value={restTimeLeft}
+          onAdjust={(d: number) => setRestTimeLeft(prev => prev + d)}
+          onSkip={() => {
+            setTimerActive(false);
+            setRestTimeLeft(0);
+          }}
+        />
+      )}
 
       {/* EXERCISE SELECTION MODAL */}
       <Modal
@@ -666,7 +639,7 @@ export function WorkoutLogScreen() {
                   <Pressable
                     style={[styles.loadBtn, { marginTop: 12, backgroundColor: "#111" }]}
                     onPress={() => {
-                      setExercises([...exercises, { name: exerciseSearchQuery || "Custom Exercise", type: "WEIGHT_REPS", sets: [{ type: "WEIGHT_REPS", isCompleted: false }] }]);
+                      addCustomExercise(exerciseSearchQuery || "Custom Exercise");
                       setIsExerciseModalVisible(false);
                       setExerciseSearchQuery("");
                     }}
@@ -677,10 +650,7 @@ export function WorkoutLogScreen() {
                 </View>
               ) : (
                 filteredExercises.map((ex) => (
-                  <View
-                    key={ex.id}
-                    style={styles.exerciseSelectItem}
-                  >
+                  <View key={ex.id} style={styles.exerciseSelectItem}>
                     <View style={{ flex: 1 }}>
                       <Text style={styles.modalItemTitle}>{tEx(ex.name)}</Text>
                       <View style={{ flexDirection: "row", gap: 8, marginTop: 4 }}>
@@ -689,16 +659,13 @@ export function WorkoutLogScreen() {
                       </View>
                     </View>
                     <View style={{ flexDirection: "row", gap: 12 }}>
-                      <Pressable
-                        style={styles.infoIconBtn}
-                        onPress={() => openExerciseDetails(ex)}
-                      >
+                      <Pressable style={styles.infoIconBtn} onPress={() => openExerciseDetails(ex)}>
                         <Ionicons name="information-circle-outline" size={22} color={colors.primary} />
                       </Pressable>
                       <Pressable
                         style={styles.addIconCircle}
                         onPress={() => {
-                          setExercises([...exercises, { exerciseId: ex.id, name: tEx(ex.name), type: ex.defaultType, sets: [{ type: ex.defaultType, isCompleted: false }] }]);
+                          addLibraryExerciseToWorkout(ex);
                           setIsExerciseModalVisible(false);
                           setExerciseSearchQuery("");
                         }}
@@ -715,7 +682,7 @@ export function WorkoutLogScreen() {
               <Pressable
                 style={[styles.addExBtn, { marginTop: 10, borderStyle: "solid" }]}
                 onPress={() => {
-                  setExercises([...exercises, createEmptyWorkoutExercise()]);
+                  addCustomExercise("Custom Exercise");
                   setIsExerciseModalVisible(false);
                 }}
               >
@@ -731,13 +698,20 @@ export function WorkoutLogScreen() {
         exercise={selectedExerciseInfo}
         isVisible={!!selectedExerciseInfo}
         onClose={() => setSelectedExerciseInfo(null)}
+        primaryActionLabel="Add to workout"
+        onPrimaryAction={addLibraryExerciseToWorkout}
       />
     </ScreenShell>
   );
 }
 
 function TimeInput({ label, date, onPress }: any) {
-  return (<Pressable style={styles.timeLink} onPress={onPress}><Text style={styles.timeValue}>{date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</Text><Text style={styles.timerLabel}>{label}</Text></Pressable>);
+  return (
+    <Pressable style={styles.timeLink} onPress={onPress}>
+      <Text style={styles.timeValue}>{date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</Text>
+      <Text style={styles.timerLabel}>{label}</Text>
+    </Pressable>
+  );
 }
 
 function CheckInRating({ label, value, onSelect }: any) {
@@ -746,7 +720,13 @@ function CheckInRating({ label, value, onSelect }: any) {
       <Text style={styles.checkInTitle}>{label}</Text>
       <View style={styles.ratingRow}>
         {[1, 2, 3, 4, 5].map(v => (
-          <Pressable key={v} style={[styles.ratingCircle, value === v && styles.ratingCircleActive]} onPress={() => onSelect(v)}><Text style={[styles.ratingText, value === v && styles.ratingTextActive]}>{v}</Text></Pressable>
+          <Pressable
+            key={v}
+            style={[styles.ratingCircle, value === v && styles.ratingCircleActive]}
+            onPress={() => onSelect(v)}
+          >
+            <Text style={[styles.ratingText, value === v && styles.ratingTextActive]}>{v}</Text>
+          </Pressable>
         ))}
       </View>
     </View>
@@ -756,36 +736,59 @@ function CheckInRating({ label, value, onSelect }: any) {
 function RestTimer({ value, onAdjust, onSkip }: any) {
   return (
     <View style={styles.floatingTimer}>
-      <View style={styles.timerInfo}><Ionicons name="timer" size={20} color="#000" /><Text style={styles.timerBold}>{Math.floor(value / 60)}:{String(value % 60).padStart(2, '0')}</Text></View>
-      <Pressable style={styles.timerActionBtn} onPress={() => onAdjust(30)}><Text style={styles.timerActionText}>+30s</Text></Pressable>
-      <View style={styles.timerDivider} /><Pressable style={styles.timerActionBtn} onPress={onSkip}><Ionicons name="play-skip-forward" size={18} color="#000" /></Pressable>
+      <View style={styles.timerInfo}>
+        <Ionicons name="timer" size={20} color="#000" />
+        <Text style={styles.timerBold}>{Math.floor(value / 60)}:{String(value % 60).padStart(2, "0")}</Text>
+      </View>
+      <Pressable style={styles.timerActionBtn} onPress={() => onAdjust(30)}>
+        <Text style={styles.timerActionText}>+30s</Text>
+      </Pressable>
+      <View style={styles.timerDivider} />
+      <Pressable style={styles.timerActionBtn} onPress={onSkip}>
+        <Ionicons name="play-skip-forward" size={18} color="#000" />
+      </Pressable>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
   shellContent: { paddingBottom: 0 },
-  scroll: { paddingBottom: 140, gap: spacing.lg },
+  scroll: { paddingBottom: 220, gap: spacing.lg },
   onboardCard: { backgroundColor: colors.bgElevated, borderRadius: radius.xl, padding: spacing["2xl"], borderWidth: 1, borderColor: colors.borderSubtle, gap: spacing.lg },
   prescribedBanner: { minHeight: touchTarget.comfortable, backgroundColor: colors.primary, flexDirection: "row", alignItems: "center", justifyContent: "center", padding: spacing.md, borderRadius: radius.md, gap: spacing.sm, marginTop: spacing.sm },
   bannerText: { color: colors.primaryText, ...typography.label },
-  liveStatsRow: { flexDirection: "row", gap: spacing.md, marginTop: spacing.sm },
+  sessionFocusCard: { backgroundColor: colors.bgElevated, borderRadius: radius.xl, padding: spacing.xl, borderWidth: 1, borderColor: colors.borderSubtle, gap: spacing.lg },
+  sessionFocusHeader: { flexDirection: "row", alignItems: "center", gap: spacing.md },
+  workoutNameInput: { color: colors.text, ...typography.title, marginTop: spacing.sm },
+  autosavePill: { flexDirection: "row", alignItems: "center", gap: spacing.xs, backgroundColor: colors.surfaceMuted, paddingHorizontal: spacing.md, paddingVertical: spacing.xs, borderRadius: radius.pill, borderWidth: 1, borderColor: colors.borderSubtle },
+  autosaveText: { color: colors.textMuted, ...typography.label },
+  liveStatsRow: { flexDirection: "row", gap: spacing.md },
   liveStatBox: { flex: 1, backgroundColor: colors.surfaceMuted, borderRadius: radius.md, padding: spacing.lg, borderWidth: 1, borderColor: colors.borderSubtle },
+  restMetric: { color: colors.text },
+  undoLastSetBtn: { flexDirection: "row", alignItems: "center", gap: spacing.xs },
+  undoLastSetText: { color: colors.textMuted, ...typography.label },
   emptyState: { alignItems: "center", justifyContent: "center", paddingVertical: spacing["4xl"], gap: spacing.sm, backgroundColor: colors.bgElevated, borderRadius: radius.xl, borderWidth: 1, borderColor: colors.borderSubtle, borderStyle: "dashed", marginBottom: spacing.lg },
-  workoutNameInput: { color: colors.text, ...typography.title, marginTop: spacing.sm, marginBottom: spacing.sm },
   exerciseCard: { backgroundColor: colors.bgElevated, borderRadius: radius.xl, padding: spacing.xl, borderWidth: 1, borderColor: colors.borderSubtle },
-  exerciseHeader: { flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start", marginBottom: spacing.xl },
+  exerciseHeader: { gap: spacing.md, marginBottom: spacing.md },
   exerciseNameRow: { flexDirection: "row", alignItems: "center", gap: spacing.sm },
-  exerciseNameInput: { color: colors.primary, ...typography.heading, flex: 1 },
-  infoTapTarget: { width: touchTarget.min, height: touchTarget.min, alignItems: "center", justifyContent: "center" },
+  exerciseNameInput: { flex: 1 },
+  exerciseActions: { flexDirection: "row", alignItems: "center", gap: spacing.sm },
+  infoIconBtn: { width: 36, height: 36, borderRadius: 12, backgroundColor: "#1c1c1e", alignItems: "center", justifyContent: "center", borderWidth: 1, borderColor: "#2c2c2e" },
   removeExerciseBtn: { width: touchTarget.min, height: touchTarget.min, alignItems: "center", justifyContent: "center" },
   typeSelectorRow: { flexDirection: "row", gap: spacing.sm, flexWrap: "wrap" },
   typePill: { minHeight: 32, paddingVertical: spacing.sm, paddingHorizontal: spacing.md, borderRadius: radius.sm, backgroundColor: colors.surfaceMuted, borderWidth: 1, borderColor: colors.borderSubtle },
   typePillActive: { backgroundColor: colors.primary, borderColor: colors.primary },
   typePillText: { color: colors.textMuted, ...typography.label, fontSize: 10 },
   typePillTextActive: { color: colors.primaryText },
-  tableHeader: { flexDirection: "row", marginBottom: spacing.sm },
+  previousValuesCard: { flexDirection: "row", alignItems: "center", gap: spacing.sm, backgroundColor: colors.surfaceMuted, borderRadius: radius.md, padding: spacing.md, borderWidth: 1, borderColor: colors.borderSubtle, marginBottom: spacing.md },
+  previousValuesIcon: { width: 32, height: 32, borderRadius: 12, backgroundColor: colors.primaryMuted, alignItems: "center", justifyContent: "center" },
+  previousValuesLabel: { color: colors.textFaint, ...typography.label, fontSize: 10 },
+  previousValuesText: { color: colors.text, ...typography.bodySmall, fontWeight: "700" },
+  previousValuesAction: { backgroundColor: colors.primary, borderRadius: radius.pill, paddingHorizontal: spacing.md, paddingVertical: spacing.xs },
+  previousValuesActionText: { color: colors.primaryText, ...typography.label, fontSize: 10 },
+  tableHeader: { flexDirection: "row", marginBottom: spacing.sm, paddingHorizontal: spacing.sm },
   columnLabel: { flex: 1, color: colors.textFaint, ...typography.label, fontSize: 10, textAlign: "center" },
+  columnLabelStart: { textAlign: "left" },
   setRow: { minHeight: 48, flexDirection: "row", alignItems: "center", backgroundColor: colors.surfaceMuted, borderRadius: radius.md, paddingVertical: spacing.xs, paddingHorizontal: spacing.sm, marginBottom: spacing.sm },
   setRowCompleted: { backgroundColor: colors.primaryMuted, borderWidth: 1, borderColor: "rgba(255,204,0,0.28)" },
   setText: { color: colors.textMuted, ...typography.bodySmall, fontWeight: "800", textAlign: "center" },
@@ -793,10 +796,23 @@ const styles = StyleSheet.create({
   checkBtn: { flex: 0.5, minHeight: touchTarget.min, alignItems: "center", justifyContent: "center" },
   addSetBtn: { minHeight: touchTarget.min, flexDirection: "row", alignItems: "center", justifyContent: "center", paddingVertical: spacing.sm, gap: spacing.xs },
   addSetText: { color: colors.primary, ...typography.label },
-  addExBtn: { minHeight: touchTarget.large, backgroundColor: colors.bgElevated, padding: spacing.lg, borderRadius: radius.xl, flexDirection: "row", alignItems: "center", justifyContent: "center", borderStyle: "dashed", borderWidth: 1, borderColor: colors.borderSubtle, gap: spacing.sm, marginBottom: spacing.sm },
-  addExText: { color: colors.text, fontWeight: "800" },
+  addExBtn: { minHeight: 56, backgroundColor: "#161616", paddingVertical: 18, paddingHorizontal: 20, borderRadius: 20, flexDirection: "row", alignItems: "center", justifyContent: "center", borderStyle: "dashed", borderWidth: 1, borderColor: "#333", gap: 10, marginBottom: spacing.xl },
+  addExText: { color: colors.primary, fontWeight: "900", fontSize: 13, letterSpacing: 0.5 },
   finishBtn: { backgroundColor: colors.primary, borderRadius: radius.xl, minHeight: 64, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: spacing.md },
   finishBtnText: { color: colors.primaryText, ...typography.button, fontSize: 16 },
+  workoutActionDock: { position: "absolute", left: spacing.lg, right: spacing.lg, bottom: 96, backgroundColor: "rgba(10,10,10,0.94)", borderRadius: radius.xl, padding: spacing.sm, borderWidth: 1, borderColor: colors.borderSubtle },
+  dockFinishBtn: { minHeight: 56, borderRadius: radius.lg, backgroundColor: colors.primary, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: spacing.sm },
+  completionSummaryCard: { backgroundColor: colors.bgElevated, borderRadius: radius.xl, padding: spacing.xl, borderWidth: 1, borderColor: colors.borderSubtle, gap: spacing.lg },
+  completionHeader: { flexDirection: "row", alignItems: "flex-start", justifyContent: "space-between", gap: spacing.md },
+  completionTitle: { color: colors.text, fontSize: 22, lineHeight: 28 },
+  prPill: { flexDirection: "row", alignItems: "center", gap: spacing.xs, backgroundColor: colors.primary, borderRadius: radius.pill, paddingHorizontal: spacing.md, minHeight: 32 },
+  prPillText: { color: colors.primaryText, fontSize: 11, fontWeight: "900" },
+  completionStatsRow: { flexDirection: "row", gap: spacing.sm },
+  completionStat: { flex: 1, backgroundColor: colors.surfaceMuted, borderRadius: radius.md, padding: spacing.md, borderWidth: 1, borderColor: colors.borderSubtle },
+  completionValue: { color: colors.text, fontSize: 20, fontWeight: "900" },
+  completionLabel: { color: colors.textMuted, fontSize: 10, fontWeight: "800", textTransform: "uppercase", marginTop: spacing.xs },
+  prCallout: { flexDirection: "row", alignItems: "center", gap: spacing.sm, backgroundColor: colors.primaryMuted, borderRadius: radius.md, padding: spacing.md, borderWidth: 1, borderColor: "rgba(255,204,0,0.22)" },
+  prCalloutText: { flex: 1, color: colors.textSecondary, fontSize: 12, fontWeight: "700" },
   checkInCard: { backgroundColor: colors.bgElevated, borderRadius: radius.xl, padding: spacing["2xl"], borderWidth: 1, borderColor: colors.borderSubtle, gap: spacing.lg, marginBottom: spacing.lg },
   checkInTitle: { color: colors.text, ...typography.heading, textAlign: "center" },
   ratingRow: { flexDirection: "row", justifyContent: "center", gap: spacing.sm },
@@ -810,7 +826,7 @@ const styles = StyleSheet.create({
   moodTextActive: { color: colors.primaryText },
   cancelLink: { alignItems: "center", paddingVertical: spacing.lg },
   cancelLinkText: { color: colors.textFaint, fontWeight: "700" },
-  floatingTimer: { position: "absolute", bottom: 120, alignSelf: "center", backgroundColor: colors.primary, flexDirection: "row", alignItems: "center", paddingHorizontal: spacing.lg, paddingVertical: spacing.sm, borderRadius: radius.pill, elevation: 10 },
+  floatingTimer: { position: "absolute", bottom: 178, alignSelf: "center", backgroundColor: colors.primary, flexDirection: "row", alignItems: "center", paddingHorizontal: spacing.lg, paddingVertical: spacing.sm, borderRadius: radius.pill, elevation: 10 },
   timerInfo: { flexDirection: "row", alignItems: "center", gap: spacing.sm, paddingRight: spacing.md },
   timerBold: { color: colors.primaryText, fontWeight: "900", fontSize: 16 },
   timerActionBtn: { paddingHorizontal: spacing.md, minHeight: 34, justifyContent: "center", alignItems: "center" },
@@ -825,12 +841,11 @@ const styles = StyleSheet.create({
   pillText: { color: "#8c8c8c", fontSize: 11, fontWeight: "900" },
   pillTextActive: { color: "#000" },
   row: { flexDirection: "row", gap: 12, marginBottom: 16 },
-  dateInput: { backgroundColor: "#1c1c1e", borderRadius: 14, padding: 14, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', borderWidth: 1, borderColor: '#2c2c2e' },
-  timeLink: { flex: 1, padding: 12, backgroundColor: '#1c1c1e', borderRadius: 14, borderWidth: 1, borderColor: '#2c2c2e' },
-  timeValue: { color: '#fff', fontSize: 13 },
-  timerLabel: { color: '#444', fontSize: 8, fontWeight: '900' },
+  dateInput: { backgroundColor: "#1c1c1e", borderRadius: 14, padding: 14, flexDirection: "row", justifyContent: "space-between", alignItems: "center", borderWidth: 1, borderColor: "#2c2c2e" },
+  timeLink: { flex: 1, padding: 12, backgroundColor: "#1c1c1e", borderRadius: 14, borderWidth: 1, borderColor: "#2c2c2e" },
+  timeValue: { color: "#fff", fontSize: 13 },
+  timerLabel: { color: "#444", fontSize: 8, fontWeight: "900" },
   modalOverlay: { flex: 1, backgroundColor: "rgba(0,0,0,0.8)", justifyContent: "flex-end" },
-  infoIconBtn: { width: 36, height: 36, borderRadius: 12, backgroundColor: "#1c1c1e", alignItems: "center", justifyContent: "center", borderWidth: 1, borderColor: "#2c2c2e" },
   exerciseSelectItem: { flexDirection: "row", alignItems: "center", backgroundColor: "#1c1c1e", borderRadius: 20, padding: 16, marginBottom: 10, borderWidth: 1, borderColor: "#2c2c2e" },
   modalContent: { backgroundColor: "#000", borderTopLeftRadius: 32, borderTopRightRadius: 32, height: "85%", padding: 24, borderWidth: 1, borderColor: "#1c1c1e" },
   modalHeader: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 10 },

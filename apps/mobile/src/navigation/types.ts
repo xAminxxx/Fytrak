@@ -27,6 +27,7 @@ export type CoachTabsParamList = {
   CoachHome: undefined;
   CoachClients: undefined;
   CoachLibrary: undefined;
+  CoachInbox: undefined;
   CoachProfile: undefined;
 };
 

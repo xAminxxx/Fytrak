@@ -16,6 +16,7 @@ import {
 } from "firebase/firestore";
 import { db } from "../config/firebase";
 import { localDateKeyDaysAgo, toLocalDateKey } from "../utils/dateKeys";
+import { updateClientSummaryAfterMeal } from "./clientSummaryService";
 
 export type Meal = {
   id: string;
@@ -52,6 +53,11 @@ export const saveMealLog = async (uid: string, meal: Omit<Meal, "id" | "date" | 
   const today = toLocalDateKey();
   const ref = collection(db, usersCollection, uid, "meals");
   await addDoc(ref, { ...meal, date: today, createdAt: serverTimestamp() });
+  try {
+    await updateClientSummaryAfterMeal(uid);
+  } catch (error) {
+    console.error("Failed to update meal summary:", error);
+  }
 };
 
 export const subscribeToDailyMeals = (uid: string, callback: (meals: Meal[]) => void) => {

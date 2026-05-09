@@ -1,5 +1,6 @@
 import {
   createUserWithEmailAndPassword,
+  FacebookAuthProvider,
   GoogleAuthProvider,
   signInWithCredential,
   signInWithEmailAndPassword,
@@ -15,6 +16,9 @@ const firebaseErrorMap: Record<string, string> = {
   "auth/wrong-password": "Invalid email or password.",
   "auth/email-already-in-use": "This email is already in use.",
   "auth/weak-password": "Password should be at least 6 characters.",
+  "auth/account-exists-with-different-credential": "An account already exists with this email. Sign in with the original provider first.",
+  "auth/popup-closed-by-user": "Sign-in was cancelled.",
+  "auth/operation-not-allowed": "This sign-in provider is not enabled in Firebase.",
 };
 
 const mapAuthError = (error: unknown): Error => {
@@ -62,6 +66,16 @@ export const signInWithGoogleIdToken = async (idToken: string): Promise<void> =>
     throw mapAuthError(error);
   }
 };
+
+export const signInWithFacebookAccessToken = async (accessToken: string): Promise<void> => {
+  try {
+    const credential = FacebookAuthProvider.credential(accessToken);
+    await signInWithCredential(auth, credential);
+  } catch (error) {
+    throw mapAuthError(error);
+  }
+};
+
 export const logOut = async (): Promise<void> => {
   try {
     console.log("[AuthService] Attempting to sign out...");
