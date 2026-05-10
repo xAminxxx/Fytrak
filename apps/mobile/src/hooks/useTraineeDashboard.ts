@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from "react";
-import { auth } from "../config/firebase";
+import { subscribeWithCache } from "../data/subscriptions/subscriptionCache";
 import {
   subscribeToDailyMeals,
   subscribeToWorkouts,
@@ -18,8 +18,12 @@ import {
 } from "../services/userSession";
 import { buildTodayMission } from "../features/retention/todayMission";
 import { toLocalDateKey } from "../utils/dateKeys";
+import { useCurrentUser } from "./useCurrentUser";
+import { useLocalDateKey } from "./useLocalDateKey";
 
 export function useTraineeDashboard() {
+  const uid = useCurrentUser();
+  const dateKey = useLocalDateKey();
   const [meals, setMeals] = useState<Meal[]>([]);
   const [workouts, setWorkouts] = useState<WorkoutLog[]>([]);
   const [profile, setProfile] = useState<UserProfile | null>(null);
@@ -30,29 +34,58 @@ export function useTraineeDashboard() {
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
-    const user = auth.currentUser;
-    if (!user) return;
+    if (!uid) return;
 
-    const unsubMeals = subscribeToDailyMeals(user.uid, setMeals);
-    const unsubWorkouts = subscribeToWorkouts(user.uid, (data) => {
-      const today = toLocalDateKey();
-      const todayFlows = data.filter(w => {
-        const wDate = toLocalDateKey(w.createdAt?.toDate ? w.createdAt.toDate() : new Date());
-        return wDate === today;
-      });
-      setWorkouts(todayFlows);
-    });
+    const unsubMeals = subscribeWithCache<Meal[]>(
+      `dailyMeals:${uid}:${dateKey}`,
+      (emit) => subscribeToDailyMeals(uid, emit),
+      setMeals
+    );
 
-    const unsubPrescribed = subscribeToPrescribedWorkouts(user.uid, setPrescribed);
-    const unsubPrescribedMeals = subscribeToPrescribedMeals(user.uid, setPrescribedMeals);
+    const unsubWorkouts = subscribeWithCache<WorkoutLog[]>(
+      `workouts:${uid}`,
+      (emit) => subscribeToWorkouts(uid, emit),
+      (data) => {
+        const todayFlows = data.filter((w) => {
+          const wDate = toLocalDateKey(w.createdAt?.toDate ? w.createdAt.toDate() : new Date());
+          return wDate === dateKey;
+        });
+        setWorkouts(todayFlows);
+      }
+    );
 
-    const unsubProfile = subscribeToUserProfile(user.uid, (data) => {
-      setProfile(data);
-      setIsLoading(false);
-    });
+    const unsubPrescribed = subscribeWithCache<PrescribedWorkout[]>(
+      `prescribedWorkouts:${uid}`,
+      (emit) => subscribeToPrescribedWorkouts(uid, emit),
+      setPrescribed
+    );
 
-    const unsubMetrics = subscribeToLatestMetrics(user.uid, setMetrics);
-    const unsubPrograms = subscribeToTraineePrograms(user.uid, setPrograms);
+    const unsubPrescribedMeals = subscribeWithCache<PrescribedMeal[]>(
+      `prescribedMeals:${uid}`,
+      (emit) => subscribeToPrescribedMeals(uid, emit),
+      setPrescribedMeals
+    );
+
+    const unsubProfile = subscribeWithCache<UserProfile>(
+      `profile:${uid}`,
+      (emit) => subscribeToUserProfile(uid, emit),
+      (data) => {
+        setProfile(data);
+        setIsLoading(false);
+      }
+    );
+
+    const unsubMetrics = subscribeWithCache<BodyMetric[]>(
+      `latestMetrics:${uid}`,
+      (emit) => subscribeToLatestMetrics(uid, emit),
+      setMetrics
+    );
+
+    const unsubPrograms = subscribeWithCache<Program[]>(
+      `programs:${uid}`,
+      (emit) => subscribeToTraineePrograms(uid, emit),
+      setPrograms
+    );
 
     return () => {
       unsubMeals();
@@ -63,7 +96,12 @@ export function useTraineeDashboard() {
       unsubMetrics();
       unsubPrograms();
     };
-  }, []);
+  }, [uid, dateKey]);
+
+  useEffect(() => {
+    if (!uid) return;
+    setIsLoading(true);
+  }, [uid]);
 
   const isPremium = profile?.isPremium === true;
 
@@ -85,7 +123,7 @@ export function useTraineeDashboard() {
   }, []);
 
   const todayMission = useMemo(() => {
-    const today = toLocalDateKey();
+    const today = dateKey;
     const latestMetricDate = metrics[0]?.date;
 
     return buildTodayMission({
@@ -97,7 +135,7 @@ export function useTraineeDashboard() {
       hasPendingMealPlan: prescribedMeals.length > 0,
       hasBodyMetricToday: latestMetricDate === today,
     });
-  }, [metrics, nutritionStats.current, nutritionStats.target, prescribed.length, prescribedMeals.length, profile?.assignmentStatus, workouts.length]);
+  }, [metrics, nutritionStats.current, nutritionStats.target, prescribed.length, prescribedMeals.length, profile?.assignmentStatus, workouts.length, dateKey]);
 
   return {
     meals,

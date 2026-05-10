@@ -1,7 +1,6 @@
 import { NavigationContainer } from "@react-navigation/native";
 import { createNativeStackNavigator } from "@react-navigation/native-stack";
-import { useEffect, useState } from "react";
-import { doc, onSnapshot } from "firebase/firestore";
+import { useState } from "react";
 import { CompleteProfileScreen } from "../screens/auth/CompleteProfileScreen";
 import { CoachCompleteProfileScreen } from "../screens/coach/CoachCompleteProfileScreen";
 import { LoginScreen } from "../screens/auth/LoginScreen";
@@ -18,7 +17,6 @@ import {
 } from "../services/auth";
 import { CoachAssignmentScreen } from "../screens/trainee/CoachAssignmentScreen";
 import { PendingCoachScreen } from "../screens/trainee/PendingCoachScreen";
-import { SessionState } from "../state/types";
 import { TraineeTabs } from "./TraineeTabs";
 import { CoachTabs } from "./CoachTabs";
 import { ProfileScreen } from "../screens/trainee/ProfileScreen";
@@ -27,7 +25,6 @@ import { PrescribeWorkoutScreen } from "../screens/coach/PrescribeWorkoutScreen"
 import { CreateProgramScreen } from "../screens/coach/CreateProgramScreen";
 import { CoachChatScreen } from "../screens/trainee/CoachChatScreen";
 import { auth } from "../config/firebase";
-import { onAuthStateChanged } from "firebase/auth";
 import { SplashScreen } from "../screens/onboarding/SplashScreen";
 import { WelcomeScreen } from "../screens/onboarding/WelcomeScreen";
 import {
@@ -38,74 +35,16 @@ import {
   saveCoachProfile,
 } from "../services/userSession";
 import { calculateNutritionPlan } from '../utils/calculators';
-import { db } from "../config/firebase";
 import { OnboardingFlow } from "../screens/onboarding/OnboardingFlow";
+import { useSessionState } from "../hooks/useSessionState";
 import type { RootStackParamList } from "./types";
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
 
-const initialSession: SessionState = {
-  isAuthenticated: false,
-  role: "trainee",
-  profileCompleted: false,
-  assignmentStatus: "unassigned",
-  selectedCoachId: null,
-  selectedCoachName: null,
-};
-
 export function RootNavigator() {
-  const [session, setSession] = useState<SessionState>(initialSession);
-  const [isBootstrapping, setIsBootstrapping] = useState(true);
+  const { session, isBootstrapping } = useSessionState();
   const [isSplashFinished, setIsSplashFinished] = useState(false);
   const [showWelcome, setShowWelcome] = useState(true);
-
-  useEffect(() => {
-    let unsubscribeDoc: (() => void) | null = null;
-
-    const unsubscribeAuth = onAuthStateChanged(auth, async (user) => {
-      console.log("[RootNavigator] Firebase Auth User:", user ? user.uid : "NULL");
-
-      if (unsubscribeDoc) {
-        unsubscribeDoc();
-        unsubscribeDoc = null;
-      }
-
-      if (!user) {
-        setSession(initialSession);
-        setIsBootstrapping(false);
-        return;
-      }
-
-      // Real-time listener for user session data
-      const userRef = doc(db, "users", user.uid);
-      unsubscribeDoc = onSnapshot(userRef, (snapshot) => {
-        if (snapshot.exists()) {
-          const data = snapshot.data();
-          setSession({
-            isAuthenticated: true,
-            role: data.role || "trainee",
-            profileCompleted: data.profileCompleted || false,
-            assignmentStatus: data.assignmentStatus || "unassigned",
-            selectedCoachId: data.selectedCoachId || null,
-            selectedCoachName: data.selectedCoachName || null,
-          });
-        } else {
-          // Document doesn't exist yet, but authenticated
-          setSession(prev => ({ ...prev, isAuthenticated: true }));
-        }
-        setIsBootstrapping(false);
-      }, (error) => {
-        console.error("[RootNavigator] Firestore sync failed:", error);
-        setSession(prev => ({ ...prev, isAuthenticated: true }));
-        setIsBootstrapping(false);
-      });
-    });
-
-    return () => {
-      unsubscribeAuth();
-      if (unsubscribeDoc) unsubscribeDoc();
-    };
-  }, []);
 
   const handleAuthSuccess = async (initialRole?: "trainee" | "coach") => {
     const user = auth.currentUser;
@@ -114,8 +53,7 @@ export function RootNavigator() {
       throw new Error("Authentication succeeded but no user user session was found.");
     }
 
-    const persisted = await ensureUserSession(user.uid, initialRole);
-    setSession(persisted);
+    await ensureUserSession(user.uid, initialRole);
   };
 
 
@@ -185,7 +123,6 @@ export function RootNavigator() {
                           throw new Error("Please login again to continue.");
                         }
                         await saveCoachProfile(user.uid, payload);
-                        setSession((prev) => ({ ...prev, profileCompleted: true }));
                       }}
                     />
                   ) : (
@@ -209,11 +146,9 @@ export function RootNavigator() {
                             fats: nutritionPlan.fats
                           }
                         });
-                        setSession((prev) => ({ ...prev, profileCompleted: true }));
                       }}
                       onExit={() => {
                         auth.signOut();
-                        setSession(initialSession);
                       }}
                     />
                   )
@@ -236,12 +171,6 @@ export function RootNavigator() {
                         const user = auth.currentUser;
                         if (!user) throw new Error("Please login again.");
                         await saveCoachRequest(user.uid, coach);
-                        setSession((prev) => ({
-                          ...prev,
-                          assignmentStatus: "pending",
-                          selectedCoachId: coach.id,
-                          selectedCoachName: coach.name,
-                        }));
                       }}
                     />
                   )}
@@ -254,7 +183,6 @@ export function RootNavigator() {
                         const user = auth.currentUser;
                         if (!user) throw new Error("Please login again.");
                         await saveAssignmentStatus(user.uid, "assigned");
-                        setSession((prev) => ({ ...prev, assignmentStatus: "assigned" }));
                       }}
                     />
                   )}

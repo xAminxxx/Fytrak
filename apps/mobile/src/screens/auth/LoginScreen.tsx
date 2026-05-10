@@ -16,6 +16,8 @@ import { appEnv } from "../../config/env";
 import Svg, { Path, Circle } from "react-native-svg";
 import { expoAuthProxyRedirectUri } from "../../utils/authRedirect";
 
+import { BrandLogo } from "../../components/BrandLogo";
+
 WebBrowser.maybeCompleteAuthSession();
 
 // PREMIUM SVG LOGOS
@@ -162,7 +164,7 @@ export function LoginScreen({ onLogin, onGoogleLogin, onFacebookLogin }: LoginSc
   return (
     <ScreenShell
       centered
-      title="FYTRAK"
+      title={<BrandLogo width={160} height={75} />}
       subtitle="Sign in to continue"
       titleStyle={styles.centeredHeader}
       subtitleStyle={styles.centeredHeader}

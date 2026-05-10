@@ -1,15 +1,14 @@
 import { useState, useEffect } from "react";
 import { Alert } from "react-native";
-import { collection, getDocs, limit, query, where } from "firebase/firestore";
-import { auth, db } from "../config/firebase";
+import { auth } from "../config/firebase";
 import {
     savePrescribedWorkout,
     CoachTemplate,
     subscribeToCoachTemplates,
     WorkoutSetType
 } from "../services/userSession";
-import { searchAscendExercises } from "../services/exerciseMediaService";
-import { EXERCISE_LIBRARY, ExerciseLibraryItem, t as tEx } from "../constants/exercises";
+import { ExerciseLibraryItem, t as tEx } from "../constants/exercises";
+import { useExerciseSearch } from "./useExerciseSearch";
 
 export type PrescribedExerciseInput = {
     name: string;
@@ -32,65 +31,19 @@ export function useWorkoutPrescriptionBuilder(traineeId: string, navigation: any
 
     // EXERCISE LIBRARY STATES
     const [exerciseModalVisible, setExerciseModalVisible] = useState(false);
-    const [exerciseSearchQuery, setExerciseSearchQuery] = useState("");
     const [activeExerciseIndex, setActiveExerciseIndex] = useState<number | null>(null);
     const [selectedExerciseInfo, setSelectedExerciseInfo] = useState<ExerciseLibraryItem | null>(null);
-    const [dbExercises, setDbExercises] = useState<ExerciseLibraryItem[]>([]);
-    const [isSearching, setIsSearching] = useState(false);
+    const {
+        query: exerciseSearchQuery,
+        setQuery: setExerciseSearchQuery,
+        isSearching,
+        filteredExercises,
+        findExerciseInfo,
+    } = useExerciseSearch({ includeEquipment: true });
 
     const filteredTemplates = templates.filter(t =>
         t.title.toLowerCase().includes(libSearchQuery.toLowerCase())
     );
-
-    useEffect(() => {
-        if (exerciseSearchQuery.length < 2) {
-            setDbExercises([]);
-            return;
-        }
-
-        const delayDebounceFn = setTimeout(async () => {
-            setIsSearching(true);
-            try {
-                const q = query(
-                    collection(db, "exercises"),
-                    where("nameLower", ">=", exerciseSearchQuery.toLowerCase()),
-                    where("nameLower", "<=", exerciseSearchQuery.toLowerCase() + "\uf8ff"),
-                    limit(20)
-                );
-                const querySnapshot = await getDocs(q);
-                const results: ExerciseLibraryItem[] = [];
-                querySnapshot.forEach((exerciseDoc) => {
-                    results.push(exerciseDoc.data() as ExerciseLibraryItem);
-                });
-
-                const apiResults = await searchAscendExercises(exerciseSearchQuery, 20).catch((error) => {
-                    console.warn("AscendAPI search failed:", error);
-                    return [] as ExerciseLibraryItem[];
-                });
-                const seenIds = new Set(results.map((exercise) => exercise.id));
-                const merged = [
-                    ...results,
-                    ...apiResults.filter((exercise) => !seenIds.has(exercise.id))
-                ];
-                setDbExercises(merged);
-            } catch (err) {
-                console.error("Search failed:", err);
-            } finally {
-                setIsSearching(false);
-            }
-        }, 500);
-
-        return () => clearTimeout(delayDebounceFn);
-    }, [exerciseSearchQuery]);
-
-    const filteredExercises = [
-        ...EXERCISE_LIBRARY.filter(ex =>
-            tEx(ex.name).toLowerCase().includes(exerciseSearchQuery.toLowerCase()) ||
-            ex.muscleGroup.toLowerCase().includes(exerciseSearchQuery.toLowerCase()) ||
-            ex.equipment.toLowerCase().includes(exerciseSearchQuery.toLowerCase())
-        ),
-        ...dbExercises.filter(dbEx => !EXERCISE_LIBRARY.some(localEx => localEx.id === dbEx.id))
-    ].slice(0, 30);
 
     useEffect(() => {
         const user = auth.currentUser;
@@ -107,13 +60,6 @@ export function useWorkoutPrescriptionBuilder(traineeId: string, navigation: any
             setExercises(t.data.exercises);
         }
         setLibModalVisible(false);
-    };
-
-    const findExerciseInfo = (exerciseName: string) => {
-        const normalizedName = exerciseName.trim().toLowerCase();
-        return [...EXERCISE_LIBRARY, ...dbExercises].find((candidate) => {
-            return tEx(candidate.name).trim().toLowerCase() === normalizedName;
-        }) ?? null;
     };
 
     const applyExerciseSelection = (exercise: ExerciseLibraryItem) => {
@@ -235,7 +181,6 @@ export function useWorkoutPrescriptionBuilder(traineeId: string, navigation: any
         setActiveExerciseIndex,
         selectedExerciseInfo,
         setSelectedExerciseInfo,
-        dbExercises,
         isSearching,
         filteredExercises,
         applyTemplate,

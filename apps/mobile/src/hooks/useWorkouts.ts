@@ -3,6 +3,7 @@
  * Encapsulates the subscribeToWorkouts pattern used in 3+ screens.
  */
 import { useEffect, useState } from "react";
+import { subscribeWithCache } from "../data/subscriptions/subscriptionCache";
 import { subscribeToWorkouts, type WorkoutLog } from "../services/workoutService";
 import { useCurrentUser } from "./useCurrentUser";
 
@@ -11,9 +12,16 @@ export function useWorkouts() {
   const [workouts, setWorkouts] = useState<WorkoutLog[]>([]);
 
   useEffect(() => {
-    if (!uid) return;
-    const unsubscribe = subscribeToWorkouts(uid, setWorkouts);
-    return unsubscribe;
+    if (!uid) {
+      setWorkouts([]);
+      return;
+    }
+
+    return subscribeWithCache(
+      `workouts:${uid}`,
+      (emit) => subscribeToWorkouts(uid, emit),
+      setWorkouts
+    );
   }, [uid]);
 
   return workouts;

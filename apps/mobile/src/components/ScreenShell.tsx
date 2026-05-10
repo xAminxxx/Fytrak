@@ -1,4 +1,4 @@
-import { PropsWithChildren } from "react";
+import { PropsWithChildren, ReactNode } from "react";
 import { Pressable, StyleProp, StyleSheet, Text, TextStyle, View, ViewStyle, Image } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { colors } from "../theme/colors";
@@ -7,7 +7,7 @@ import { radius, spacing, touchTarget, typography } from "../theme/tokens";
 import { IconButton } from "./IconButton";
 
 type ScreenShellProps = PropsWithChildren<{
-  title: string;
+  title: ReactNode;
   subtitle?: string;
   centered?: boolean;
   titleStyle?: StyleProp<TextStyle>;
@@ -37,8 +37,8 @@ export function ScreenShell({
   return (
     <SafeAreaView style={styles.safeArea} edges={["top", "left", "right", "bottom"]}>
       <View style={[styles.container, centered && styles.containerCentered]}>
-        <View style={styles.header}>
-          <View style={styles.headerTitleRow}>
+        <View style={[styles.header, centered && { alignItems: "center" }]}>
+          <View style={[styles.headerTitleRow, centered && { justifyContent: "center", width: "100%" }]}>
             {leftActionIcon && onLeftAction && (
               <IconButton
                 icon={leftActionIcon}
@@ -47,12 +47,18 @@ export function ScreenShell({
                 style={styles.leftButton}
               />
             )}
-            <Text 
-              numberOfLines={1} 
-              style={[styles.title, titleStyle, { flex: 1 }]}
-            >
-              {title.toUpperCase()}
-            </Text>
+            {typeof title === "string" ? (
+              <Text 
+                numberOfLines={1} 
+                style={[styles.title, titleStyle, !centered && { flex: 1 }, centered && { textAlign: "center" }]}
+              >
+                {title.toUpperCase()}
+              </Text>
+            ) : (
+              <View style={centered && { alignItems: "center", justifyContent: "center" }}>
+                {title}
+              </View>
+            )}
             {(rightActionIcon || rightActionImageUri) && onRightAction && (
               <Pressable
                 onPress={onRightAction}
@@ -69,7 +75,7 @@ export function ScreenShell({
               </Pressable>
             )}
           </View>
-          {subtitle ? <Text style={[styles.subtitle, subtitleStyle]}>{subtitle}</Text> : null}
+          {subtitle ? <Text style={[styles.subtitle, subtitleStyle, centered && { textAlign: "center" }]}>{subtitle}</Text> : null}
         </View>
         <View style={[styles.content, centered && styles.contentCentered, contentStyle]}>{children}</View>
       </View>

@@ -71,16 +71,44 @@ export function useProgressCharts(
     if (!workouts.length) return { data: [] };
     const cutoff = getCutoffDate(chartFilter);
 
-    const filtered = [...workouts]
-      .filter((w) => w.createdAt && toSafeDate(w.createdAt) >= cutoff)
-      .sort((a, b) => toSafeDate(a.createdAt).getTime() - toSafeDate(b.createdAt).getTime());
-    if (filtered.length === 0) return { data: [] };
+    // Group volume by date
+    const dailyVolume: Record<string, number> = {};
+    workouts.forEach((w) => {
+      if (!w.createdAt) return;
+      const date = toSafeDate(w.createdAt);
+      if (date < cutoff) return;
+      
+      const dateKey = date.toLocaleDateString([], { month: "numeric", day: "numeric" });
+      dailyVolume[dateKey] = (dailyVolume[dateKey] || 0) + (w.totalVolume || 0);
+    });
+
+    const data = Object.entries(dailyVolume)
+      .map(([label, value]) => ({ label, value }))
+      .sort((a, b) => {
+        // Simple string date comparison is risky, but works for MM/DD if year is same.
+        // Better: store full date for sorting.
+        return 0; // We'll re-calculate properly
+      });
+
+    // Re-calculating with proper sort
+    const dateMap = new Map<string, { value: number; date: Date }>();
+    workouts.forEach((w) => {
+      if (!w.createdAt) return;
+      const d = toSafeDate(w.createdAt);
+      if (d < cutoff) return;
+      const key = d.toDateString();
+      const existing = dateMap.get(key) || { value: 0, date: d };
+      dateMap.set(key, { value: existing.value + (w.totalVolume || 0), date: d });
+    });
+
+    const sortedData = Array.from(dateMap.values())
+      .sort((a, b) => a.date.getTime() - b.date.getTime());
 
     return {
-      data: filtered.map((w) => ({
-        value: w.totalVolume || 0,
-        label: toSafeDate(w.createdAt).toLocaleDateString([], { month: "numeric", day: "numeric" }),
-        dataPointText: (w.totalVolume || 0).toString(),
+      data: sortedData.map((d) => ({
+        value: d.value,
+        label: d.date.toLocaleDateString([], { month: "numeric", day: "numeric" }),
+        dataPointText: d.value > 1000 ? `${(d.value / 1000).toFixed(1)}k` : d.value.toString(),
         dataPointColor: "#f87171",
         dataPointRadius: 5,
         textColor: "#aaa",
@@ -97,17 +125,22 @@ export function useProgressCharts(
 
     workouts.forEach((w) => {
       w.exercises.forEach((ex) => {
-        const libEx = EXERCISE_LIBRARY.find(
-          (l) => tEx(l.name).toLowerCase() === ex.name.toLowerCase(),
-        );
+        const exerciseName = ex.name.toLowerCase();
+        const libEx = EXERCISE_LIBRARY.find((l) => {
+          const nameEn = l.name.en.toLowerCase();
+          const nameFr = l.name.fr?.toLowerCase();
+          return exerciseName.includes(nameEn) || nameEn.includes(exerciseName) || 
+                 (nameFr && (exerciseName.includes(nameFr) || nameFr.includes(exerciseName)));
+        });
+        
         if (libEx) {
           counts[libEx.muscleGroup] = (counts[libEx.muscleGroup] || 0) + 1;
         }
       });
     });
 
-    return Object.entries(counts)
-      .filter(([_, val]) => val > 0 || true)
+    const data = Object.entries(counts)
+      .filter(([_, val]) => val > 0)
       .map(([name, value]) => ({
         value,
         label: name.substring(0, 3).toUpperCase(),
@@ -115,9 +148,18 @@ export function useProgressCharts(
           name === "Chest" ? "#f87171"
           : name === "Back" ? "#60a5fa"
           : name === "Legs" ? "#4ade80"
+          : name === "Shoulders" ? "#fbbf24"
+          : name === "Arms" ? "#a855f7"
           : "#ffcc00",
-        labelTextStyle: { color: "#555", fontSize: 10, fontWeight: "bold" } as const,
+        labelTextStyle: { color: "#8c8c8c", fontSize: 10, fontWeight: "800" } as const,
       }));
+
+    return data.length > 0 ? data : [
+      { value: 0.1, label: "CHE", frontColor: "#333", labelTextStyle: { color: "#444", fontSize: 10 } },
+      { value: 0.1, label: "BAC", frontColor: "#333", labelTextStyle: { color: "#444", fontSize: 10 } },
+      { value: 0.1, label: "LEG", frontColor: "#333", labelTextStyle: { color: "#444", fontSize: 10 } },
+      { value: 0.1, label: "SHO", frontColor: "#333", labelTextStyle: { color: "#444", fontSize: 10 } },
+    ];
   }, [workouts]);
 
   const prChartData = useMemo((): ChartDataSet => {

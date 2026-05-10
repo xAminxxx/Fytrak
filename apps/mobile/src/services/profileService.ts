@@ -20,6 +20,7 @@ import {
 import { db, auth } from "../config/firebase";
 import { appEnv } from "../config/env";
 import type { AssignmentStatus, SessionState, UserRole } from "../state/types";
+import { authenticatedSessionState, defaultSessionData, toSessionState } from "../state/session";
 import { toLocalDateKey } from "../utils/dateKeys";
 
 export type ProfileLevel = "Beginner" | "Intermediate" | "Advanced";
@@ -154,34 +155,6 @@ const usersCollection = "users";
 
 // --- SESSION ---
 
-const defaultSessionData = {
-  role: "trainee" as UserRole,
-  profileCompleted: false,
-  assignmentStatus: "unassigned" as AssignmentStatus,
-  selectedCoachId: null as string | null,
-  selectedCoachName: null as string | null,
-};
-
-const toSessionState = (input: any): SessionState => {
-  const role = input?.role === "coach" ? "coach" : "trainee";
-  const assignmentStatus =
-    input?.assignmentStatus === "pending" ||
-    input?.assignmentStatus === "assigned" ||
-    input?.assignmentStatus === "rejected" ||
-    input?.assignmentStatus === "expired"
-      ? input.assignmentStatus
-      : "unassigned";
-
-  return {
-    isAuthenticated: true,
-    role,
-    profileCompleted: Boolean(input?.profileCompleted),
-    assignmentStatus,
-    selectedCoachId: typeof input?.selectedCoachId === "string" ? input.selectedCoachId : null,
-    selectedCoachName: typeof input?.selectedCoachName === "string" ? input.selectedCoachName : null,
-  };
-};
-
 export const ensureUserSession = async (uid: string, initialRole?: UserRole): Promise<SessionState> => {
   const ref = doc(db, usersCollection, uid);
   const snapshot = await getDoc(ref);
@@ -196,7 +169,7 @@ export const ensureUserSession = async (uid: string, initialRole?: UserRole): Pr
       updatedAt: serverTimestamp(),
     };
     await setDoc(ref, initialData);
-    return { isAuthenticated: true, ...initialData, selectedCoachId: null, selectedCoachName: null };
+    return toSessionState(initialData);
   }
 
   const data = snapshot.data();
@@ -204,6 +177,24 @@ export const ensureUserSession = async (uid: string, initialRole?: UserRole): Pr
     await setDoc(ref, { name: authUser.displayName }, { merge: true });
   }
   return toSessionState(data);
+};
+
+export const subscribeToSessionState = (uid: string, callback: (session: SessionState) => void) => {
+  const ref = doc(db, usersCollection, uid);
+  return onSnapshot(
+    ref,
+    (snapshot) => {
+      if (snapshot.exists()) {
+        callback(toSessionState(snapshot.data()));
+      } else {
+        callback(authenticatedSessionState());
+      }
+    },
+    (error) => {
+      console.error("[ProfileService] Session sync failed:", error);
+      callback(authenticatedSessionState());
+    }
+  );
 };
 
 // --- PROFILE CRUD ---

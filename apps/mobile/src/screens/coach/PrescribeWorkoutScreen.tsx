@@ -1,4 +1,3 @@
-import { useEffect, useState } from "react";
 import {
     StyleSheet,
     Text,
@@ -7,20 +6,17 @@ import {
     TextInput,
     Pressable,
     Alert,
-    ActivityIndicator,
-    Modal
+    ActivityIndicator
 } from "react-native";
 import { ScreenShell } from "../../components/ScreenShell";
-import { Typography } from "../../components/Typography";
 import { ExerciseDetailSheet } from "../../components/ExerciseDetailSheet";
 import { colors } from "../../theme/colors";
 import { Ionicons } from "@expo/vector-icons";
-import { savePrescribedWorkout, CoachTemplate, subscribeToCoachTemplates, WorkoutSetType } from "../../services/userSession";
-import { EXERCISE_LIBRARY, ExerciseLibraryItem, t as tEx } from "../../constants/exercises";
+import type { WorkoutSetType } from "../../services/userSession";
 import { useNavigation, useRoute } from "@react-navigation/native";
 import { useWorkoutPrescriptionBuilder } from "../../hooks/useWorkoutPrescriptionBuilder";
-import { ExerciseLibraryModal } from "../../components/coach/ExerciseLibraryModal";
 import { TemplateLibraryModal } from "../../components/coach/TemplateLibraryModal";
+import { ExerciseSearchModal } from "../../features/workouts/components/ExerciseSearchModal";
 
 export function PrescribeWorkoutScreen() {
     const route = useRoute<any>();
@@ -48,7 +44,6 @@ export function PrescribeWorkoutScreen() {
         setActiveExerciseIndex,
         selectedExerciseInfo,
         setSelectedExerciseInfo,
-        dbExercises,
         isSearching,
         filteredExercises,
         applyTemplate,
@@ -220,21 +215,21 @@ export function PrescribeWorkoutScreen() {
                 onApplyTemplate={applyTemplate}
             />
 
-            <ExerciseLibraryModal
+            <ExerciseSearchModal
                 visible={exerciseModalVisible}
-                onClose={() => setExerciseModalVisible(false)}
-                searchQuery={exerciseSearchQuery}
-                onSearchChange={setExerciseSearchQuery}
+                query={exerciseSearchQuery}
+                onQueryChange={setExerciseSearchQuery}
                 isSearching={isSearching}
-                filteredExercises={filteredExercises}
-                onAddCustom={(name) => {
-                    addCustomExercise(name);
+                results={filteredExercises}
+                onClose={() => setExerciseModalVisible(false)}
+                onOpenDetails={(exercise) => setSelectedExerciseInfo(exercise)}
+                onSelectExercise={(exercise) => {
+                    applyExerciseSelection(exercise);
                     setExerciseModalVisible(false);
                     setExerciseSearchQuery("");
                 }}
-                onSelectInfo={(ex) => setSelectedExerciseInfo(ex)}
-                onApplySelection={(ex) => {
-                    applyExerciseSelection(ex);
+                onAddCustom={(name) => {
+                    addCustomExercise(name);
                     setExerciseModalVisible(false);
                     setExerciseSearchQuery("");
                 }}
@@ -408,31 +403,5 @@ const styles = StyleSheet.create({
         gap: 12,
     },
     saveBtnText: { color: colors.primaryText, fontWeight: "900", fontSize: 16, letterSpacing: 1 },
-    modalOverlay: { flex: 1, backgroundColor: "rgba(0,0,0,0.8)", justifyContent: "flex-end" },
-    modalContent: {
-        backgroundColor: "#000",
-        borderTopLeftRadius: 32,
-        borderTopRightRadius: 32,
-        height: "85%",
-        padding: 24,
-        borderWidth: 1,
-        borderColor: "#1c1c1e",
-    },
-    modalHeader: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 10 },
-    modalTitle: { color: "#fff", fontSize: 22, fontWeight: "900" },
-    closeBtn: { width: 40, height: 40, borderRadius: 20, backgroundColor: "#111", alignItems: "center", justifyContent: "center" },
-    modalSearch: { flexDirection: "row", alignItems: "center", backgroundColor: "#111", borderRadius: 16, paddingHorizontal: 16, height: 50, marginBottom: 16, borderWidth: 1, borderColor: "#2c2c2e", gap: 10 },
-    modalSearchInput: { flex: 1, color: "#fff", fontSize: 16, fontWeight: "600" },
-    modalList: { flex: 1 },
-    emptyText: { color: "#666", fontSize: 14, textAlign: "center", marginTop: 40 },
-    modalItem: { flexDirection: "row", alignItems: "center", backgroundColor: "#111", padding: 16, borderRadius: 16, marginBottom: 12, borderWidth: 1, borderColor: "#2c2c2e" },
-    modalItemTitle: { color: "#fff", fontSize: 16, fontWeight: "800", marginBottom: 4 },
-    modalItemSub: { color: "#666", fontSize: 12, fontWeight: "600" },
     infoIconBtn: { width: 36, height: 36, borderRadius: 12, backgroundColor: "#1c1c1e", alignItems: "center", justifyContent: "center", borderWidth: 1, borderColor: "#2c2c2e" },
-    exerciseSelectItem: { flexDirection: "row", alignItems: "center", backgroundColor: "#1c1c1e", borderRadius: 20, padding: 16, marginBottom: 10, borderWidth: 1, borderColor: "#2c2c2e" },
-    tag: { backgroundColor: "#1c1c1e", paddingHorizontal: 10, paddingVertical: 6, borderRadius: 8, borderWidth: 1, borderColor: "#2c2c2e" },
-    tagText: { color: "#aaa", fontSize: 10, fontWeight: "900" },
-    addIconCircle: { width: 36, height: 36, borderRadius: 18, backgroundColor: colors.primary, alignItems: "center", justifyContent: "center" },
-    addExBtn: { minHeight: 56, backgroundColor: "#161616", padding: 16, borderRadius: 20, flexDirection: "row", alignItems: "center", justifyContent: "center", borderStyle: "dashed", borderWidth: 1, borderColor: "#2c2c2e", gap: 10, marginBottom: 8 },
-    addExText: { color: "#fff", fontWeight: "800" },
 });

@@ -11,6 +11,7 @@ import * as Google from "expo-auth-session/providers/google";
 import * as Facebook from "expo-auth-session/providers/facebook";
 import { appEnv } from "../../config/env";
 import { expoAuthProxyRedirectUri } from "../../utils/authRedirect";
+import { BrandLogo } from "../../components/BrandLogo";
 
 WebBrowser.maybeCompleteAuthSession();
 
@@ -142,7 +143,8 @@ export function SignUpScreen({ onSignUp, onGoogleLogin, onFacebookLogin }: SignU
 
   return (
     <ScreenShell
-      title="FYTRAK"
+      centered
+      title={<BrandLogo width={160} height={75} />}
       subtitle="Create your account"
       titleStyle={styles.centeredHeader}
       subtitleStyle={styles.centeredHeader}

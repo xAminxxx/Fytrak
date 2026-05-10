@@ -2,7 +2,7 @@
  * TrendChart — Wraps LineChart with the standard Fytrak chart configuration.
  * Eliminates ~70 lines of duplicated LineChart props per chart instance.
  */
-import { View, Text, StyleSheet, useWindowDimensions } from "react-native";
+import { View, Text, StyleSheet, Dimensions } from "react-native";
 import { LineChart } from "react-native-gifted-charts";
 import { Typography } from "./Typography";
 import { colors } from "../theme/colors";
@@ -22,7 +22,7 @@ export function TrendChart({
   height = 200,
   emptyLabel = "Insufficient tracking data",
 }: TrendChartProps) {
-  const { width: windowWidth } = useWindowDimensions();
+  const { width: windowWidth } = Dimensions.get("window");
 
   if (data.length === 0) {
     return (
@@ -39,56 +39,55 @@ export function TrendChart({
         data={data}
         curved
         height={height}
-        width={windowWidth - 90}
-        initialSpacing={15}
-        endSpacing={20}
-        spacing={data.length <= 3 ? 80 : data.length <= 7 ? 50 : 35}
+        width={windowWidth - 85}
+        initialSpacing={30}
+        endSpacing={30}
+        spacing={data.length <= 1 ? 0 : data.length <= 3 ? 120 : data.length <= 7 ? 60 : 45}
         color={color}
         thickness={3}
         startFillColor={`${color}40`}
-        endFillColor={`${color}05`}
-        startOpacity={0.5}
-        endOpacity={0.05}
+        endFillColor={`${color}01`}
+        startOpacity={0.6}
+        endOpacity={0.01}
         yAxisOffset={yAxisOffset}
         noOfSections={4}
-        rulesType="dashed"
+        rulesType="solid"
         rulesColor="#1c1c1e"
-        dashWidth={4}
-        dashGap={6}
         xAxisThickness={0}
         yAxisThickness={0}
-        yAxisTextStyle={{ color: "#555", fontSize: 10, fontWeight: "600" }}
+        yAxisTextStyle={{ color: "#777", fontSize: 10, fontWeight: "600" }}
         yAxisTextNumberOfLines={1}
-        xAxisLabelTextStyle={{ color: "#555", fontSize: 9, fontWeight: "500" }}
+        xAxisLabelTextStyle={{ color: "#777", fontSize: 10, fontWeight: "500" }}
+        xAxisLabelsVerticalShift={5}
         showVerticalLines
         verticalLinesColor="#1a1a1a"
         verticalLinesThickness={1}
         hideDataPoints={false}
         dataPointsColor={color}
-        dataPointsRadius={5}
+        dataPointsRadius={4}
         focusEnabled
         showStripOnFocus
-        stripColor={`${color}26`}
+        stripColor={`${color}33`}
         stripWidth={2}
         showTextOnFocus
         unFocusOnPressOut
         focusedDataPointColor="#fff"
-        focusedDataPointRadius={7}
-        textColor="#aaa"
+        focusedDataPointRadius={6}
+        textColor="#fff"
         textFontSize={10}
         textShiftY={-14}
         pointerConfig={{
-          pointerStripColor: `${color}66`,
+          pointerStripColor: `${color}88`,
           pointerStripWidth: 1,
           pointerColor: "#fff",
-          radius: 7,
+          radius: 6,
           pointerLabelWidth: 80,
           pointerLabelHeight: 32,
           activatePointersOnLongPress: false,
           autoAdjustPointerLabelPosition: true,
           pointerLabelComponent: (items: any) => (
             <View style={styles.pointerBadge}>
-              <Text style={styles.pointerText}>{items[0].value} kg</Text>
+              <Text style={styles.pointerText}>{items[0].value}</Text>
             </View>
           ),
         }}

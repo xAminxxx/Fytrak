@@ -19,7 +19,7 @@ import {
 } from "../../features/coaching/coachIntelligence";
 import { trackEvent } from "../../services/analytics";
 import { useCoachDashboard } from "../../hooks/useCoachDashboard";
-import { RiskCard, QuickAction, ActionQueueCard } from "../../components/coach/CoachDashboardCards";
+import { RiskCard, ActionQueueCard } from "../../components/coach/CoachDashboardCards";
 
 export function CoachHomeScreen() {
     const navigation = useNavigation<CoachHomeNavigation>();
@@ -73,29 +73,7 @@ export function CoachHomeScreen() {
                         />
                     </View>
 
-                    {/* QUICK ACTIONS */}
-                    <View style={styles.quickActions}>
-                        <QuickAction
-                            label="Message"
-                            icon="chatbox-ellipses-outline"
-                            onPress={() => navigation.navigate("CoachInbox")}
-                        />
-                        <QuickAction
-                            label="Assign Workout"
-                            icon="barbell-outline"
-                            onPress={() => navigation.navigate("CoachClients")}
-                        />
-                        <QuickAction
-                            label="Assign Meal"
-                            icon="nutrition-outline"
-                            onPress={() => navigation.navigate("CoachClients")}
-                        />
-                        <QuickAction
-                            label="Build Program"
-                            icon="calendar-outline"
-                            onPress={() => navigation.navigate("CoachClients")}
-                        />
-                    </View>
+
 
                     {/* STATS OVERVIEW */}
                     <View style={styles.statRow}>
@@ -334,35 +312,7 @@ const styles = StyleSheet.create({
         textTransform: "uppercase",
         letterSpacing: 0.5,
     },
-    quickActions: {
-        flexDirection: "row",
-        gap: 12,
-        marginTop: 6,
-    },
-    quickActionCard: {
-        flex: 1,
-        backgroundColor: "#161616",
-        borderRadius: 18,
-        paddingVertical: 12,
-        alignItems: "center",
-        borderWidth: 1,
-        borderColor: "#2c2c2e",
-        gap: 8,
-    },
-    quickActionIcon: {
-        width: 32,
-        height: 32,
-        borderRadius: 12,
-        backgroundColor: "#1c1c1e",
-        alignItems: "center",
-        justifyContent: "center",
-    },
-    quickActionText: {
-        color: "#ccc",
-        fontSize: 11,
-        fontWeight: "700",
-        textAlign: "center",
-    },
+
     statRow: {
         flexDirection: "row",
         gap: 12,

@@ -3,6 +3,7 @@
  * Encapsulates the subscribeToUserProfile pattern used in 4+ screens.
  */
 import { useEffect, useState } from "react";
+import { subscribeWithCache } from "../data/subscriptions/subscriptionCache";
 import { subscribeToUserProfile, type UserProfile } from "../services/profileService";
 import { useCurrentUser } from "./useCurrentUser";
 
@@ -13,16 +14,21 @@ export function useUserProfile() {
 
   useEffect(() => {
     if (!uid) {
+      setProfile(null);
       setIsLoading(false);
       return;
     }
 
-    const unsubscribe = subscribeToUserProfile(uid, (data) => {
-      setProfile(data);
-      setIsLoading(false);
-    });
+    setIsLoading(true);
 
-    return unsubscribe;
+    return subscribeWithCache<UserProfile | null>(
+      `profile:${uid}`,
+      (emit) => subscribeToUserProfile(uid, emit),
+      (data) => {
+        setProfile(data);
+        setIsLoading(false);
+      }
+    );
   }, [uid]);
 
   return { profile, isLoading };

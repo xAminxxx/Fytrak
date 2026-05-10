@@ -29,32 +29,29 @@ export function CompareSlider({ beforeUri, afterUri, onClose, beforeDate, afterD
 
   return (
     <View style={styles.container}>
-      <View style={styles.header}>
-        <Pressable onPress={onClose} style={styles.closeBtn}>
-          <Ionicons name="close" size={28} color="#fff" />
-        </Pressable>
-        <Text style={styles.title}>PROGRESS COMPARISON</Text>
-      </View>
+      <Pressable onPress={onClose} style={styles.closeBtn}>
+        <Ionicons name="close" size={28} color="#ff4444" />
+      </Pressable>
 
       <View style={styles.sliderContainer}>
         {/* AFTER IMAGE (Background) */}
-        <Image 
-          source={{ uri: afterUri }} 
-          style={styles.image} 
+        <Image
+          source={{ uri: afterUri }}
+          style={styles.image}
           resizeMode="cover"
         />
 
         {/* BEFORE IMAGE (Foreground with dynamic width) */}
         <Animated.View style={[styles.beforeContainer, { width: leftWidth }]}>
-          <Image 
-            source={{ uri: beforeUri }} 
-            style={[styles.image, { width: screenWidth }]} 
+          <Image
+            source={{ uri: beforeUri }}
+            style={[styles.image, { width: screenWidth }]}
             resizeMode="cover"
           />
         </Animated.View>
 
         {/* SLIDER HANDLE */}
-        <Animated.View 
+        <Animated.View
           style={[styles.handleContainer, { left: Animated.subtract(sliderPosition, 20) }]}
           {...panResponder.panHandlers}
         >
@@ -64,17 +61,7 @@ export function CompareSlider({ beforeUri, afterUri, onClose, beforeDate, afterD
           </View>
         </Animated.View>
 
-        {/* LABELS */}
-        <View style={styles.labelContainer}>
-          <View style={styles.labelWrapper}>
-            <Text style={styles.labelText}>BEFORE</Text>
-            {beforeDate && <Text style={styles.dateText}>{beforeDate}</Text>}
-          </View>
-          <View style={[styles.labelWrapper, { alignItems: 'flex-end' }]}>
-            <Text style={styles.labelText}>AFTER</Text>
-            {afterDate && <Text style={styles.dateText}>{afterDate}</Text>}
-          </View>
-        </View>
+        {/* NO LABELS */}
       </View>
     </View>
   );
@@ -85,31 +72,19 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: '#000',
   },
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingTop: 60,
-    paddingBottom: 20,
-    backgroundColor: '#000',
-    paddingHorizontal: 20,
-  },
   closeBtn: {
     position: 'absolute',
-    left: 20,
-    top: 60,
+    right: 25,
+    top: 10,
     width: 44,
     height: 44,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: 'rgba(255,255,255,0.1)',
+    backgroundColor: 'rgba(255, 68, 68, 0.25)',
     borderRadius: 22,
-  },
-  title: {
-    color: colors.primary,
-    fontFamily: 'Adcure',
-    fontSize: 20,
-    letterSpacing: 2,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 68, 68, 0.6)',
+    zIndex: 100,
   },
   sliderContainer: {
     flex: 1,
@@ -157,8 +132,7 @@ const styles = StyleSheet.create({
   },
   labelContainer: {
     position: 'absolute',
-    top: 20,
-    left: 20,
+    top: 60,
     right: 20,
     flexDirection: 'row',
     justifyContent: 'space-between',

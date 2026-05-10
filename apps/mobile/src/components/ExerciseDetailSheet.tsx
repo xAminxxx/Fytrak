@@ -6,7 +6,7 @@ import {
   ScrollView,
   Pressable,
   Modal,
-  useWindowDimensions,
+  Dimensions,
   Image,
 } from 'react-native';
 import * as WebBrowser from 'expo-web-browser';
@@ -25,7 +25,7 @@ type Props = {
 };
 
 export function ExerciseDetailSheet({ exercise, isVisible, onClose, primaryActionLabel, onPrimaryAction }: Props) {
-  const { height: windowHeight } = useWindowDimensions();
+  const { height: windowHeight } = Dimensions.get("window");
   const [videoError, setVideoError] = useState<string | null>(null);
 
   const videoLink = useMemo(() => {

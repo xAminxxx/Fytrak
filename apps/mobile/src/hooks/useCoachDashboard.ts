@@ -1,12 +1,13 @@
 import { useState, useEffect, useMemo, useCallback } from "react";
 import { Alert } from "react-native";
-import { auth } from "../config/firebase";
+import { subscribeWithCache } from "../data/subscriptions/subscriptionCache";
 import {
     fetchCoachClientSignals,
     respondToTraineeRequest,
     subscribeToCoachTrainees,
     type CoachTrainee,
 } from "../services/userSession";
+import { useCurrentUser } from "./useCurrentUser";
 import {
     buildCoachDashboardIntelligence,
     type CoachClientSignal,
@@ -14,22 +15,27 @@ import {
 } from "../features/coaching/coachIntelligence";
 
 export function useCoachDashboard() {
+    const uid = useCurrentUser();
     const [trainees, setTrainees] = useState<CoachTrainee[]>([]);
     const [clientSignals, setClientSignals] = useState<CoachClientSignal[]>([]);
     const [isLoading, setIsLoading] = useState(true);
     const [isLoadingSignals, setIsLoadingSignals] = useState(false);
 
     useEffect(() => {
-        const user = auth.currentUser;
-        if (!user) return;
+        if (!uid) return;
 
-        const unsubscribe = subscribeToCoachTrainees(user.uid, (data) => {
-            setTrainees(data);
-            setIsLoading(false);
-        });
+        setIsLoading(true);
+        const unsubscribe = subscribeWithCache<CoachTrainee[]>(
+            `coachTrainees:${uid}`,
+            (emit) => subscribeToCoachTrainees(uid, emit),
+            (data) => {
+                setTrainees(data);
+                setIsLoading(false);
+            }
+        );
 
         return () => unsubscribe();
-    }, []);
+    }, [uid]);
 
     const pending = useMemo(() => trainees.filter(t => t.assignmentStatus === "pending"), [trainees]);
     const assigned = useMemo(() => trainees.filter(t => t.assignmentStatus === "assigned"), [trainees]);

@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { ParamListBase, TabNavigationState } from "@react-navigation/native";
 import { Ionicons } from "@expo/vector-icons";
-import { Animated, Keyboard, Pressable, StyleSheet, Text, useWindowDimensions, View } from "react-native";
+import { Animated, Keyboard, Pressable, StyleSheet, Text, Dimensions, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { colors } from "../theme/colors";
 import { radius } from "../theme/tokens";
@@ -48,7 +48,7 @@ type FytrakTabBarProps = {
 
 export function FytrakTabBar({ state, navigation }: FytrakTabBarProps) {
   const insets = useSafeAreaInsets();
-  const { width } = useWindowDimensions();
+  const { width } = Dimensions.get("window");
   const barWidth = width - TAB_BAR_HORIZONTAL_MARGIN;
   const tabWidth = barWidth / state.routes.length;
 
