@@ -22,15 +22,16 @@ type BuildTodayMissionInput = {
   caloriesLogged: number;
   calorieTarget: number;
   hasCoachAssigned: boolean;
+  hasMessagedToday: boolean;
   hasPendingWorkoutPlan: boolean;
   hasPendingMealPlan: boolean;
   hasBodyMetricToday: boolean;
 };
 
 export function buildTodayMission(input: BuildTodayMissionInput): TodayMission {
-  const nutritionComplete = input.calorieTarget > 0
-    ? input.caloriesLogged >= input.calorieTarget * 0.7
-    : input.caloriesLogged > 0;
+  const nutritionComplete = input.caloriesLogged > 0;
+  const caloriesLogged = input.caloriesLogged || 0;
+  const calorieTarget = input.calorieTarget || 2100;
 
   const unsortedItems: TodayMissionItem[] = [
     {
@@ -44,18 +45,10 @@ export function buildTodayMission(input: BuildTodayMissionInput): TodayMission {
     {
       id: "nutrition",
       title: input.hasPendingMealPlan ? "Review nutrition plan" : "Hit nutrition baseline",
-      subtitle: nutritionComplete ? "Nutrition is on track" : `${input.caloriesLogged}/${input.calorieTarget || 2100} kcal logged`,
+      subtitle: nutritionComplete ? "Nutrition is on track" : `${caloriesLogged}/${calorieTarget} kcal logged`,
       icon: nutritionComplete ? "checkmark-circle" : "nutrition-outline",
       isComplete: nutritionComplete,
       priority: input.hasPendingMealPlan ? 1 : 3,
-    },
-    {
-      id: "coach",
-      title: input.hasCoachAssigned ? "Check coach channel" : "Find your coach",
-      subtitle: input.hasCoachAssigned ? "Keep accountability warm" : "Unlock human accountability",
-      icon: input.hasCoachAssigned ? "chatbubble-ellipses-outline" : "person-add-outline",
-      isComplete: input.hasCoachAssigned,
-      priority: 4,
     },
     {
       id: "bodyMetric",
@@ -66,6 +59,18 @@ export function buildTodayMission(input: BuildTodayMissionInput): TodayMission {
       priority: 5,
     },
   ];
+
+  if (input.hasCoachAssigned) {
+    unsortedItems.push({
+      id: "coach",
+      title: "Talk to your coach",
+      subtitle: input.hasMessagedToday ? "Message sent today" : "Keep accountability warm",
+      icon: input.hasMessagedToday ? "checkmark-circle" : "chatbubble-ellipses-outline",
+      isComplete: input.hasMessagedToday,
+      priority: 4,
+    });
+  }
+
   const items = unsortedItems.sort((a, b) => Number(a.isComplete) - Number(b.isComplete) || a.priority - b.priority);
 
   const completedCount = items.filter((item) => item.isComplete).length;

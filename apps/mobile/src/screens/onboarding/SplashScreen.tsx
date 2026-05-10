@@ -31,7 +31,7 @@ export function SplashScreen({ onFinish }: { onFinish: () => void }) {
   return (
     <View style={styles.container}>
       <Animated.View style={{ opacity: fadeAnim }}>
-        <AppLogo width={240} height={120} />
+        <AppLogo width={300} height={150} />
       </Animated.View>
     </View>
   );

@@ -72,6 +72,33 @@ export const subscribeToChatMessages = (
   );
 };
 
+export const subscribeToLatestMessage = (
+  threadId: string,
+  onChange: (summary: ChatThreadSummary | null) => void
+) => {
+  const q = query(
+    collection(db, chatsCollection, threadId, "messages"),
+    orderBy("createdAt", "desc"),
+    limit(1)
+  );
+
+  return onSnapshot(q, (snapshot) => {
+    if (snapshot.empty) {
+      onChange(null);
+      return;
+    }
+    const docSnap = snapshot.docs[0];
+    const message = parseChatMessage(docSnap.id, docSnap.data());
+    onChange({
+      threadId,
+      lastMessageText: message.type === "image" ? "Image" : message.text,
+      lastMessageType: message.type,
+      lastMessageAt: message.createdAt,
+      lastSenderId: message.senderId,
+    });
+  });
+};
+
 type SendChatMessageInput = {
   threadId: string;
   traineeId: string;

@@ -25,7 +25,7 @@ type ExerciseLog = ActiveWorkoutExerciseDraft;
 
 export function useActiveWorkout(workouts: WorkoutLog[]) {
   const [workoutName, setWorkoutName] = useState("Today's Session");
-  const [exercises, setExercises] = useState<ExerciseLog[]>([createEmptyWorkoutExercise()]);
+  const [exercises, setExercises] = useState<ExerciseLog[]>([]);
   const [activePrescriptionId, setActivePrescriptionId] = useState<string | null>(null);
   const [workoutStartedAt, setWorkoutStartedAt] = useState(new Date().toISOString());
   
@@ -73,7 +73,7 @@ export function useActiveWorkout(workouts: WorkoutLog[]) {
               setWorkoutName(draft.workoutName);
               setActivePrescriptionId(draft.activePrescriptionId);
               setWorkoutStartedAt(draft.startedAt);
-              setExercises(draft.exercises.length > 0 ? draft.exercises : [createEmptyWorkoutExercise()]);
+              setExercises(draft.exercises.length > 0 ? draft.exercises : []);
             },
           },
         ]

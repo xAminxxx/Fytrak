@@ -189,7 +189,7 @@ export function PhotosTab() {
       </Pressable>
 
       <View style={styles.infoBox}>
-        <Ionicons name="shield-checkmark" size={16} color={colors.primary} />
+        <Ionicons name="checkmark-circle" size={16} color={colors.primary} />
         <Text style={styles.infoText}>Your photos are private and encrypted.</Text>
       </View>
 

@@ -1,16 +1,21 @@
-import React, { useState, useEffect } from 'react';
-import { View, StyleSheet, Text, Pressable, Animated, Easing } from 'react-native';
+import React, { useEffect, useState } from 'react';
+import { View, StyleSheet, Text, Pressable, Animated, Easing, TextInput } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { colors } from '../theme/colors';
 import { Typography } from './Typography';
 import * as Haptics from 'expo-haptics';
+import { saveWaterIntake, setWaterIntake } from '../services/waterService';
+import { useDailyWater } from '../hooks/useDailyWater';
+import { useCurrentUser } from '../hooks/useCurrentUser';
 
 type Props = {
   onLog?: (amount: number) => void;
 };
 
 export function WaterTracker({ onLog }: Props) {
-  const [ml, setMl] = useState(0);
+  const uid = useCurrentUser();
+  const ml = useDailyWater();
+  const [customAmount, setCustomAmount] = useState("");
   const target = 2500;
   const progress = Math.min(ml / target, 1);
   
@@ -28,16 +33,19 @@ export function WaterTracker({ onLog }: Props) {
     ).start();
   }, []);
 
-  const handleAdd = (amount: number) => {
-    setMl(prev => prev + amount);
+  const handleAdd = async (amount: number) => {
+    if (!uid) return;
+    await saveWaterIntake(uid, amount);
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     if (onLog) onLog(amount);
   };
 
-  const waveTranslate = waveAnim.interpolate({
-    inputRange: [0, 1],
-    outputRange: [0, -100],
-  });
+  const handleCustomAdd = async () => {
+    const val = Number(customAmount);
+    if (isNaN(val) || val <= 0) return;
+    await handleAdd(val);
+    setCustomAmount("");
+  };
 
   return (
     <View style={styles.container}>
@@ -46,31 +54,50 @@ export function WaterTracker({ onLog }: Props) {
            <Ionicons name="water" size={18} color="#60a5fa" />
            <Typography variant="h2" style={{ fontSize: 18 }}>Hydration</Typography>
         </View>
-        <Typography variant="label" color="#444">{ml} / {target} ml</Typography>
+        <View style={styles.statsCol}>
+           <Typography variant="label" color="#fff" style={{ fontSize: 14, fontWeight: "900" }}>{ml} ml</Typography>
+           <Typography variant="label" color="#444">of {target}ml goal</Typography>
+        </View>
       </View>
 
       <View style={styles.trackArea}>
-         <View style={styles.glass}>
-            <View style={[styles.fill, { height: `${progress * 100}%` }]}>
-               {/* Wave Overlay Placeholder */}
-               <View style={styles.waveEffect} />
-            </View>
-            <View style={styles.glassOverlay}>
-               <Typography variant="h2" style={{ color: progress > 0.5 ? '#fff' : '#444' }}>{Math.round(progress * 100)}%</Typography>
+         <View style={styles.glassContainer}>
+            <View style={styles.glass}>
+               <View style={[styles.fill, { height: `${progress * 100}%` }]}>
+                  <View style={styles.waveEffect} />
+               </View>
+               <View style={styles.glassOverlay}>
+                  <Typography variant="h2" style={{ color: progress > 0.5 ? '#fff' : '#444' }}>{Math.round(progress * 100)}%</Typography>
+               </View>
             </View>
          </View>
 
-         <View style={styles.buttons}>
-            <Pressable style={styles.btn} onPress={() => handleAdd(250)}>
-               <Ionicons name="add" size={20} color="#fff" />
-               <Text style={styles.btnText}>250ml</Text>
-            </Pressable>
-            <Pressable style={[styles.btn, { backgroundColor: '#1c1c1e' }]} onPress={() => handleAdd(500)}>
-               <Ionicons name="add" size={20} color="#fff" />
-               <Text style={styles.btnText}>500ml</Text>
-            </Pressable>
-            <Pressable style={styles.resetBtn} onPress={() => setMl(0)}>
-               <Ionicons name="refresh" size={16} color="#444" />
+         <View style={styles.actions}>
+            <View style={styles.quickButtons}>
+               <Pressable style={styles.quickBtn} onPress={() => handleAdd(250)}>
+                  <Text style={styles.quickBtnText}>+250ml</Text>
+               </Pressable>
+               <Pressable style={styles.quickBtn} onPress={() => handleAdd(500)}>
+                  <Text style={styles.quickBtnText}>+500ml</Text>
+               </Pressable>
+            </View>
+
+            <View style={styles.customInputRow}>
+               <TextInput 
+                  style={styles.customInput}
+                  placeholder="Custom ml..."
+                  placeholderTextColor="#444"
+                  keyboardType="numeric"
+                  value={customAmount}
+                  onChangeText={setCustomAmount}
+               />
+               <Pressable style={styles.addBtn} onPress={handleCustomAdd}>
+                  <Ionicons name="add" size={20} color="#000" />
+               </Pressable>
+            </View>
+
+            <Pressable style={styles.resetBtn} onPress={() => uid && setWaterIntake(uid, 0)}>
+               <Typography variant="label" color="#ff4444" style={{ fontSize: 10, fontWeight: "900" }}>RESET PROGRESS</Typography>
             </Pressable>
          </View>
       </View>
@@ -85,28 +112,34 @@ const styles = StyleSheet.create({
     padding: 24,
     borderWidth: 1,
     borderColor: '#1c1c1e',
-    gap: 16,
   },
   header: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    alignItems: 'center',
+    alignItems: 'flex-start',
+    marginBottom: 20,
   },
   titleRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
   },
+  statsCol: {
+    alignItems: 'flex-end',
+  },
   trackArea: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 24,
+    gap: 20,
+  },
+  glassContainer: {
+    alignItems: 'center',
   },
   glass: {
-    width: 80,
-    height: 120,
+    width: 70,
+    height: 110,
     backgroundColor: '#0a0a0a',
-    borderRadius: 20,
+    borderRadius: 18,
     borderWidth: 2,
     borderColor: '#1c1c1e',
     overflow: 'hidden',
@@ -129,26 +162,54 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  buttons: {
+  actions: {
     flex: 1,
     gap: 12,
   },
-  btn: {
+  quickButtons: {
     flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#3b82f6',
-    paddingVertical: 12,
-    paddingHorizontal: 16,
-    borderRadius: 16,
     gap: 8,
   },
-  btnText: {
+  quickBtn: {
+    flex: 1,
+    backgroundColor: '#1c1c1e',
+    paddingVertical: 10,
+    borderRadius: 12,
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#2c2c2e',
+  },
+  quickBtnText: {
     color: '#fff',
+    fontSize: 12,
     fontWeight: '900',
-    fontSize: 14,
+  },
+  customInputRow: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  customInput: {
+    flex: 1,
+    backgroundColor: '#0a0a0a',
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    color: '#fff',
+    fontSize: 13,
+    fontWeight: '600',
+    borderWidth: 1,
+    borderColor: '#1c1c1e',
+    height: 44,
+  },
+  addBtn: {
+    width: 44,
+    height: 44,
+    backgroundColor: colors.primary,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   resetBtn: {
-    alignSelf: 'flex-end',
-    padding: 8,
+    marginTop: 4,
+    alignSelf: 'center',
   }
 });

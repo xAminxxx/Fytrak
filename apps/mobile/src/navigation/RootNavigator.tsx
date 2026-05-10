@@ -38,6 +38,7 @@ import { calculateNutritionPlan } from '../utils/calculators';
 import { OnboardingFlow } from "../screens/onboarding/OnboardingFlow";
 import { useSessionState } from "../hooks/useSessionState";
 import type { RootStackParamList } from "./types";
+import { useEffect } from "react";
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
 

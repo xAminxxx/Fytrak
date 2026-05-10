@@ -218,6 +218,9 @@ export const subscribeToUserProfile = (uid: string, callback: (profile: UserProf
         weight: data.profile?.weight || data.weight,
         height: data.profile?.height || data.height,
         activityLevel: data.profile?.activityLevel || data.activityLevel,
+        assignmentStatus: data.assignmentStatus || "unassigned",
+        selectedCoachId: data.selectedCoachId,
+        selectedCoachName: data.selectedCoachName,
         profileImageUrl: data.profileImageUrl,
       });
     }

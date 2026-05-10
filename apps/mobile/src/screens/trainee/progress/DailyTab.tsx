@@ -1,0 +1,434 @@
+import React, { useMemo, useState } from "react";
+import { ScrollView, StyleSheet, View, Text, Image, Modal, Pressable } from "react-native";
+import { colors } from "../../../theme/colors";
+import { spacing } from "../../../theme/tokens";
+import { Typography } from "../../../components/Typography";
+import { NutritionRing } from "../../../components/NutritionRing";
+import { MacroItem } from "../../../components/MacroItem";
+import { Ionicons } from "@expo/vector-icons";
+import { useWorkouts } from "../../../hooks/useWorkouts";
+import { useBodyMetrics } from "../../../hooks/useBodyMetrics";
+import { useDailyNutrition } from "../../../hooks/useDailyNutrition";
+import { useUserProfile } from "../../../hooks/useUserProfile";
+import { useDailyWater } from "../../../hooks/useDailyWater";
+import { useProgressPhotos } from "../../../hooks/useProgressPhotos";
+import { toSafeDate } from "../../../utils/chartFilters";
+
+export function DailyTab() {
+  const workouts = useWorkouts();
+  const { metrics } = useBodyMetrics();
+  const meals = useDailyNutrition();
+  const { profile: userProfile } = useUserProfile();
+  const waterMl = useDailyWater();
+  const { photos } = useProgressPhotos();
+  const [viewerPhoto, setViewerPhoto] = useState<string | null>(null);
+
+  const todayStr = new Date().toDateString();
+  const todayKey = new Date().toISOString().split('T')[0];
+
+  const todayWorkout = useMemo(() => {
+    return workouts.find(w => w.createdAt && toSafeDate(w.createdAt).toDateString() === todayStr);
+  }, [workouts, todayStr]);
+
+  const todayPhoto = useMemo(() => {
+    return photos.find(p => p.date === todayKey);
+  }, [photos, todayKey]);
+
+  const todayMetric = useMemo(() => {
+    return metrics.find(m => m.date === new Date().toISOString().split('T')[0] || (m.createdAt && toSafeDate(m.createdAt).toDateString() === todayStr));
+  }, [metrics, todayStr]);
+
+  const totals = useMemo(() => {
+    return meals.reduce(
+      (acc, meal) => ({
+        calories: acc.calories + (meal.calories || 0),
+        protein: acc.protein + (meal.protein || 0),
+        carbs: acc.carbs + (meal.carbs || 0),
+        fats: acc.fats + (meal.fats || 0),
+      }),
+      { calories: 0, protein: 0, carbs: 0, fats: 0 }
+    );
+  }, [meals]);
+
+  const targets = userProfile?.macroTargets || { calories: 2100, protein: 160, carbs: 220, fats: 65 };
+
+  return (
+    <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scroll}>
+      <View style={styles.header}>
+        <Typography variant="h2">Daily Report</Typography>
+        <Typography variant="bodySmall" color="#666">Today, {new Date().toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' })}</Typography>
+      </View>
+
+      {/* 1. NUTRITION SUMMARY */}
+      <View style={styles.section}>
+        <SectionHeader title="NUTRITION & HYDRATION" icon="nutrition" color="#fbbf24" />
+        <View style={styles.card}>
+          <View style={styles.summaryRow}>
+             <NutritionRing current={totals.calories} target={targets.calories} />
+             <View style={styles.mainStats}>
+                <Typography variant="metric" style={{ fontSize: 28 }}>{totals.calories} <Typography color="#444" style={{ fontSize: 16 }}>/ {targets.calories} kcal</Typography></Typography>
+                <View style={styles.waterMiniRow}>
+                   <Ionicons name="water" size={14} color="#60a5fa" />
+                   <Typography variant="label" color="#60a5fa" style={{ fontWeight: "800" }}>{waterMl} / 2500 ml</Typography>
+                </View>
+             </View>
+          </View>
+          
+          <View style={styles.macrosRow}>
+            <MacroItem label="Protein" current={totals.protein} target={targets.protein} color="#4ade80" icon="flash" />
+            <MacroItem label="Carbs" current={totals.carbs} target={targets.carbs} color={colors.primary} icon="restaurant" />
+            <MacroItem label="Fats" current={totals.fats} target={targets.fats} color="#f87171" icon="water" />
+          </View>
+
+          {/* MEAL LIST */}
+          <View style={styles.mealList}>
+            <Typography variant="label" color="#444" style={styles.listLabel}>TODAY'S MEALS</Typography>
+            {meals.length > 0 ? meals.map((meal) => (
+              <View key={meal.id} style={styles.mealItem}>
+                {meal.imageUrl ? (
+                  <Image source={{ uri: meal.imageUrl }} style={styles.mealThumb} />
+                ) : (
+                  <View style={styles.mealIcon}><Ionicons name="fast-food" size={16} color="#444" /></View>
+                )}
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.mealName}>{meal.name}</Text>
+                  <Text style={styles.mealTime}>{meal.time}</Text>
+                </View>
+                <Text style={styles.mealCals}>{meal.calories} kcal</Text>
+              </View>
+            )) : (
+              <Text style={styles.emptyText}>No meals logged yet</Text>
+            )}
+          </View>
+        </View>
+      </View>
+
+      {/* 2. TRAINING ACTIVITY */}
+      <View style={styles.section}>
+        <SectionHeader title="TRAINING ACTIVITY" icon="barbell" color="#f87171" />
+        {todayWorkout ? (
+          <View style={styles.card}>
+            <View style={styles.cardHeader}>
+              <View>
+                <Typography variant="h2" style={{ fontSize: 18 }}>{todayWorkout.name}</Typography>
+                <Typography variant="label" color="#666">{todayWorkout.duration || 0} min • {todayWorkout.totalVolume || 0}kg volume</Typography>
+              </View>
+              <View style={styles.checkBadge}>
+                <Ionicons name="checkmark" size={16} color="#000" />
+              </View>
+            </View>
+            <View style={styles.exerciseList}>
+              {todayWorkout.exercises.map((ex, idx) => (
+                <View key={idx} style={styles.exItem}>
+                  <Text style={styles.exName}>{ex.name}</Text>
+                  <Text style={styles.exSets}>{ex.sets.length} sets</Text>
+                </View>
+              ))}
+            </View>
+          </View>
+        ) : (
+          <View style={styles.emptyCard}>
+            <Typography variant="label" color="#444">Rest Day - No workout logged</Typography>
+          </View>
+        )}
+      </View>
+
+      {/* 3. BODY METRICS & BIO-MARKERS */}
+      <View style={styles.section}>
+        <SectionHeader title="BIO-MARKERS" icon="body" color="#60a5fa" />
+        <View style={styles.metricsGrid}>
+          <MetricBox 
+            label="Weight" 
+            value={todayMetric?.weight ? `${todayMetric.weight} kg` : "--"} 
+            icon="speedometer-outline"
+            color="#60a5fa"
+          />
+          <MetricBox 
+            label="Body Fat" 
+            value={todayMetric?.bodyFat ? `${todayMetric.bodyFat}%` : "--"} 
+            icon="analytics-outline"
+            color="#a855f7"
+          />
+        </View>
+        <View style={[styles.metricsGrid, { marginTop: 12 }]}>
+          <MetricBox 
+            label="Energy" 
+            value={todayWorkout?.checkIn?.energy ? `${todayWorkout.checkIn.energy}/5` : "--"} 
+            icon="flashlight-outline"
+            color="#fbbf24"
+          />
+          <MetricBox 
+            label="Mood" 
+            value={todayWorkout?.checkIn?.mood ? `${todayWorkout.checkIn.mood}/5` : "--"} 
+            icon="happy-outline"
+            color="#f472b6"
+          />
+        </View>
+      </View>
+
+      {/* 4. VISUAL CHECK-IN */}
+      <View style={styles.section}>
+        <SectionHeader title="VISUAL CHECK-IN" icon="camera" color="#10b981" />
+        {todayPhoto ? (
+          <View style={styles.card}>
+            <Pressable onPress={() => setViewerPhoto(todayPhoto.url)}>
+              <Image source={{ uri: todayPhoto.url }} style={styles.todayPhoto} resizeMode="cover" />
+            </Pressable>
+            <View style={styles.photoMeta}>
+              <Typography variant="label" color="#666">Snapshot logged at {toSafeDate(todayPhoto.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</Typography>
+            </View>
+          </View>
+        ) : (
+          <View style={styles.emptyCard}>
+            <Typography variant="label" color="#444">No progress photo logged today</Typography>
+          </View>
+        )}
+      </View>
+
+      <Modal visible={!!viewerPhoto} transparent={true} animationType="fade" onRequestClose={() => setViewerPhoto(null)}>
+        <View style={styles.viewerOverlay}>
+          <Pressable style={styles.viewerClose} onPress={() => setViewerPhoto(null)}>
+            <Ionicons name="close" size={28} color="#ff4444" />
+          </Pressable>
+          {viewerPhoto && (
+            <View style={styles.viewerContent}>
+              <Image source={{ uri: viewerPhoto }} style={styles.viewerImage} resizeMode="contain" />
+            </View>
+          )}
+        </View>
+      </Modal>
+    </ScrollView>
+  );
+}
+
+function SectionHeader({ title, icon, color }: { title: string; icon: keyof typeof Ionicons.glyphMap; color: string }) {
+  return (
+    <View style={styles.sectionHeader}>
+      <View style={[styles.iconBox, { backgroundColor: `${color}15` }]}>
+        <Ionicons name={icon} size={14} color={color} />
+      </View>
+      <Text style={[styles.sectionTitle, { color }]}>{title}</Text>
+    </View>
+  );
+}
+
+function MetricBox({ label, value, icon, color }: { label: string; value: string; icon: keyof typeof Ionicons.glyphMap; color: string }) {
+  return (
+    <View style={styles.metricBox}>
+      <View style={styles.metricTop}>
+        <Ionicons name={icon} size={14} color={color} />
+        <Typography variant="label" color="#444" style={{ fontSize: 9, fontWeight: "900" }}>{label.toUpperCase()}</Typography>
+      </View>
+      <Typography variant="metric" style={{ fontSize: 20, marginTop: 4 }}>{value}</Typography>
+    </View>
+  );
+}
+
+const styles = StyleSheet.create({
+  scroll: {
+    padding: spacing.sm,
+    paddingTop: 0,
+    paddingBottom: 100,
+  },
+  header: {
+    marginBottom: 12,
+  },
+  section: {
+    marginBottom: 24,
+  },
+  sectionHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    marginBottom: 12,
+  },
+  iconBox: {
+    width: 24,
+    height: 24,
+    borderRadius: 6,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  sectionTitle: {
+    fontSize: 10,
+    fontWeight: "900",
+    letterSpacing: 1.5,
+  },
+  card: {
+    backgroundColor: "#161616",
+    borderRadius: 24,
+    padding: 20,
+    borderWidth: 1,
+    borderColor: "#2c2c2e",
+  },
+  summaryRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 20,
+    marginBottom: 24,
+  },
+  mainStats: {
+    flex: 1,
+    gap: 4,
+  },
+  waterMiniRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+  },
+  macrosRow: {
+    flexDirection: "row",
+    gap: 12,
+    marginBottom: 24,
+  },
+  mealList: {
+    borderTopWidth: 1,
+    borderTopColor: "#1c1c1e",
+    paddingTop: 16,
+    gap: 12,
+  },
+  listLabel: {
+    fontSize: 9,
+    fontWeight: "900",
+    letterSpacing: 1,
+    marginBottom: 4,
+  },
+  mealItem: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+  },
+  mealThumb: {
+    width: 36,
+    height: 36,
+    borderRadius: 10,
+  },
+  mealIcon: {
+    width: 36,
+    height: 36,
+    borderRadius: 10,
+    backgroundColor: "#1c1c1e",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  mealName: {
+    color: "#fff",
+    fontSize: 14,
+    fontWeight: "700",
+  },
+  mealTime: {
+    color: "#444",
+    fontSize: 11,
+    fontWeight: "600",
+  },
+  mealCals: {
+    color: colors.primary,
+    fontSize: 14,
+    fontWeight: "800",
+  },
+  emptyText: {
+    color: "#333",
+    fontSize: 12,
+    fontStyle: "italic",
+    textAlign: "center",
+    marginVertical: 10,
+  },
+  emptyCard: {
+    backgroundColor: "#0a0a0a",
+    borderRadius: 24,
+    padding: 30,
+    alignItems: "center",
+    justifyContent: "center",
+    borderWidth: 1,
+    borderColor: "#1c1c1e",
+    borderStyle: "dashed",
+  },
+  cardHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "flex-start",
+    marginBottom: 20,
+  },
+  checkBadge: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    backgroundColor: colors.primary,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  exerciseList: {
+    gap: 10,
+  },
+  exItem: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    paddingVertical: 8,
+    borderBottomWidth: 1,
+    borderBottomColor: "#1c1c1e",
+  },
+  exName: {
+    color: "#fff",
+    fontSize: 14,
+    fontWeight: "600",
+  },
+  exSets: {
+    color: "#666",
+    fontSize: 12,
+    fontWeight: "700",
+  },
+  metricsGrid: {
+    flexDirection: "row",
+    gap: 12,
+  },
+  metricBox: {
+    flex: 1,
+    backgroundColor: "#161616",
+    borderRadius: 20,
+    padding: 16,
+    borderWidth: 1,
+    borderColor: "#2c2c2e",
+  },
+  metricTop: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+  },
+  todayPhoto: {
+    width: "100%",
+    height: 300,
+    borderRadius: 16,
+    backgroundColor: "#0a0a0a",
+  },
+  photoMeta: {
+    marginTop: 12,
+    alignItems: "center",
+  },
+  viewerOverlay: {
+    flex: 1,
+    backgroundColor: "rgba(0,0,0,0.95)",
+    justifyContent: "center",
+  },
+  viewerClose: {
+    position: "absolute",
+    top: 40,
+    right: 20,
+    width: 44,
+    height: 44,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "rgba(255, 68, 68, 0.2)",
+    borderRadius: 22,
+    zIndex: 100,
+  },
+  viewerContent: {
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  viewerImage: {
+    width: "100%",
+    height: "85%",
+  },
+});

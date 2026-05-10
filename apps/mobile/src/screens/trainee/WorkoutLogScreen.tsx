@@ -509,7 +509,7 @@ function RestTimer({ value, onAdjust, onSkip }: any) {
 
 const styles = StyleSheet.create({
   shellContent: { paddingBottom: 0 },
-  scroll: { paddingBottom: 220, gap: spacing.lg },
+  scroll: { paddingBottom: 160, gap: spacing.md },
   prescribedBanner: { minHeight: touchTarget.comfortable, backgroundColor: colors.primary, flexDirection: "row", alignItems: "center", justifyContent: "center", padding: spacing.md, borderRadius: radius.md, gap: spacing.sm, marginTop: spacing.sm },
   bannerText: { color: colors.primaryText, ...typography.label },
   sessionFocusCard: { backgroundColor: colors.bgElevated, borderRadius: radius.xl, padding: spacing.xl, borderWidth: 1, borderColor: colors.borderSubtle, gap: spacing.lg },
@@ -553,7 +553,7 @@ const styles = StyleSheet.create({
   addExBtn: { minHeight: 56, backgroundColor: "#161616", paddingVertical: 18, paddingHorizontal: 20, borderRadius: 20, flexDirection: "row", alignItems: "center", justifyContent: "center", borderStyle: "dashed", borderWidth: 1, borderColor: "#333", gap: 10, marginBottom: spacing.xl },
   addExText: { color: colors.primary, fontWeight: "900", fontSize: 13, letterSpacing: 0.5 },
   finishBtnText: { color: colors.primaryText, ...typography.button, fontSize: 16 },
-  workoutActionDock: { position: "absolute", left: spacing.lg, right: spacing.lg, bottom: 96, backgroundColor: "rgba(10,10,10,0.94)", borderRadius: radius.xl, padding: spacing.sm, borderWidth: 1, borderColor: colors.borderSubtle },
+  workoutActionDock: { position: "absolute", left: spacing.lg, right: spacing.lg, bottom: 84, backgroundColor: "rgba(10,10,10,0.94)", borderRadius: radius.xl, padding: spacing.sm, borderWidth: 1, borderColor: colors.borderSubtle },
   dockFinishBtn: { minHeight: 56, borderRadius: radius.lg, backgroundColor: colors.primary, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: spacing.sm },
   floatingTimer: { position: "absolute", bottom: 178, alignSelf: "center", backgroundColor: colors.primary, flexDirection: "row", alignItems: "center", paddingHorizontal: spacing.lg, paddingVertical: spacing.sm, borderRadius: radius.pill, elevation: 10 },
   timerInfo: { flexDirection: "row", alignItems: "center", gap: spacing.sm, paddingRight: spacing.md },

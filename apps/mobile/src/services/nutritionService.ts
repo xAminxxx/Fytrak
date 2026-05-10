@@ -23,6 +23,8 @@ export type Meal = {
   name: string;
   calories: number;
   protein: number;
+  carbs?: number;
+  fats?: number;
   time: string;
   date: string;
   imageUrl?: string;

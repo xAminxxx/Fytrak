@@ -1,0 +1,61 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+
+    function userDoc(userId) {
+      return get(/databases/$(database)/documents/users/$(userId));
+    }
+
+    function isAssignedCoach(userId) {
+      return isSignedIn() && userDoc(userId).data.selectedCoachId == request.auth.uid;
+    }
+
+    function isPublicCoachProfile() {
+      return resource.data.role == "coach";
+    }
+
+    match /users/{userId} {
+      allow read: if isOwner(userId) || isAssignedCoach(userId) || isPublicCoachProfile();
+      allow create: if isOwner(userId);
+      allow update: if isOwner(userId)
+        || (
+          isAssignedCoach(userId)
+          && request.resource.data.diff(resource.data).changedKeys().hasOnly(["assignmentStatus", "updatedAt"])
+        );
+      allow delete: if false;
+
+      match /{subCollection}/{docId} {
+        allow read: if isOwner(userId) || isAssignedCoach(userId);
+        allow create, update, delete: if isOwner(userId) || isAssignedCoach(userId);
+      }
+    }
+
+    match /chats/{threadId}/messages/{messageId} {
+      allow read: if isSignedIn()
+        && (
+          request.auth.uid == resource.data.senderId
+          || request.auth.uid == resource.data.receiverId
+          || (resource.data.participants is list && request.auth.uid in resource.data.participants)
+        );
+      allow create: if isSignedIn()
+        && request.auth.uid == request.resource.data.senderId
+        && request.resource.data.receiverId is string
+        && request.resource.data.threadId == threadId
+        && request.resource.data.type in ["text", "image"];
+      allow update, delete: if false;
+    }
+
+    match /exercises/{exerciseId} {
+      allow read: if isSignedIn();
+      allow write: if false;
+    }
+  }
+}

@@ -27,18 +27,16 @@ import { uploadMealPhoto } from "../../services/cloudinaryUpload";
 import * as ImagePicker from "expo-image-picker";
 import { ToastService } from "../../components/Toast";
 import { WaterTracker } from "../../components/WaterTracker";
+import { LogMealModal } from "../../features/nutrition/components/LogMealModal";
 
 export function NutritionScreen() {
-  const [mealName, setMealName] = useState("");
-  const [calories, setCalories] = useState("");
-  const [protein, setProtein] = useState("");
   const [meals, setMeals] = useState<Meal[]>([]);
   const [prescribed, setPrescribed] = useState<PrescribedMeal[]>([]);
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [applyingPlanId, setApplyingPlanId] = useState<string | null>(null);
-  const [mealImageUri, setMealImageUri] = useState<string | null>(null);
-  const [isUploadingImage, setIsUploadingImage] = useState(false);
+  const [isLogModalVisible, setIsLogModalVisible] = useState(false);
+  const [isSavingMeal, setIsSavingMeal] = useState(false);
 
   // --- NUTRITION INTAKE STATE ---
   const [showIntake, setShowIntake] = useState(false);
@@ -116,32 +114,42 @@ export function NutritionScreen() {
   const targets = useMemo(() => profile?.macroTargets || { calories: 2100, protein: 160, carbs: 220, fats: 65 }, [profile]);
 
   const totals = useMemo(() => meals.reduce(
-    (acc, meal) => ({ calories: acc.calories + (meal.calories || 0), protein: acc.protein + (meal.protein || 0) }),
-    { calories: 0, protein: 0 }
+    (acc, meal) => ({
+      calories: acc.calories + (meal.calories || 0),
+      protein: acc.protein + (meal.protein || 0),
+      carbs: acc.carbs + (meal.carbs || 0),
+      fats: acc.fats + (meal.fats || 0),
+    }),
+    { calories: 0, protein: 0, carbs: 0, fats: 0 }
   ), [meals]);
 
-  const handleSaveMeal = async () => {
-    if (!mealName.trim() || !Number(calories)) return;
+  const handleSaveMeal = async (data: any) => {
     const user = auth.currentUser;
     if (!user) return;
 
     try {
+      setIsSavingMeal(true);
       let imageUrl: string | undefined;
-      if (mealImageUri) {
-        setIsUploadingImage(true);
-        const result = await uploadMealPhoto(mealImageUri);
+      if (data.imageUri) {
+        const result = await uploadMealPhoto(data.imageUri);
         imageUrl = result.secureUrl;
       }
       await saveMealLog(user.uid, {
-        name: mealName.trim(),
-        calories: Number(calories),
-        protein: Number(protein) || 0,
+        name: data.name,
+        calories: data.calories,
+        protein: data.protein,
+        carbs: data.carbs,
+        fats: data.fats,
         time: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
         ...(imageUrl && { imageUrl }),
       });
-      setMealName(""); setCalories(""); setProtein(""); setMealImageUri(null);
-    } catch (error) { console.error(error); ToastService.error("Error", "Could not save meal log."); }
-    finally { setIsUploadingImage(false); }
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    } catch (error) {
+      console.error(error);
+      ToastService.error("Error", "Failed to log meal.");
+    } finally {
+      setIsSavingMeal(false);
+    }
   };
 
   const handleDeleteMeal = (id: string, name: string) => {
@@ -215,126 +223,124 @@ export function NutritionScreen() {
   }
 
   return (
-    <ScreenShell title="Nutrition" subtitle="Track your macros" contentStyle={styles.shellContent}>
-      {isLoading ? <View style={styles.loader}><ActivityIndicator color={colors.primary} /></View> : (
-        <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scroll}>
-          <View style={styles.summaryCard}>
-            <View style={styles.summaryHeader}>
-              <View>
-                <Typography variant="label" color="#8c8c8c">CALORIE INTAKE</Typography>
-                <Typography variant="metric" style={styles.largeMetric}>{totals.calories} <Typography style={styles.metricSub}>/ {targets.calories} kcal</Typography></Typography>
+    <>
+      <ScreenShell title="Nutrition" subtitle="Track your macros" contentStyle={styles.shellContent}>
+        {isLoading ? <View style={styles.loader}><ActivityIndicator color={colors.primary} /></View> : (
+          <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scroll}>
+            <View style={styles.summaryCard}>
+              <View style={styles.summaryHeader}>
+                <View>
+                  <Typography variant="label" color="#8c8c8c">CALORIE INTAKE</Typography>
+                  <Typography variant="metric" style={styles.largeMetric}>{totals.calories} <Typography style={styles.metricSub}>/ {targets.calories} kcal</Typography></Typography>
+                </View>
+                <NutritionRing current={totals.calories} target={targets.calories} />
               </View>
-              <NutritionRing current={totals.calories} target={targets.calories} />
+              <View style={styles.macrosRow}>
+                <MacroItem label="Protein" current={totals.protein} target={targets.protein} color="#4ade80" icon="flash" />
+                <MacroItem label="Carbs" current={totals.carbs} target={targets.carbs} color={colors.primary} icon="restaurant" />
+                <MacroItem label="Fats" current={totals.fats} target={targets.fats} color="#f87171" icon="water" />
+              </View>
             </View>
-            <View style={styles.macrosRow}>
-              <MacroItem label="Protein" current={totals.protein} target={targets.protein} color="#4ade80" icon="flash" />
-              <MacroItem label="Carbs" current={Math.round(totals.calories * 0.4 / 4)} target={targets.carbs} color={colors.primary} icon="restaurant" />
-              <MacroItem label="Fats" current={Math.round(totals.calories * 0.25 / 9)} target={targets.fats} color="#f87171" icon="water" />
-            </View>
-          </View>
 
-          {/* 2. WATER TRACKER */}
-          <WaterTracker />
+            {/* 2. WATER TRACKER */}
+            <WaterTracker />
 
-          {/* 3. AI SMART LOG */}
-          <View style={styles.smartLogCard}>
-             <View style={styles.smartHeader}>
-                <Ionicons name="sparkles" size={18} color={colors.primary} />
-                <Typography variant="h2" style={{ fontSize: 16 }}>AI Smart Log</Typography>
-                <View style={styles.betaBadge}><Text style={styles.betaText}>BETA</Text></View>
-             </View>
-             <Typography variant="label" color="#444">Describe your meal in plain text (e.g. "2 chicken breasts and 100g rice")</Typography>
-             <View style={styles.aiInputRow}>
-                <TextInput 
-                   style={styles.aiInput} 
-                   placeholder="I ate..." 
-                   placeholderTextColor="#444"
-                   multiline
-                />
-                <Pressable style={styles.aiSendBtn}>
-                   <Ionicons name="send" size={18} color="#000" />
+
+            {profile?.isPremium && prescribed.length > 0 && (
+              <View style={styles.coachBanner}>
+                <View style={styles.bannerHeader}><Ionicons name="sparkles" size={18} color={colors.primary} /><Text style={styles.bannerTitle}>NEW COACH PRESCRIPTION</Text></View>
+                <Text style={styles.bannerSubtitle}>{prescribed[0].title}</Text>
+                <View style={styles.bannerMacros}>
+                  <MacroStat val={prescribed[0].macros.calories} label="KCALS" />
+                  <MacroStat val={prescribed[0].macros.protein} label="PRO" />
+                  <MacroStat val={prescribed[0].macros.carbs} label="CARBS" />
+                </View>
+                <Pressable style={styles.applyBtn} onPress={() => handleApplyCoachPlan(prescribed[0])} disabled={!!applyingPlanId}>
+                  {applyingPlanId === prescribed[0].id ? <ActivityIndicator size="small" color="#000" /> : <><Text style={styles.applyBtnText}>APPLY TARGETS</Text><Ionicons name="checkmark-circle" size={18} color="#000" /></>}
                 </Pressable>
-             </View>
-          </View>
-
-          {profile?.isPremium && prescribed.length > 0 && (
-            <View style={styles.coachBanner}>
-              <View style={styles.bannerHeader}><Ionicons name="sparkles" size={18} color={colors.primary} /><Text style={styles.bannerTitle}>NEW COACH PRESCRIPTION</Text></View>
-              <Text style={styles.bannerSubtitle}>{prescribed[0].title}</Text>
-              <View style={styles.bannerMacros}>
-                <MacroStat val={prescribed[0].macros.calories} label="KCALS" />
-                <MacroStat val={prescribed[0].macros.protein} label="PRO" />
-                <MacroStat val={prescribed[0].macros.carbs} label="CARBS" />
               </View>
-              <Pressable style={styles.applyBtn} onPress={() => handleApplyCoachPlan(prescribed[0])} disabled={!!applyingPlanId}>
-                {applyingPlanId === prescribed[0].id ? <ActivityIndicator size="small" color="#000" /> : <><Text style={styles.applyBtnText}>APPLY TARGETS</Text><Ionicons name="checkmark-circle" size={18} color="#000" /></>}
-              </Pressable>
-            </View>
-          )}
+            )}
 
-          <View style={styles.logCard}>
-            <View style={styles.logCardHeader}>
-              <Typography variant="h2">Quick Log</Typography>
-              <View style={styles.photoRow}>
-                <Pressable style={styles.photoPickBtn} onPress={async () => {
-                  const permissionResult = await ImagePicker.requestCameraPermissionsAsync();
-                  if (!permissionResult.granted) {
-                    ToastService.error("Permission Required", "Camera access is needed to take a meal photo.");
-                    return;
-                  }
-                  const result = await ImagePicker.launchCameraAsync({
-                    mediaTypes: ["images"],
-                    allowsEditing: true,
-                    aspect: [4, 3],
-                    quality: 0.5
-                  });
-                  if (!result.canceled) setMealImageUri(result.assets[0].uri);
-                }}>
-                  {mealImageUri ? (
-                    <Image source={{ uri: mealImageUri }} style={styles.photoPreview} />
-                  ) : (
-                    <><Ionicons name="camera-outline" size={16} color="#555" /><Text style={styles.photoPickText}>Photo</Text></>
-                  )}
-                </Pressable>
-                {mealImageUri && (
-                  <Pressable style={styles.photoRemoveBtn} onPress={() => setMealImageUri(null)}>
-                    <Ionicons name="close-circle" size={18} color="#ff4444" />
-                  </Pressable>
-                )}
+            <Pressable 
+              style={styles.mainLogBtn} 
+              onPress={() => setIsLogModalVisible(true)}
+            >
+              <View style={styles.mainLogBtnContent}>
+                <View style={styles.logIconCircle}>
+                  <Ionicons name="add" size={24} color="#000" />
+                </View>
+                <View>
+                  <Typography variant="h2" style={{ fontSize: 18, marginBottom: 2 }}>Log a Meal</Typography>
+                  <Typography variant="label" color="#444">Add entries to your daily diary</Typography>
+                </View>
               </View>
-            </View>
-            <TextInput style={styles.input} placeholder="What did you eat?" placeholderTextColor="#8c8c8c" value={mealName} onChangeText={setMealName} />
-            <View style={styles.row}>
-              <TextInput style={[styles.input, { flex: 1 }]} placeholder="Calories" placeholderTextColor="#8c8c8c" keyboardType="numeric" value={calories} onChangeText={setCalories} />
-              <TextInput style={[styles.input, { flex: 1 }]} placeholder="Protein (g)" placeholderTextColor="#8c8c8c" keyboardType="numeric" value={protein} onChangeText={setProtein} />
-            </View>
-            <Pressable style={[styles.saveBtn, (!mealName.trim() || !Number(calories) || isUploadingImage) && styles.saveBtnDisabled]} onPress={handleSaveMeal} disabled={isUploadingImage}>
-              {isUploadingImage ? <ActivityIndicator color="#000" size="small" /> : <Text style={styles.saveBtnText}>ADD TO LOG</Text>}
+              <Ionicons name="chevron-forward" size={20} color="#333" />
             </Pressable>
-          </View>
 
-          <View style={styles.historySection}>
-            <Text style={styles.sectionTitle}>Today's Log</Text>
-            {meals.map((meal) => (
-              <Pressable key={meal.id} style={styles.mealItem} onLongPress={() => handleDeleteMeal(meal.id, meal.name)}>
-                {(meal as any).imageUrl ? (
-                  <Image source={{ uri: (meal as any).imageUrl }} style={styles.mealThumb} />
-                ) : (
-                  <View style={styles.mealIcon}><Ionicons name="fast-food" size={20} color={colors.primary} /></View>
-                )}
-                <View style={styles.mealInfo}><Text style={styles.mealName}>{meal.name}</Text><Text style={styles.mealMeta}>{meal.time}</Text></View>
-                <View style={styles.mealStats}><Text style={styles.mealCalories}>{meal.calories} kcal</Text><Text style={styles.mealProtein}>{meal.protein}g P</Text></View>
-              </Pressable>
-            ))}
-          </View>
-        </ScrollView>
-      )}
-    </ScreenShell>
+            <View style={styles.historySection}>
+              <View style={styles.sectionHeader}>
+                <Ionicons name="list" size={18} color={colors.primary} />
+                <Typography variant="h2" style={{ fontSize: 16 }}>Today's Log</Typography>
+              </View>
+              {meals.length === 0 ? (
+                <View style={styles.emptyHistory}>
+                  <Ionicons name="restaurant-outline" size={32} color="#1c1c1e" />
+                  <Typography variant="label" color="#333" style={{ marginTop: 10 }}>No meals logged yet today</Typography>
+                </View>
+              ) : (
+                meals.map((meal) => (
+                  <Pressable key={meal.id} style={styles.mealItem} onLongPress={() => handleDeleteMeal(meal.id, meal.name)}>
+                    {(meal as any).imageUrl ? (
+                      <Image source={{ uri: (meal as any).imageUrl }} style={styles.mealThumb} />
+                    ) : (
+                      <View style={styles.mealIcon}><Ionicons name="fast-food" size={20} color={colors.primary} /></View>
+                    )}
+                    <View style={styles.mealInfo}><Text style={styles.mealName}>{meal.name}</Text><Text style={styles.mealMeta}>{meal.time}</Text></View>
+                    <View style={styles.mealStats}><Text style={styles.mealCalories}>{meal.calories} kcal</Text><Text style={styles.mealProtein}>{meal.protein}g P</Text></View>
+                  </Pressable>
+                ))
+              )}
+            </View>
+          </ScrollView>
+        )}
+      </ScreenShell>
+
+      <LogMealModal
+        visible={isLogModalVisible}
+        onClose={() => setIsLogModalVisible(false)}
+        onSave={handleSaveMeal}
+        isSaving={isSavingMeal}
+      />
+    </>
   );
 }
 
 function MacroStat({ val, label }: any) {
   return (<View style={styles.bannerMacroItem}><Text style={styles.macroValText}>{val}</Text><Text style={styles.macroLabelText}>{label}</Text></View>);
+}
+
+function MacroInput({ label, value, onChange, icon, color, unit }: any) {
+  return (
+    <View style={styles.macroInputCard}>
+      <View style={styles.macroInputHeader}>
+        <View style={[styles.macroIconBg, { backgroundColor: `${color}15` }]}>
+          <Ionicons name={icon} size={14} color={color} />
+        </View>
+        <Text style={[styles.macroInputLabel, { color }]}>{label}</Text>
+      </View>
+      <View style={styles.macroValueRow}>
+        <TextInput
+          style={styles.macroInput}
+          value={value}
+          onChangeText={onChange}
+          keyboardType="numeric"
+          placeholder="0"
+          placeholderTextColor="#333"
+        />
+        <Text style={styles.macroUnitText}>{unit}</Text>
+      </View>
+    </View>
+  );
 }
 
 const styles = StyleSheet.create({
@@ -355,11 +361,176 @@ const styles = StyleSheet.create({
   saveBtn: { backgroundColor: colors.primary, borderRadius: 16, height: 56, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 10 },
   saveBtnDisabled: { opacity: 0.5, backgroundColor: "#333" },
   saveBtnText: { color: colors.primaryText, fontWeight: "900", fontSize: 14, letterSpacing: 1 },
-  photoRow: { flexDirection: "row", alignItems: "center", gap: 8 },
-  photoPickBtn: { flexDirection: "row", alignItems: "center", gap: 6, backgroundColor: "#1c1c1e", borderRadius: 10, paddingHorizontal: 10, paddingVertical: 6, borderWidth: 1, borderColor: "#2c2c2e" },
-  photoPreview: { width: 32, height: 32, borderRadius: 8 },
-  photoPickText: { color: "#555", fontSize: 11, fontWeight: "600" },
   photoRemoveBtn: { padding: 4 },
+  headerInfo: { gap: 2 },
+  photoActionBtn: {
+    width: 44,
+    height: 44,
+    borderRadius: 14,
+    backgroundColor: "#1c1c1e",
+    alignItems: "center",
+    justifyContent: "center",
+    borderWidth: 1,
+    borderColor: "#2c2c2e",
+  },
+  photoActionBtnActive: {
+    backgroundColor: colors.primary,
+    borderColor: colors.primary,
+  },
+  mainMealInput: {
+    flex: 1,
+    fontSize: 20,
+    fontWeight: "800",
+    color: "#fff",
+    paddingVertical: 14,
+  },
+  mealInputSection: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#0a0a0a",
+    borderRadius: 18,
+    paddingHorizontal: 16,
+    borderWidth: 1,
+    borderColor: "#1c1c1e",
+    gap: 12,
+  },
+  searchDbIconBtn: {
+    width: 40,
+    height: 40,
+    borderRadius: 12,
+    backgroundColor: "#161616",
+    alignItems: "center",
+    justifyContent: "center",
+    borderWidth: 1,
+    borderColor: "#2c2c2e",
+  },
+  imagePreviewContainer: {
+    marginTop: 12,
+    position: "relative",
+  },
+  fullPhotoPreview: {
+    width: "100%",
+    height: 200,
+    borderRadius: 20,
+  },
+  removePhotoBadge: {
+    position: "absolute",
+    top: 10,
+    right: 10,
+    backgroundColor: "rgba(255, 68, 68, 0.8)",
+    padding: 6,
+    borderRadius: 10,
+  },
+  macroFormGrid: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 10,
+    marginTop: 8,
+  },
+  macroInputCard: {
+    flex: 1,
+    minWidth: "47%",
+    backgroundColor: "#0a0a0a",
+    borderRadius: 20,
+    padding: 14,
+    borderWidth: 1,
+    borderColor: "#1c1c1e",
+    gap: 10,
+  },
+  macroInputHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+  },
+  macroIconBg: {
+    width: 28,
+    height: 28,
+    borderRadius: 8,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  macroInputLabel: {
+    fontSize: 10,
+    fontWeight: "900",
+    letterSpacing: 0.5,
+  },
+  macroValueRow: {
+    flexDirection: "row",
+    alignItems: "baseline",
+    gap: 4,
+  },
+  macroInput: {
+    fontSize: 22,
+    fontWeight: "900",
+    color: "#fff",
+    padding: 0,
+  },
+  macroUnitText: {
+    fontSize: 12,
+    fontWeight: "700",
+    color: "#444",
+  },
+  mainLogBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: '#111',
+    padding: 20,
+    borderRadius: 28,
+    borderWidth: 1,
+    borderColor: '#1c1c1e',
+  },
+  mainLogBtnContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 16,
+  },
+  logIconCircle: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    backgroundColor: colors.primary,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  emptyHistory: {
+    paddingVertical: 40,
+    alignItems: 'center',
+    backgroundColor: '#0a0a0a',
+    borderRadius: 24,
+    borderWidth: 1,
+    borderColor: '#111',
+    borderStyle: 'dashed',
+  },
+  premiumAddBtn: {
+    backgroundColor: colors.primary,
+    height: 60,
+    borderRadius: 20,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 12,
+    marginTop: 10,
+    paddingHorizontal: 20,
+  },
+  btnIconCircle: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: "rgba(0,0,0,0.15)",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  addBtnDisabled: {
+    opacity: 0.5,
+    backgroundColor: "#222",
+  },
+  addBtnText: {
+    color: "#000",
+    fontWeight: "900",
+    fontSize: 14,
+    letterSpacing: 0.5,
+  },
   historySection: { gap: 12 },
   mealItem: { flexDirection: "row", alignItems: "center", backgroundColor: "#111", padding: 16, borderRadius: 24, borderWidth: 1, borderColor: "#1c1c1e", gap: 12 },
   mealIcon: { width: 44, height: 44, borderRadius: 12, backgroundColor: "#1c1c1e", alignItems: "center", justifyContent: "center", borderWidth: 1, borderColor: "#2c2c2e" },
@@ -393,11 +564,26 @@ const styles = StyleSheet.create({
   stepperContainer: { flexDirection: "row", alignItems: "center", backgroundColor: "#1c1c1e", borderRadius: 12, padding: 4, borderWidth: 1, borderColor: "#2c2c2e" },
   stepperBtn: { width: 36, height: 36, alignItems: "center", justifyContent: "center" },
   stepperValueText: { flex: 1, textAlign: "center", color: "#fff", fontSize: 16, fontWeight: "800" },
-  smartLogCard: { backgroundColor: '#111', borderRadius: 28, padding: 24, borderWidth: 1, borderColor: '#1c1c1e', gap: 12 },
-  smartHeader: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  betaBadge: { backgroundColor: '#1c1c1e', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4, borderWidth: 1, borderColor: '#333' },
-  betaText: { color: colors.primary, fontSize: 8, fontWeight: '900' },
-  aiInputRow: { flexDirection: 'row', gap: 12, alignItems: 'flex-end', marginTop: 8 },
-  aiInput: { flex: 1, backgroundColor: '#0a0a0a', borderRadius: 16, padding: 16, color: '#fff', fontSize: 14, minHeight: 60, borderWidth: 1, borderColor: '#1c1c1e' },
-  aiSendBtn: { width: 50, height: 50, borderRadius: 16, backgroundColor: colors.primary, alignItems: 'center', justifyContent: 'center' },
+  searchContainer: { marginBottom: 8 },
+  searchBar: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#0a0a0a', borderRadius: 16, paddingHorizontal: 16, height: 54, borderWidth: 1, borderColor: '#1c1c1e', gap: 12 },
+  searchInput: { flex: 1, color: '#fff', fontSize: 15, fontWeight: '600' },
+  searchResultsBox: { backgroundColor: '#111', borderRadius: 20, marginTop: 8, borderWidth: 1, borderColor: '#1c1c1e', overflow: 'hidden', elevation: 5 },
+  searchResultItem: { flexDirection: 'row', alignItems: 'center', padding: 14, borderBottomWidth: 1, borderBottomColor: '#1c1c1e', gap: 12 },
+  searchResultThumb: { width: 36, height: 36, borderRadius: 8 },
+  verifiedBadge: { flexDirection: 'row', alignItems: 'center', gap: 3, backgroundColor: colors.primary, paddingHorizontal: 6, paddingVertical: 2, borderRadius: 6 },
+  verifiedText: { color: '#000', fontSize: 8, fontWeight: '900' },
+  searchDbBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "#161616",
+    paddingVertical: 16,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: "#333",
+    borderStyle: "dashed",
+    gap: 12,
+    marginBottom: 16
+  },
+  searchDbText: { color: colors.primary, fontWeight: "900", fontSize: 13, letterSpacing: 0.5 },
 });

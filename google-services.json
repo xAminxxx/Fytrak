@@ -14,7 +14,15 @@
       },
       "oauth_client": [
         {
-          "client_id": "314272170712-ijipvvv29lee7hicb7lb1rhp8e4klvrr.apps.googleusercontent.com",
+          "client_id": "314272170712-pmp56i0epsuc93n9vb4uf73n8u8kcki2.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.fytrak",
+            "certificate_hash": "97a1c731ddadbca12f426cc915c6c675e78ba51e"
+          }
+        },
+        {
+          "client_id": "314272170712-vah80kbj8q17f151li8tl263ei58hkeh.apps.googleusercontent.com",
           "client_type": 3
         }
       ],

@@ -16,6 +16,7 @@ import {
   type BodyMetric,
   type Program
 } from "../services/userSession";
+import { getChatThreadId, subscribeToLatestMessage, type ChatThreadSummary } from "../services/chatService";
 import { buildTodayMission } from "../features/retention/todayMission";
 import { toLocalDateKey } from "../utils/dateKeys";
 import { useCurrentUser } from "./useCurrentUser";
@@ -31,6 +32,7 @@ export function useTraineeDashboard() {
   const [prescribedMeals, setPrescribedMeals] = useState<PrescribedMeal[]>([]);
   const [metrics, setMetrics] = useState<BodyMetric[]>([]);
   const [programs, setPrograms] = useState<Program[]>([]);
+  const [lastMessage, setLastMessage] = useState<ChatThreadSummary | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
@@ -47,7 +49,8 @@ export function useTraineeDashboard() {
       (emit) => subscribeToWorkouts(uid, emit),
       (data) => {
         const todayFlows = data.filter((w) => {
-          const wDate = toLocalDateKey(w.createdAt?.toDate ? w.createdAt.toDate() : new Date());
+          if (!w.createdAt) return false;
+          const wDate = toLocalDateKey(w.createdAt.toDate ? w.createdAt.toDate() : new Date(w.createdAt));
           return wDate === dateKey;
         });
         setWorkouts(todayFlows);
@@ -87,6 +90,12 @@ export function useTraineeDashboard() {
       setPrograms
     );
 
+    let unsubChat: (() => void) | undefined;
+    if (profile?.selectedCoachId) {
+      const tid = getChatThreadId(uid, profile.selectedCoachId);
+      unsubChat = subscribeToLatestMessage(tid, setLastMessage);
+    }
+
     return () => {
       unsubMeals();
       unsubWorkouts();
@@ -95,8 +104,9 @@ export function useTraineeDashboard() {
       unsubProfile();
       unsubMetrics();
       unsubPrograms();
+      unsubChat?.();
     };
-  }, [uid, dateKey]);
+  }, [uid, dateKey, profile?.selectedCoachId]);
 
   useEffect(() => {
     if (!uid) return;
@@ -126,16 +136,21 @@ export function useTraineeDashboard() {
     const today = dateKey;
     const latestMetricDate = metrics[0]?.date;
 
+    const hasMessagedToday = lastMessage && 
+      toLocalDateKey(new Date(lastMessage.lastMessageAt || "")) === today &&
+      lastMessage.lastSenderId === uid;
+
     return buildTodayMission({
       hasWorkoutToday: workouts.length > 0,
       caloriesLogged: nutritionStats.current,
       calorieTarget: nutritionStats.target,
-      hasCoachAssigned: profile?.assignmentStatus === "assigned",
+      hasCoachAssigned: !!profile?.selectedCoachId,
+      hasMessagedToday: !!hasMessagedToday,
       hasPendingWorkoutPlan: prescribed.length > 0,
       hasPendingMealPlan: prescribedMeals.length > 0,
       hasBodyMetricToday: latestMetricDate === today,
     });
-  }, [metrics, nutritionStats.current, nutritionStats.target, prescribed.length, prescribedMeals.length, profile?.assignmentStatus, workouts.length, dateKey]);
+  }, [metrics, nutritionStats.current, nutritionStats.target, prescribed.length, prescribedMeals.length, profile?.selectedCoachId, workouts.length, dateKey, lastMessage, uid]);
 
   return {
     meals,

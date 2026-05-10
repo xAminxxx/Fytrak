@@ -6,11 +6,12 @@ import { spacing } from "../../theme/tokens";
 import { InsightsTab } from "./progress/InsightsTab";
 import { MetricsTab } from "./progress/MetricsTab";
 import { PhotosTab } from "./progress/PhotosTab";
+import { DailyTab } from "./progress/DailyTab";
 
-type TabType = "Insights" | "Metrics" | "Photos";
+type TabType = "Daily" | "Insights" | "Metrics" | "Photos";
 
 export function ProgressScreen() {
-  const [activeTab, setActiveTab] = useState<TabType>("Insights");
+  const [activeTab, setActiveTab] = useState<TabType>("Daily");
 
 
 
@@ -21,6 +22,11 @@ export function ProgressScreen() {
       contentStyle={styles.shellContent}
     >
       <View style={styles.tabBar}>
+        <TabButton 
+          label="DAILY" 
+          active={activeTab === "Daily"} 
+          onPress={() => setActiveTab("Daily")} 
+        />
         <TabButton 
           label="INSIGHTS" 
           active={activeTab === "Insights"} 
@@ -39,6 +45,9 @@ export function ProgressScreen() {
       </View>
 
       <View style={{ flex: 1 }}>
+        <View style={{ flex: 1, display: activeTab === "Daily" ? "flex" : "none" }}>
+          <DailyTab />
+        </View>
         <View style={{ flex: 1, display: activeTab === "Insights" ? "flex" : "none" }}>
           <InsightsTab />
         </View>
