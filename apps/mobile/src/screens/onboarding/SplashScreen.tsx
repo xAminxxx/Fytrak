@@ -4,6 +4,7 @@ import { AppLogo } from '../../components/Branding';
 
 export function SplashScreen({ onFinish }: { onFinish: () => void }) {
   const fadeAnim = useRef(new Animated.Value(0)).current;
+  const scaleAnim = useRef(new Animated.Value(0.95)).current;
   const onFinishRef = useRef(onFinish);
 
   useEffect(() => {
@@ -11,11 +12,19 @@ export function SplashScreen({ onFinish }: { onFinish: () => void }) {
   }, [onFinish]);
 
   useEffect(() => {
-    Animated.timing(fadeAnim, {
-      toValue: 1,
-      duration: 1000,
-      useNativeDriver: true,
-    }).start();
+    Animated.parallel([
+      Animated.timing(fadeAnim, {
+        toValue: 1,
+        duration: 1200,
+        useNativeDriver: true,
+      }),
+      Animated.spring(scaleAnim, {
+        toValue: 1,
+        friction: 8,
+        tension: 40,
+        useNativeDriver: true,
+      })
+    ]).start();
 
     const timer = setTimeout(() => {
       Animated.timing(fadeAnim, {
@@ -23,15 +32,18 @@ export function SplashScreen({ onFinish }: { onFinish: () => void }) {
         duration: 800,
         useNativeDriver: true,
       }).start(() => onFinishRef.current());
-    }, 2500);
+    }, 2800);
 
     return () => clearTimeout(timer);
-  }, [fadeAnim]);
+  }, [fadeAnim, scaleAnim]);
 
   return (
     <View style={styles.container}>
-      <Animated.View style={{ opacity: fadeAnim }}>
-        <AppLogo width={300} height={150} />
+      <Animated.View style={{ 
+        opacity: fadeAnim,
+        transform: [{ scale: scaleAnim }]
+      }}>
+        <AppLogo width={320} height={160} />
       </Animated.View>
     </View>
   );
