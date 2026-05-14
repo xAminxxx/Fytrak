@@ -18,34 +18,8 @@ import { db } from "../config/firebase";
 import { localDateKeyDaysAgo, toLocalDateKey } from "../utils/dateKeys";
 import { updateClientSummaryAfterMeal } from "./clientSummaryService";
 
-export type Meal = {
-  id: string;
-  name: string;
-  calories: number;
-  protein: number;
-  carbs?: number;
-  fats?: number;
-  time: string;
-  date: string;
-  imageUrl?: string;
-  createdAt?: any;
-};
-
-export type PrescribedMeal = {
-  id: string;
-  coachId: string;
-  coachName: string;
-  title: string;
-  description: string;
-  macros: {
-    calories: number;
-    protein: number;
-    carbs: number;
-    fats: number;
-  };
-  isApplied: boolean;
-  assignedAt: any;
-};
+import type { Meal, PrescribedMeal } from "../types/domain";
+export type { Meal, PrescribedMeal };
 
 const usersCollection = "users";
 

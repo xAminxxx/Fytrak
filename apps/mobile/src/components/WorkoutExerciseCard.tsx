@@ -5,7 +5,8 @@ import { colors } from "../theme/colors";
 import { typography } from "../theme/tokens";
 import { ToastService } from "./Toast";
 import type { ActiveWorkoutExerciseDraft } from "../features/workouts/activeWorkoutDraft";
-import type { WorkoutSetType, WorkoutSet } from "../services/userSession";
+import type { WorkoutSetType, WorkoutSet } from "../types/domain";
+import { WorkoutSetRow } from "./WorkoutSetRow";
 
 type ExerciseLog = ActiveWorkoutExerciseDraft;
 
@@ -119,73 +120,14 @@ export function WorkoutExerciseCard({
       </View>
 
       {ex.sets.map((set, sIdx) => (
-        <View key={sIdx} style={[styles.setRow, set.isCompleted && styles.setRowCompleted]}>
-          <Text style={[styles.setText, { flex: 0.5 }]}>{sIdx + 1}</Text>
-
-          {ex.type === "TIME" ? (
-            <TextInput
-              style={styles.setInput}
-              value={set.durationSec?.toString()}
-              keyboardType="number-pad"
-              placeholder="-"
-              placeholderTextColor="#444"
-              onChangeText={(v) => onUpdateSet(sIdx, "durationSec", Number(v))}
-              editable={!set.isCompleted}
-            />
-          ) : ex.type === "BODYWEIGHT" || ex.type === "REPS_ONLY" ? (
-            <TextInput
-              style={styles.setInput}
-              value={set.reps?.toString()}
-              keyboardType="number-pad"
-              placeholder="-"
-              placeholderTextColor="#444"
-              onChangeText={(v) => onUpdateSet(sIdx, "reps", Number(v))}
-              editable={!set.isCompleted}
-            />
-          ) : (
-            <>
-              <TextInput
-                style={styles.setInput}
-                value={set.weight?.toString()}
-                keyboardType="decimal-pad"
-                placeholder="-"
-                placeholderTextColor="#444"
-                onChangeText={(v) => onUpdateSet(sIdx, "weight", Number(v))}
-                editable={!set.isCompleted}
-              />
-              <TextInput
-                style={styles.setInput}
-                value={set.reps?.toString()}
-                keyboardType="number-pad"
-                placeholder="-"
-                placeholderTextColor="#444"
-                onChangeText={(v) => onUpdateSet(sIdx, "reps", Number(v))}
-                editable={!set.isCompleted}
-              />
-            </>
-          )}
-
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel={set.isCompleted ? `Mark set ${sIdx + 1} incomplete` : `Complete set ${sIdx + 1}`}
-            accessibilityState={{ checked: set.isCompleted }}
-            hitSlop={8}
-            style={styles.checkBtn}
-            onPress={() => {
-              if (!set.isCompleted && ex.type === "WEIGHT_REPS" && (!set.reps || !set.weight)) {
-                ToastService.info("Missing Data", "Please enter weight and reps.");
-                return;
-              }
-              onToggleSet(sIdx);
-            }}
-          >
-            <Ionicons
-              name={set.isCompleted ? "checkmark-circle" : "ellipse-outline"}
-              size={24}
-              color={set.isCompleted ? colors.primary : "#333"}
-            />
-          </Pressable>
-        </View>
+        <WorkoutSetRow
+          key={sIdx}
+          set={set}
+          sIdx={sIdx}
+          type={ex.type!}
+          onUpdateSet={(field, value) => onUpdateSet(sIdx, field, value)}
+          onToggleSet={() => onToggleSet(sIdx)}
+        />
       ))}
 
       <Pressable style={styles.addSetBtn} onPress={onDuplicateSet}>
@@ -218,11 +160,6 @@ const styles = StyleSheet.create({
   tableHeader: { flexDirection: "row", marginBottom: 12, paddingHorizontal: 12, alignItems: "center" },
   columnLabel: { flex: 1, color: "#666", fontSize: 11, fontWeight: "900", textAlign: "center", letterSpacing: 0.5 },
   columnLabelStart: { textAlign: "left" },
-  setRow: { flexDirection: "row", alignItems: "center", backgroundColor: "#1c1c1e", borderRadius: 16, padding: 8, marginBottom: 8, gap: 8 },
-  setRowCompleted: { backgroundColor: colors.primary + "10", borderColor: colors.primary + "30", borderWidth: 1 },
-  setText: { color: "#8c8c8c", fontSize: 14, fontWeight: "800", textAlign: "center" },
-  setInput: { flex: 1, backgroundColor: "#111", borderRadius: 10, height: 44, color: "#fff", fontSize: 16, fontWeight: "700", textAlign: "center" },
-  checkBtn: { flex: 0.5, height: 44, alignItems: "center", justifyContent: "center" },
   addSetBtn: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8, marginTop: 8, paddingVertical: 12, backgroundColor: "#1c1c1e", borderRadius: 16, borderStyle: "dashed", borderWidth: 1, borderColor: "#333" },
   addSetText: { color: colors.primary, fontSize: 12, fontWeight: "800" },
   previousValuesCard: { flexDirection: "row", alignItems: "center", backgroundColor: "#1c1c1e", borderRadius: 16, padding: 12, marginBottom: 16, gap: 12, borderWidth: 1, borderColor: "#2c2c2e", borderLeftWidth: 3, borderLeftColor: colors.primary },

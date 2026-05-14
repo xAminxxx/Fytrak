@@ -16,51 +16,13 @@ import {
 import { db } from "../config/firebase";
 import { updateClientSummaryAfterWorkout } from "./clientSummaryService";
 
-export type WorkoutSetType = "WEIGHT_REPS" | "TIME" | "BODYWEIGHT" | "REPS_ONLY";
-
-export type WorkoutSet = {
-  type: WorkoutSetType;
-  reps?: number;
-  weight?: number;
-  durationSec?: number;
-  rpe?: string;
-  isCompleted: boolean;
-};
+import type { WorkoutSetType, WorkoutSet, WorkoutLog, PrescribedWorkout } from "../types/domain";
+export type { WorkoutSetType, WorkoutSet, WorkoutLog, PrescribedWorkout };
 
 export type WorkoutCheckIn = {
   energy: number;
   soreness: number;
   mood: number;
-};
-
-export type WorkoutLog = {
-  id: string;
-  name: string;
-  exercises: {
-    name: string;
-    sets: WorkoutSet[];
-  }[];
-  duration?: number;
-  totalVolume?: number;
-  checkIn?: WorkoutCheckIn;
-  createdAt?: any;
-};
-
-export type PrescribedWorkout = {
-  id: string;
-  coachId: string;
-  coachName: string;
-  title: string;
-  description?: string;
-  exercises: {
-    name: string;
-    type?: WorkoutSetType;
-    targetSets: number;
-    targetReps: string;
-    restTime?: string;
-  }[];
-  isCompleted: boolean;
-  assignedAt: any;
 };
 
 const usersCollection = "users";

@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { ActivityIndicator, Pressable, StyleSheet, Text, TextInput, View, ScrollView } from "react-native";
+import { Pressable, StyleSheet, Text, TextInput, View, ScrollView } from "react-native";
 import { ScreenShell } from "../../components/ScreenShell";
 import { colors } from "../../theme/colors";
 import { Ionicons } from "@expo/vector-icons";
@@ -10,7 +10,7 @@ import { ResponseType } from "expo-auth-session";
 import * as Google from "expo-auth-session/providers/google";
 import * as Facebook from "expo-auth-session/providers/facebook";
 import { appEnv } from "../../config/env";
-import { expoAuthProxyRedirectUri } from "../../utils/authRedirect";
+import { appAuthRedirectUri } from "../../utils/authRedirect";
 import { BrandLogo } from "../../components/BrandLogo";
 
 WebBrowser.maybeCompleteAuthSession();
@@ -32,16 +32,17 @@ export function SignUpScreen({ onSignUp, onGoogleLogin, onFacebookLogin }: SignU
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errorText, setErrorText] = useState<string | null>(null);
   const [request, _response, promptAsync] = Google.useAuthRequest({
-    clientId: appEnv.google.webClientId,
+    clientId: appEnv.google.expoClientId || appEnv.google.webClientId,
     webClientId: appEnv.google.webClientId,
-    androidClientId: appEnv.google.webClientId,
+    androidClientId: appEnv.google.androidClientId,
     scopes: ["openid", "profile", "email"],
     responseType: ResponseType.IdToken,
-    redirectUri: expoAuthProxyRedirectUri,
+    redirectUri: appAuthRedirectUri,
+    selectAccount: true,
   });
   const [facebookRequest, _facebookResponse, promptFacebookAsync] = Facebook.useAuthRequest({
     clientId: appEnv.facebook.appId || "missing-facebook-app-id",
-    redirectUri: expoAuthProxyRedirectUri,
+    redirectUri: appAuthRedirectUri,
   });
 
   const canSubmit = useMemo(() => {
@@ -91,7 +92,7 @@ export function SignUpScreen({ onSignUp, onGoogleLogin, onFacebookLogin }: SignU
       const result = await promptAsync();
 
       if (result.type !== "success") {
-        setErrorText("Google sign-in was cancelled.");
+        setErrorText(result.type === "error" ? result.error?.message ?? "Google sign-in failed." : "Google sign-in was cancelled.");
         return;
       }
 

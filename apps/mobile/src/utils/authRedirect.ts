@@ -1,2 +1,7 @@
-export const expoAuthProxyRedirectUri = "https://auth.expo.io/@xamin/fytrak-mobile";
+import { makeRedirectUri } from "expo-auth-session";
 
+export const appAuthRedirectUri = makeRedirectUri({
+  scheme: "fytrak",
+  path: "oauthredirect",
+  native: "fytrak://oauthredirect",
+});

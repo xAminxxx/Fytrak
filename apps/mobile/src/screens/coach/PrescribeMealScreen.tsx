@@ -8,7 +8,9 @@ import {
     Pressable,
     Alert,
     ActivityIndicator,
-    Modal
+    Modal,
+    KeyboardAvoidingView,
+    Platform
 } from "react-native";
 import { ScreenShell } from "../../components/ScreenShell";
 import { colors } from "../../theme/colors";
@@ -16,6 +18,9 @@ import { Ionicons } from "@expo/vector-icons";
 import { savePrescribedMeal, CoachTemplate, subscribeToCoachTemplates } from "../../services/userSession";
 import { auth } from "../../config/firebase";
 import { useNavigation, useRoute } from "@react-navigation/native";
+import { Typography } from "../../components/Typography";
+import { useFoodSearch } from "../../hooks/useFoodSearch";
+import type { FoodItem } from "../../services/nutritionSearchService";
 
 export function PrescribeMealScreen() {
     const route = useRoute<any>();
@@ -30,6 +35,9 @@ export function PrescribeMealScreen() {
     const [libModalVisible, setLibModalVisible] = useState(false);
     const [saveAsTemplate, setSaveAsTemplate] = useState(false);
     const [isSubmitting, setIsSubmitting] = useState(false);
+
+    // Food Database Search
+    const { query, setQuery, results, isSearching } = useFoodSearch();
 
     useEffect(() => {
         const user = auth.currentUser;
@@ -51,13 +59,24 @@ export function PrescribeMealScreen() {
         setLibModalVisible(false);
     };
 
+    const selectFood = (item: FoodItem) => {
+        setTitle(item.name);
+        setMacros({
+            calories: Math.round(item.calories),
+            protein: Math.round(item.protein),
+            carbs: Math.round(item.carbs),
+            fats: Math.round(item.fats)
+        });
+        setQuery("");
+    };
+
     const updateMacro = (field: string, value: string) => {
         setMacros({ ...macros, [field]: parseInt(value) || 0 });
     };
 
     const handleSave = async () => {
-        if (!title.trim() || !description.trim()) {
-            Alert.alert("Missing Info", "Please provide a title and description for this meal plan.");
+        if (!title.trim() || (!description.trim() && macros.calories === 0)) {
+            Alert.alert("Missing Info", "Please provide a title and either a description or macros.");
             return;
         }
 
@@ -84,187 +103,180 @@ export function PrescribeMealScreen() {
                 });
             }
 
-            Alert.alert("Success", "Nutrition plan prescribed successfully!", [
+            Alert.alert("Success", "Plan assigned successfully!", [
                 { text: "OK", onPress: () => navigation.goBack() }
             ]);
         } catch (error) {
             console.error(error);
-            Alert.alert("Error", "Failed to assign nutrition plan.");
+            Alert.alert("Error", "Failed to assign plan.");
         } finally {
             setIsSubmitting(false);
         }
     };
 
     const [libSearchQuery, setLibSearchQuery] = useState("");
-
-    const filteredTemplates = templates.filter(t =>
-        t.title.toLowerCase().includes(libSearchQuery.toLowerCase())
-    );
+    const filteredTemplates = templates.filter(t => t.title.toLowerCase().includes(libSearchQuery.toLowerCase()));
 
     return (
         <ScreenShell
-            title="Prescribe Nutrition"
-            subtitle={`Assign a new meal plan for ${traineeName}`}
+            title="PRESCRIBE"
+            subtitle={`NUTRITION PLAN FOR ${traineeName?.toUpperCase()}`}
             contentStyle={styles.shellContent}
         >
-            <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scroll}>
-                <View style={styles.topActions}>
-                    <Pressable
-                        style={styles.loadBtn}
-                        onPress={() => {
-                            if (templates.length === 0) {
-                                Alert.alert("Library Empty", "Save a meal plan as a template first to use this feature.");
-                            } else {
-                                setLibModalVisible(true);
-                            }
-                        }}
-                    >
-                        <Ionicons name="library" size={18} color={colors.primary} />
-                        <Text style={styles.loadBtnText}>LOAD FROM LIBRARY</Text>
-                        <View style={styles.countBadge}><Text style={styles.countText}>{templates.length}</Text></View>
-                    </Pressable>
-                </View>
-
-                <View style={styles.card}>
-                    <Text style={styles.label}>Plan Title</Text>
-                    <TextInput
-                        style={styles.titleInput}
-                        placeholder="e.g. Cutting Phase - Prep"
-                        placeholderTextColor="#444"
-                        value={title}
-                        onChangeText={setTitle}
-                    />
-                </View>
-
-                <View style={styles.card}>
-                    <Text style={styles.label}>Meal Description</Text>
-                    <TextInput
-                        style={[styles.textArea, { marginTop: 12 }]}
-                        placeholder="Detail the meals, portions, and timing..."
-                        placeholderTextColor="#444"
-                        multiline
-                        numberOfLines={6}
-                        value={description}
-                        onChangeText={setDescription}
-                    />
-                </View>
-
-                <View style={styles.card}>
-                    <Text style={styles.label}>Daily Macro Targets</Text>
-                    <View style={styles.macroGrid}>
-                        <View style={styles.macroItem}>
-                            <Text style={styles.macroLabel}>CALORIES</Text>
-                            <TextInput
-                                style={styles.macroInput}
-                                keyboardType="numeric"
-                                value={macros.calories.toString()}
-                                onChangeText={(v) => updateMacro("calories", v)}
-                            />
-                        </View>
-                        <View style={styles.macroItem}>
-                            <Text style={styles.macroLabel}>PROTEIN (G)</Text>
-                            <TextInput
-                                style={styles.macroInput}
-                                keyboardType="numeric"
-                                value={macros.protein.toString()}
-                                onChangeText={(v) => updateMacro("protein", v)}
-                            />
-                        </View>
-                    </View>
-                    <View style={[styles.macroGrid, { marginTop: 12 }]}>
-                        <View style={styles.macroItem}>
-                            <Text style={styles.macroLabel}>CARBS (G)</Text>
-                            <TextInput
-                                style={styles.macroInput}
-                                keyboardType="numeric"
-                                value={macros.carbs.toString()}
-                                onChangeText={(v) => updateMacro("carbs", v)}
-                            />
-                        </View>
-                        <View style={styles.macroItem}>
-                            <Text style={styles.macroLabel}>FATS (G)</Text>
-                            <TextInput
-                                style={styles.macroInput}
-                                keyboardType="numeric"
-                                value={macros.fats.toString()}
-                                onChangeText={(v) => updateMacro("fats", v)}
-                            />
-                        </View>
-                    </View>
-                </View>
-
-                <Pressable
-                    style={styles.templateToggle}
-                    onPress={() => setSaveAsTemplate(!saveAsTemplate)}
-                >
-                    <View style={styles.iconBox}>
-                        <Ionicons name="save-outline" size={20} color={saveAsTemplate ? colors.primary : "#666"} />
-                    </View>
-                    <View style={{ flex: 1 }}>
-                        <Text style={styles.toggleTitle}>Save to Template Library</Text>
-                        <Text style={styles.toggleSub}>Reusable for other trainees</Text>
-                    </View>
-                    <View style={[styles.switch, saveAsTemplate && styles.switchActive]}>
-                        <View style={[styles.switchCircle, saveAsTemplate && styles.switchCircleActive]} />
-                    </View>
-                </Pressable>
-
-                <View style={styles.footer}>
-                    <Pressable
-                        style={[styles.saveBtn, isSubmitting && { opacity: 0.7 }]}
-                        onPress={handleSave}
-                        disabled={isSubmitting}
-                    >
-                        {isSubmitting ? <ActivityIndicator color={colors.primaryText} /> : (
-                            <>
-                                <Text style={styles.saveBtnText}>ASSIGN PLAN</Text>
-                                <Ionicons name="paper-plane" size={20} color={colors.primaryText} />
-                            </>
-                        )}
-                    </Pressable>
-                </View>
-            </ScrollView>
-
-            <Modal
-                visible={libModalVisible}
-                animationType="slide"
-                transparent={true}
-                onRequestClose={() => setLibModalVisible(false)}
+            <KeyboardAvoidingView 
+                behavior={Platform.OS === "ios" ? "padding" : undefined}
+                style={{ flex: 1 }}
+                keyboardVerticalOffset={Platform.OS === "ios" ? 100 : 0}
             >
+                <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scroll} keyboardShouldPersistTaps="handled">
+                    
+                    {/* SEARCH & LIBRARY ROW */}
+                    <View style={styles.topActionRow}>
+                        <Pressable
+                            style={styles.actionCard}
+                            onPress={() => templates.length > 0 ? setLibModalVisible(true) : Alert.alert("Library Empty", "Save a meal plan first.")}
+                        >
+                            <Ionicons name="library" size={20} color="#4ade80" />
+                            <Typography variant="label" color="#4ade80">LIBRARY</Typography>
+                        </Pressable>
+                    </View>
+
+                    {/* FOOD DATABASE SEARCH */}
+                    <View style={styles.card}>
+                        <View style={styles.cardHeader}>
+                            <Ionicons name="search" size={18} color={colors.primary} />
+                            <Typography variant="h2">Food Database</Typography>
+                        </View>
+                        <View style={styles.searchBarWrapper}>
+                            <Ionicons name="search" size={18} color="#666" style={styles.searchIcon} />
+                            <TextInput
+                                style={styles.searchInput}
+                                placeholder="Search nutrition data..."
+                                placeholderTextColor="#444"
+                                value={query}
+                                onChangeText={setQuery}
+                            />
+                            {isSearching && <ActivityIndicator size="small" color={colors.primary} />}
+                        </View>
+                        {results.length > 0 && query.length >= 2 && (
+                            <View style={styles.resultsList}>
+                                {results.slice(0, 5).map(food => (
+                                    <Pressable key={food.id} style={styles.resultItem} onPress={() => selectFood(food)}>
+                                        <View style={styles.resultIconBg}>
+                                            <Ionicons name="fast-food" size={14} color={food.isVerified ? colors.primary : "#444"} />
+                                        </View>
+                                        <View style={{ flex: 1 }}>
+                                            <Typography variant="h2" style={{ fontSize: 13 }} numberOfLines={1}>{food.name}</Typography>
+                                            <Typography variant="label" color="#666" style={{ fontSize: 9 }}>{food.calories} kcal • {food.protein}g P</Typography>
+                                        </View>
+                                        <Ionicons name="add-circle" size={18} color={colors.primary} />
+                                    </Pressable>
+                                ))}
+                            </View>
+                        )}
+                    </View>
+
+                    {/* PLAN CORE */}
+                    <View style={styles.card}>
+                        <View style={styles.cardHeader}>
+                            <Ionicons name="leaf" size={18} color="#4ade80" />
+                            <Typography variant="h2">Plan Core</Typography>
+                        </View>
+                        <View style={styles.inputGroup}>
+                            <Typography variant="label" color="#8c8c8c" style={{ fontSize: 9 }}>PLAN TITLE</Typography>
+                            <TextInput
+                                placeholder="e.g. Aggressive Lean Bulk"
+                                placeholderTextColor="#444"
+                                style={styles.textInput}
+                                value={title}
+                                onChangeText={setTitle}
+                            />
+                        </View>
+                        <View style={styles.inputGroup}>
+                            <Typography variant="label" color="#8c8c8c" style={{ fontSize: 9 }}>GUIDELINES & PROTOCOL</Typography>
+                            <TextInput
+                                style={[styles.textInput, { height: 100, textAlignVertical: 'top' }]}
+                                placeholder="Specify meal timing, portions, and supplementation..."
+                                placeholderTextColor="#444"
+                                multiline
+                                value={description}
+                                onChangeText={setDescription}
+                            />
+                        </View>
+                    </View>
+
+                    {/* MACRO ARCHITECTURE */}
+                    <View style={styles.card}>
+                        <View style={styles.cardHeader}>
+                            <Ionicons name="analytics" size={18} color="#fbbf24" />
+                            <Typography variant="h2">Macro Architecture</Typography>
+                        </View>
+                        <View style={styles.macroGrid}>
+                            <MacroField label="CALORIES" value={macros.calories.toString()} onChange={(v: string) => updateMacro("calories", v)} color="#fbbf24" />
+                            <MacroField label="PROTEIN" value={macros.protein.toString()} onChange={(v: string) => updateMacro("protein", v)} color="#4ade80" />
+                        </View>
+                        <View style={styles.macroGrid}>
+                            <MacroField label="CARBS" value={macros.carbs.toString()} onChange={(v: string) => updateMacro("carbs", v)} color={colors.primary} />
+                            <MacroField label="FATS" value={macros.fats.toString()} onChange={(v: string) => updateMacro("fats", v)} color="#f87171" />
+                        </View>
+                    </View>
+
+                    {/* GLOBAL SYNC */}
+                    <Pressable
+                        style={[styles.card, saveAsTemplate && { borderColor: '#4ade80' }]}
+                        onPress={() => setSaveAsTemplate(!saveAsTemplate)}
+                    >
+                        <View style={styles.templateRow}>
+                            <Ionicons name={saveAsTemplate ? "cloud-done" : "cloud-upload-outline"} size={22} color={saveAsTemplate ? "#4ade80" : "#444"} />
+                            <View style={{ flex: 1 }}>
+                                <Typography variant="h2" style={{ fontSize: 15 }}>Sync to Library</Typography>
+                                <Typography variant="label" color="#8c8c8c">Make this plan available for other trainees.</Typography>
+                            </View>
+                        </View>
+                    </Pressable>
+
+                    <View style={styles.footer}>
+                        <Pressable
+                            style={[styles.primaryAction, { backgroundColor: '#4ade80' }, isSubmitting && { opacity: 0.7 }]}
+                            onPress={handleSave}
+                            disabled={isSubmitting}
+                        >
+                            {isSubmitting ? <ActivityIndicator color="#000" /> : (
+                                <>
+                                    <Typography style={{ color: "#000", fontWeight: '900', fontSize: 14 }}>ASSIGN NUTRITION</Typography>
+                                    <Ionicons name="send" size={16} color="#000" />
+                                </>
+                            )}
+                        </Pressable>
+                    </View>
+
+                </ScrollView>
+            </KeyboardAvoidingView>
+
+            {/* MODAL */}
+            <Modal visible={libModalVisible} animationType="slide" transparent={true}>
                 <View style={styles.modalOverlay}>
                     <View style={styles.modalContent}>
                         <View style={styles.modalHeader}>
-                            <Text style={styles.modalTitle}>Select Template</Text>
+                            <Typography variant="h2">Meal Library</Typography>
                             <Pressable onPress={() => setLibModalVisible(false)} style={styles.closeBtn}>
                                 <Ionicons name="close" size={24} color="#fff" />
                             </Pressable>
                         </View>
-
                         <View style={styles.modalSearch}>
                             <Ionicons name="search" size={18} color="#666" />
-                            <TextInput
-                                style={styles.modalSearchInput}
-                                placeholder="Search templates..."
-                                placeholderTextColor="#666"
-                                value={libSearchQuery}
-                                onChangeText={setLibSearchQuery}
-                            />
+                            <TextInput style={styles.modalSearchInput} placeholder="Search plans..." placeholderTextColor="#666" value={libSearchQuery} onChangeText={setLibSearchQuery} />
                         </View>
-
-                        <ScrollView style={styles.modalList}>
-                            {filteredTemplates.length === 0 ? (
-                                <Text style={styles.emptyText}>No templates found.</Text>
-                            ) : (
-                                filteredTemplates.map(t => (
-                                    <Pressable key={t.id} style={styles.modalItem} onPress={() => applyTemplate(t)}>
-                                        <View style={{ flex: 1 }}>
-                                            <Text style={styles.modalItemTitle}>{t.title}</Text>
-                                            <Text style={styles.modalItemSub}>{t.data.macros?.calories || 0} kcal</Text>
-                                        </View>
-                                        <Ionicons name="add-circle-outline" size={24} color={colors.primary} />
-                                    </Pressable>
-                                ))
-                            )}
+                        <ScrollView showsVerticalScrollIndicator={false}>
+                            {filteredTemplates.map(t => (
+                                <Pressable key={t.id} style={styles.modalItem} onPress={() => applyTemplate(t)}>
+                                    <View style={{ flex: 1 }}>
+                                        <Typography variant="h2">{t.title}</Typography>
+                                        <Typography variant="label" color="#666">{t.data.macros?.calories || 0} kcal | {t.data.macros?.protein || 0}g P</Typography>
+                                    </View>
+                                    <Ionicons name="add-circle" size={24} color="#4ade80" />
+                                </Pressable>
+                            ))}
                         </ScrollView>
                     </View>
                 </View>
@@ -273,142 +285,54 @@ export function PrescribeMealScreen() {
     );
 }
 
+function MacroField({ label, value, onChange, color }: any) {
+    return (
+        <View style={styles.macroBox}>
+            <Typography variant="label" color="#666" style={{ fontSize: 8, textAlign: 'center' }}>{label}</Typography>
+            <TextInput
+                keyboardType="numeric"
+                style={[styles.macroInput, { color }]}
+                value={value}
+                onChangeText={onChange}
+            />
+        </View>
+    );
+}
+
 const styles = StyleSheet.create({
     shellContent: { paddingBottom: 0 },
-    scroll: { paddingBottom: 60, gap: 20, marginTop: 10 },
-    topActions: { marginBottom: 4 },
-    loadBtn: {
-        flexDirection: "row",
-        alignItems: "center",
-        backgroundColor: "#161616",
-        padding: 16,
-        borderRadius: 20,
-        borderWidth: 1,
-        borderColor: "#2c2c2e",
-        gap: 12,
-    },
-    loadBtnText: { color: colors.primary, fontSize: 13, fontWeight: "900", letterSpacing: 0.5 },
-    countBadge: { backgroundColor: "#1c1c1e", paddingHorizontal: 8, paddingVertical: 2, borderRadius: 8, borderWidth: 1, borderColor: "#333" },
-    countText: { color: "#666", fontSize: 10, fontWeight: "800" },
-    card: {
-        backgroundColor: "#161616",
-        borderRadius: 20,
-        padding: 20,
-        borderWidth: 1,
-        borderColor: "#2c2c2e",
-        gap: 8,
-    },
-    label: { color: colors.primary, fontSize: 11, fontWeight: "900", letterSpacing: 1, textTransform: "uppercase" },
-    titleInput: { color: "#ffffff", fontSize: 20, fontWeight: "800", paddingVertical: 8 },
-    textArea: {
-        backgroundColor: "#1c1c1e",
-        borderRadius: 16,
-        padding: 16,
-        color: "#ffffff",
-        fontSize: 16,
-        fontWeight: "600",
-        borderWidth: 1,
-        borderColor: "#2c2c2e",
-        textAlignVertical: "top",
-        minHeight: 120,
-    },
-    macroGrid: { flexDirection: "row", gap: 12 },
-    macroItem: { flex: 1, gap: 8 },
-    macroLabel: { color: "#666", fontSize: 10, fontWeight: "900", textAlign: "center" },
-    macroInput: {
-        backgroundColor: "#161616",
-        borderRadius: 12,
-        paddingVertical: 14,
-        textAlign: "center",
-        color: colors.primary,
-        fontSize: 18,
-        fontWeight: "900",
-        borderWidth: 1,
-        borderColor: "#2c2c2e",
-    },
-    templateToggle: {
-        flexDirection: "row",
-        alignItems: "center",
-        backgroundColor: "#161616",
-        padding: 18,
-        borderRadius: 24,
-        borderWidth: 1,
-        borderColor: "#2c2c2e",
-        gap: 16,
-    },
-    iconBox: {
-        width: 44,
-        height: 44,
-        borderRadius: 14,
-        backgroundColor: "#1c1c1e",
-        alignItems: "center",
-        justifyContent: "center",
-    },
-    toggleTitle: { color: "#ffffff", fontSize: 15, fontWeight: "700" },
-    toggleSub: { color: "#666", fontSize: 12, fontWeight: "500", marginTop: 2 },
-    switch: { width: 44, height: 24, borderRadius: 12, backgroundColor: "#333", padding: 2, justifyContent: "center" },
-    switchActive: { backgroundColor: colors.primary },
-    switchCircle: { width: 20, height: 20, borderRadius: 10, backgroundColor: "#ffffff" },
-    switchCircleActive: { alignSelf: "flex-end" },
-    footer: { marginTop: 10 },
-    saveBtn: {
-        backgroundColor: colors.primary,
-        borderRadius: 22,
-        height: 64,
-        flexDirection: "row",
-        alignItems: "center",
-        justifyContent: "center",
-        gap: 12,
-    },
-    saveBtnText: { color: colors.primaryText, fontWeight: "900", fontSize: 16, letterSpacing: 1 },
-    modalOverlay: { flex: 1, backgroundColor: "rgba(0,0,0,0.8)", justifyContent: "flex-end" },
-    modalContent: {
-        backgroundColor: "#000",
-        borderTopLeftRadius: 32,
-        borderTopRightRadius: 32,
-        height: "70%",
-        padding: 24,
-        borderWidth: 1,
-        borderColor: "#2c2c2e",
-    },
-    modalHeader: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 24 },
-    modalTitle: { color: "#fff", fontSize: 20, fontWeight: "900" },
-    closeBtn: { width: 40, height: 40, borderRadius: 20, backgroundColor: "#111", alignItems: "center", justifyContent: "center" },
-    modalList: { flex: 1 },
-    modalItem: {
-        flexDirection: "row",
-        alignItems: "center",
-        backgroundColor: "#121212",
-        padding: 20,
-        borderRadius: 24,
-        marginBottom: 12,
-        borderWidth: 1,
-        borderColor: "#222",
-    },
-    modalItemTitle: { color: "#fff", fontSize: 16, fontWeight: "800", marginBottom: 4 },
-    modalItemSub: { color: "#666", fontSize: 12, fontWeight: "600" },
-    modalSearch: {
-        flexDirection: "row",
-        alignItems: "center",
-        backgroundColor: "#111",
-        borderRadius: 16,
-        paddingHorizontal: 16,
-        height: 52,
-        gap: 12,
-        borderWidth: 1,
-        borderColor: "#2c2c2e",
-        marginBottom: 20,
-    },
-    modalSearchInput: {
-        flex: 1,
-        color: "#fff",
-        fontSize: 15,
-        fontWeight: "600",
-    },
-    emptyText: {
-        color: "#666",
-        textAlign: "center",
-        marginTop: 40,
-        fontSize: 15,
-    },
+    scroll: { paddingBottom: 100, gap: 16, marginTop: 10 },
+    
+    topActionRow: { flexDirection: 'row', gap: 12 },
+    actionCard: { flex: 1, backgroundColor: '#161616', borderRadius: 16, padding: 12, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, borderWidth: 1, borderColor: '#333' },
+
+    card: { backgroundColor: "#161616", borderRadius: 24, padding: 20, borderWidth: 1, borderColor: "#333", gap: 16 },
+    cardHeader: { flexDirection: "row", alignItems: "center", gap: 10 },
+    
+    searchBarWrapper: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#0a0a0a', borderRadius: 16, paddingHorizontal: 16, height: 50, gap: 12, borderWidth: 1, borderColor: '#1c1c1e' },
+    searchIcon: { marginRight: 0 },
+    searchInput: { flex: 1, color: '#fff', fontSize: 15, fontWeight: '600' },
+    
+    resultsList: { gap: 8, marginTop: 4 },
+    resultItem: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#0a0a0a', borderRadius: 16, padding: 12, gap: 12, borderWidth: 1, borderColor: '#1c1c1e' },
+    resultIconBg: { width: 32, height: 32, borderRadius: 8, backgroundColor: '#111', alignItems: 'center', justifyContent: 'center' },
+
+    inputGroup: { gap: 8 },
+    textInput: { backgroundColor: '#0a0a0a', borderRadius: 16, padding: 16, color: '#fff', fontSize: 16, fontWeight: '700', borderWidth: 1, borderColor: '#1c1c1e' },
+
+    macroGrid: { flexDirection: 'row', gap: 12 },
+    macroBox: { flex: 1, backgroundColor: '#0a0a0a', borderRadius: 16, padding: 12, borderWidth: 1, borderColor: '#1c1c1e', gap: 4 },
+    macroInput: { fontSize: 20, fontWeight: '900', textAlign: 'center', padding: 0 },
+
+    templateRow: { flexDirection: 'row', alignItems: 'center', gap: 14 },
+    footer: { marginTop: 8 },
+    primaryAction: { height: 60, borderRadius: 20, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 10 },
+
+    modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.85)', justifyContent: 'flex-end' },
+    modalContent: { backgroundColor: '#000', borderTopLeftRadius: 32, borderTopRightRadius: 32, height: '75%', padding: 24, borderWidth: 1, borderColor: '#333' },
+    modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 },
+    closeBtn: { width: 40, height: 40, borderRadius: 20, backgroundColor: '#111', alignItems: 'center', justifyContent: 'center' },
+    modalSearch: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#111', borderRadius: 16, paddingHorizontal: 16, height: 50, gap: 12, borderWidth: 1, borderColor: '#222', marginBottom: 20 },
+    modalSearchInput: { flex: 1, color: '#fff', fontSize: 15, fontWeight: '600' },
+    modalItem: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#111', padding: 18, borderRadius: 20, marginBottom: 12, borderWidth: 1, borderColor: '#222' },
 });

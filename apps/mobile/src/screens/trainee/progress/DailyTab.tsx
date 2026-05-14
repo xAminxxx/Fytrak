@@ -3,9 +3,10 @@ import { ScrollView, StyleSheet, View, Text, Image, Modal, Pressable } from "rea
 import { colors } from "../../../theme/colors";
 import { spacing } from "../../../theme/tokens";
 import { Typography } from "../../../components/Typography";
-import { NutritionRing } from "../../../components/NutritionRing";
-import { MacroItem } from "../../../components/MacroItem";
-import { Ionicons } from "@expo/vector-icons";
+import { DailyNutritionReport } from "../../../features/progress/components/DailyNutritionReport";
+import { DailyTrainingReport } from "../../../features/progress/components/DailyTrainingReport";
+import { DailyBiomarkersReport } from "../../../features/progress/components/DailyBiomarkersReport";
+import { DailyVisualReport } from "../../../features/progress/components/DailyVisualReport";
 import { useWorkouts } from "../../../hooks/useWorkouts";
 import { useBodyMetrics } from "../../../hooks/useBodyMetrics";
 import { useDailyNutrition } from "../../../hooks/useDailyNutrition";
@@ -21,7 +22,6 @@ export function DailyTab() {
   const { profile: userProfile } = useUserProfile();
   const waterMl = useDailyWater();
   const { photos } = useProgressPhotos();
-  const [viewerPhoto, setViewerPhoto] = useState<string | null>(null);
 
   const todayStr = new Date().toDateString();
   const todayKey = new Date().toISOString().split('T')[0];
@@ -59,168 +59,22 @@ export function DailyTab() {
         <Typography variant="bodySmall" color="#666">Today, {new Date().toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' })}</Typography>
       </View>
 
-      {/* 1. NUTRITION SUMMARY */}
-      <View style={styles.section}>
-        <SectionHeader title="NUTRITION & HYDRATION" icon="nutrition" color="#fbbf24" />
-        <View style={styles.card}>
-          <View style={styles.summaryRow}>
-             <NutritionRing current={totals.calories} target={targets.calories} />
-             <View style={styles.mainStats}>
-                <Typography variant="metric" style={{ fontSize: 28 }}>{totals.calories} <Typography color="#444" style={{ fontSize: 16 }}>/ {targets.calories} kcal</Typography></Typography>
-                <View style={styles.waterMiniRow}>
-                   <Ionicons name="water" size={14} color="#60a5fa" />
-                   <Typography variant="label" color="#60a5fa" style={{ fontWeight: "800" }}>{waterMl} / 2500 ml</Typography>
-                </View>
-             </View>
-          </View>
-          
-          <View style={styles.macrosRow}>
-            <MacroItem label="Protein" current={totals.protein} target={targets.protein} color="#4ade80" icon="flash" />
-            <MacroItem label="Carbs" current={totals.carbs} target={targets.carbs} color={colors.primary} icon="restaurant" />
-            <MacroItem label="Fats" current={totals.fats} target={targets.fats} color="#f87171" icon="water" />
-          </View>
+      <DailyNutritionReport 
+        meals={meals} 
+        targets={targets} 
+        totals={totals} 
+        waterMl={waterMl} 
+      />
 
-          {/* MEAL LIST */}
-          <View style={styles.mealList}>
-            <Typography variant="label" color="#444" style={styles.listLabel}>TODAY'S MEALS</Typography>
-            {meals.length > 0 ? meals.map((meal) => (
-              <View key={meal.id} style={styles.mealItem}>
-                {meal.imageUrl ? (
-                  <Image source={{ uri: meal.imageUrl }} style={styles.mealThumb} />
-                ) : (
-                  <View style={styles.mealIcon}><Ionicons name="fast-food" size={16} color="#444" /></View>
-                )}
-                <View style={{ flex: 1 }}>
-                  <Text style={styles.mealName}>{meal.name}</Text>
-                  <Text style={styles.mealTime}>{meal.time}</Text>
-                </View>
-                <Text style={styles.mealCals}>{meal.calories} kcal</Text>
-              </View>
-            )) : (
-              <Text style={styles.emptyText}>No meals logged yet</Text>
-            )}
-          </View>
-        </View>
-      </View>
+      <DailyTrainingReport workout={todayWorkout} />
 
-      {/* 2. TRAINING ACTIVITY */}
-      <View style={styles.section}>
-        <SectionHeader title="TRAINING ACTIVITY" icon="barbell" color="#f87171" />
-        {todayWorkout ? (
-          <View style={styles.card}>
-            <View style={styles.cardHeader}>
-              <View>
-                <Typography variant="h2" style={{ fontSize: 18 }}>{todayWorkout.name}</Typography>
-                <Typography variant="label" color="#666">{todayWorkout.duration || 0} min • {todayWorkout.totalVolume || 0}kg volume</Typography>
-              </View>
-              <View style={styles.checkBadge}>
-                <Ionicons name="checkmark" size={16} color="#000" />
-              </View>
-            </View>
-            <View style={styles.exerciseList}>
-              {todayWorkout.exercises.map((ex, idx) => (
-                <View key={idx} style={styles.exItem}>
-                  <Text style={styles.exName}>{ex.name}</Text>
-                  <Text style={styles.exSets}>{ex.sets.length} sets</Text>
-                </View>
-              ))}
-            </View>
-          </View>
-        ) : (
-          <View style={styles.emptyCard}>
-            <Typography variant="label" color="#444">Rest Day - No workout logged</Typography>
-          </View>
-        )}
-      </View>
+      <DailyBiomarkersReport 
+        todayMetric={todayMetric} 
+        todayWorkout={todayWorkout} 
+      />
 
-      {/* 3. BODY METRICS & BIO-MARKERS */}
-      <View style={styles.section}>
-        <SectionHeader title="BIO-MARKERS" icon="body" color="#60a5fa" />
-        <View style={styles.metricsGrid}>
-          <MetricBox 
-            label="Weight" 
-            value={todayMetric?.weight ? `${todayMetric.weight} kg` : "--"} 
-            icon="speedometer-outline"
-            color="#60a5fa"
-          />
-          <MetricBox 
-            label="Body Fat" 
-            value={todayMetric?.bodyFat ? `${todayMetric.bodyFat}%` : "--"} 
-            icon="analytics-outline"
-            color="#a855f7"
-          />
-        </View>
-        <View style={[styles.metricsGrid, { marginTop: 12 }]}>
-          <MetricBox 
-            label="Energy" 
-            value={todayWorkout?.checkIn?.energy ? `${todayWorkout.checkIn.energy}/5` : "--"} 
-            icon="flashlight-outline"
-            color="#fbbf24"
-          />
-          <MetricBox 
-            label="Mood" 
-            value={todayWorkout?.checkIn?.mood ? `${todayWorkout.checkIn.mood}/5` : "--"} 
-            icon="happy-outline"
-            color="#f472b6"
-          />
-        </View>
-      </View>
-
-      {/* 4. VISUAL CHECK-IN */}
-      <View style={styles.section}>
-        <SectionHeader title="VISUAL CHECK-IN" icon="camera" color="#10b981" />
-        {todayPhoto ? (
-          <View style={styles.card}>
-            <Pressable onPress={() => setViewerPhoto(todayPhoto.url)}>
-              <Image source={{ uri: todayPhoto.url }} style={styles.todayPhoto} resizeMode="cover" />
-            </Pressable>
-            <View style={styles.photoMeta}>
-              <Typography variant="label" color="#666">Snapshot logged at {toSafeDate(todayPhoto.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</Typography>
-            </View>
-          </View>
-        ) : (
-          <View style={styles.emptyCard}>
-            <Typography variant="label" color="#444">No progress photo logged today</Typography>
-          </View>
-        )}
-      </View>
-
-      <Modal visible={!!viewerPhoto} transparent={true} animationType="fade" onRequestClose={() => setViewerPhoto(null)}>
-        <View style={styles.viewerOverlay}>
-          <Pressable style={styles.viewerClose} onPress={() => setViewerPhoto(null)}>
-            <Ionicons name="close" size={28} color="#ff4444" />
-          </Pressable>
-          {viewerPhoto && (
-            <View style={styles.viewerContent}>
-              <Image source={{ uri: viewerPhoto }} style={styles.viewerImage} resizeMode="contain" />
-            </View>
-          )}
-        </View>
-      </Modal>
+      <DailyVisualReport todayPhoto={todayPhoto} />
     </ScrollView>
-  );
-}
-
-function SectionHeader({ title, icon, color }: { title: string; icon: keyof typeof Ionicons.glyphMap; color: string }) {
-  return (
-    <View style={styles.sectionHeader}>
-      <View style={[styles.iconBox, { backgroundColor: `${color}15` }]}>
-        <Ionicons name={icon} size={14} color={color} />
-      </View>
-      <Text style={[styles.sectionTitle, { color }]}>{title}</Text>
-    </View>
-  );
-}
-
-function MetricBox({ label, value, icon, color }: { label: string; value: string; icon: keyof typeof Ionicons.glyphMap; color: string }) {
-  return (
-    <View style={styles.metricBox}>
-      <View style={styles.metricTop}>
-        <Ionicons name={icon} size={14} color={color} />
-        <Typography variant="label" color="#444" style={{ fontSize: 9, fontWeight: "900" }}>{label.toUpperCase()}</Typography>
-      </View>
-      <Typography variant="metric" style={{ fontSize: 20, marginTop: 4 }}>{value}</Typography>
-    </View>
   );
 }
 
@@ -232,27 +86,6 @@ const styles = StyleSheet.create({
   },
   header: {
     marginBottom: 12,
-  },
-  section: {
-    marginBottom: 24,
-  },
-  sectionHeader: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
-    marginBottom: 12,
-  },
-  iconBox: {
-    width: 24,
-    height: 24,
-    borderRadius: 6,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  sectionTitle: {
-    fontSize: 10,
-    fontWeight: "900",
-    letterSpacing: 1.5,
   },
   card: {
     backgroundColor: "#161616",

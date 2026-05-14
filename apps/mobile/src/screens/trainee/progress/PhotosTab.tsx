@@ -32,7 +32,7 @@ export function PhotosTab() {
   const [activeComparePair, setActiveComparePair] = useState<[ProgressPhoto, ProgressPhoto] | null>(null);
   const [isSaving, setIsSaving] = useState(false);
 
-  const itemWidth = useMemo(() => Math.floor((windowWidth - (spacing.sm * 2) - (GAP * 2)) / 3) - 12, [windowWidth]);
+  const itemWidth = useMemo(() => Math.floor((windowWidth - (spacing.xl * 2) - (spacing.sm * 2) - (GAP * 2)) / 3), [windowWidth]);
 
   const handleCameraCapture = async (uri: string) => {
     setIsCameraVisible(false);
@@ -301,7 +301,7 @@ const styles = StyleSheet.create({
   columnWrapper: {
     gap: GAP,
     marginBottom: GAP,
-    justifyContent: "center",
+    justifyContent: "flex-start",
   },
   emptyState: {
     marginTop: 60,

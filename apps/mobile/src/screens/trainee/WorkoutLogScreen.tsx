@@ -41,6 +41,7 @@ import { WorkoutExerciseCard } from "../../components/WorkoutExerciseCard";
 import { ExerciseSearchModal } from "../../features/workouts/components/ExerciseSearchModal";
 import { WorkoutCheckInView } from "../../features/workouts/components/WorkoutCheckInView";
 import { WorkoutIntakeView } from "../../features/workouts/components/WorkoutIntakeView";
+import { RestTimer } from "../../features/workouts/components/RestTimer";
 
 type ExerciseLog = ActiveWorkoutExerciseDraft;
 
@@ -133,18 +134,6 @@ export function WorkoutLogScreen() {
 
   // INTAKE STATES
   const [showIntake, setShowIntake] = useState(false);
-  const [level, setLevel] = useState<ProfileLevel>("Beginner");
-  const [lastTrainedDate, setLastTrainedDate] = useState(new Date());
-  const [trainingExp, setTrainingExp] = useState("");
-  const [flexibility, setFlexibility] = useState(5);
-  const [injuries, setInjuries] = useState("");
-  const [healthIssues, setHealthIssues] = useState("");
-  const [workStress, setWorkStress] = useState(5);
-  const [workToughness, setWorkToughness] = useState(5);
-  const [workStart, setWorkStart] = useState(new Date(new Date().setHours(9, 0, 0)));
-  const [workEnd, setWorkEnd] = useState(new Date(new Date().setHours(17, 0, 0)));
-  const [isRotatingShift, setIsRotatingShift] = useState(false);
-  const [isSavingIntake, setIsSavingIntake] = useState(false);
 
   // CHECK-IN STATES
   const [isCheckingIn, setIsCheckingIn] = useState(false);
@@ -199,30 +188,6 @@ export function WorkoutLogScreen() {
 
 
 
-  const handleSaveIntake = async () => {
-    if (!auth.currentUser) return;
-    try {
-      setIsSavingIntake(true);
-      await saveWorkoutIntake(auth.currentUser.uid, {
-        level,
-        lastTrainedDate: toLocalDateKey(lastTrainedDate),
-        trainingExperience: trainingExp.trim() || "None",
-        flexibility,
-        injuries: injuries.trim() || "None",
-        healthIssues: healthIssues.trim() || "None",
-        work: {
-          stress: Number(workStress),
-          toughness: Number(workToughness),
-          timing: `${workStart.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} - ${workEnd.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} | ${isRotatingShift ? "Rotating" : "Fixed"}`
-        }
-      });
-      setShowIntake(false);
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-    } catch (e) { ToastService.error("Error", "Failed to save details."); }
-    finally { setIsSavingIntake(false); }
-  };
-
-
 
   const handleCompleteWithCheckIn = async () => {
     const user = auth.currentUser;
@@ -272,30 +237,7 @@ export function WorkoutLogScreen() {
   if (showIntake) {
     return (
       <ScreenShell title="Workout" subtitle="Onboarding details" contentStyle={styles.shellContent}>
-        <WorkoutIntakeView
-          level={level}
-          onLevelChange={setLevel}
-          trainingExp={trainingExp}
-          onTrainingExpChange={setTrainingExp}
-          injuries={injuries}
-          onInjuriesChange={setInjuries}
-          flexibility={flexibility}
-          onFlexibilityChange={setFlexibility}
-          lastTrainedDate={lastTrainedDate}
-          onLastTrainedDateChange={setLastTrainedDate}
-          healthIssues={healthIssues}
-          onHealthIssuesChange={setHealthIssues}
-          workStress={workStress}
-          onWorkStressChange={setWorkStress}
-          workToughness={workToughness}
-          onWorkToughnessChange={setWorkToughness}
-          workStart={workStart}
-          onWorkStartChange={setWorkStart}
-          workEnd={workEnd}
-          onWorkEndChange={setWorkEnd}
-          isSaving={isSavingIntake}
-          onSubmit={handleSaveIntake}
-        />
+        <WorkoutIntakeView onComplete={() => setShowIntake(false)} />
       </ScreenShell>
     );
   }
@@ -489,23 +431,7 @@ export function WorkoutLogScreen() {
   );
 }
 
-function RestTimer({ value, onAdjust, onSkip }: any) {
-  return (
-    <View style={styles.floatingTimer}>
-      <View style={styles.timerInfo}>
-        <Ionicons name="timer" size={20} color="#000" />
-        <Text style={styles.timerBold}>{Math.floor(value / 60)}:{String(value % 60).padStart(2, "0")}</Text>
-      </View>
-      <Pressable style={styles.timerActionBtn} onPress={() => onAdjust(30)}>
-        <Text style={styles.timerActionText}>+30s</Text>
-      </Pressable>
-      <View style={styles.timerDivider} />
-      <Pressable style={styles.timerActionBtn} onPress={onSkip}>
-        <Ionicons name="play-skip-forward" size={18} color="#000" />
-      </Pressable>
-    </View>
-  );
-}
+
 
 const styles = StyleSheet.create({
   shellContent: { paddingBottom: 0 },
@@ -555,12 +481,6 @@ const styles = StyleSheet.create({
   finishBtnText: { color: colors.primaryText, ...typography.button, fontSize: 16 },
   workoutActionDock: { position: "absolute", left: spacing.lg, right: spacing.lg, bottom: 84, backgroundColor: "rgba(10,10,10,0.94)", borderRadius: radius.xl, padding: spacing.sm, borderWidth: 1, borderColor: colors.borderSubtle },
   dockFinishBtn: { minHeight: 56, borderRadius: radius.lg, backgroundColor: colors.primary, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: spacing.sm },
-  floatingTimer: { position: "absolute", bottom: 178, alignSelf: "center", backgroundColor: colors.primary, flexDirection: "row", alignItems: "center", paddingHorizontal: spacing.lg, paddingVertical: spacing.sm, borderRadius: radius.pill, elevation: 10 },
-  timerInfo: { flexDirection: "row", alignItems: "center", gap: spacing.sm, paddingRight: spacing.md },
-  timerBold: { color: colors.primaryText, fontWeight: "900", fontSize: 16 },
-  timerActionBtn: { paddingHorizontal: spacing.md, minHeight: 34, justifyContent: "center", alignItems: "center" },
-  timerActionText: { color: colors.primaryText, fontWeight: "900", fontSize: 13 },
-  timerDivider: { width: 1, height: 20, backgroundColor: "rgba(0,0,0,0.2)" },
   videoIconBg: { width: 64, height: 64, borderRadius: 16, backgroundColor: colors.primary, alignItems: "center", justifyContent: "center" },
   videoTitle: { color: "#fff", fontSize: 16, fontWeight: "800" },
   videoSub: { color: "#666", fontSize: 12, fontWeight: "600", marginTop: 2 },

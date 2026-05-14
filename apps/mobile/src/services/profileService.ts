@@ -23,65 +23,8 @@ import type { AssignmentStatus, SessionState, UserRole } from "../state/types";
 import { authenticatedSessionState, defaultSessionData, toSessionState } from "../state/session";
 import { toLocalDateKey } from "../utils/dateKeys";
 
-export type ProfileLevel = "Beginner" | "Intermediate" | "Advanced";
-
-export type UserProfile = {
-  gender?: "male" | "female" | null;
-  goal?: string;
-  level?: ProfileLevel;
-  injuries?: string;
-  name?: string;
-  profileImageUrl?: string;
-  macroTargets?: {
-    calories: number;
-    protein: number;
-    carbs: number;
-    fats: number;
-  };
-  weight?: number;
-  height?: number;
-  birthDate?: string;
-  activityLevel?: string;
-  city?: string;
-  country?: string;
-  workoutProfileCompleted?: boolean;
-  nutritionProfileCompleted?: boolean;
-  isPremium?: boolean;
-  lastTrainedDate?: string;
-  work?: {
-    toughness: number;
-    timing: string;
-    stress: number;
-  };
-  trainingExperience?: string;
-  healthIssues?: string;
-  flexibility?: number;
-  medical?: {
-    allergies: string;
-    medications: string;
-  };
-  lifestyle?: {
-    smoker: boolean;
-    cigarettesPerDay: number;
-    coffeePerDay: number;
-    alcoholPerDay: number;
-    sleepHours: number;
-    sleepTiming: string;
-  };
-  nutrition?: {
-    specificDishes: string;
-    supplements: string;
-    regularEating: boolean;
-  };
-  assignmentStatus?: AssignmentStatus;
-  selectedCoachId?: string | null;
-  selectedCoachName?: string | null;
-  coachProfile?: {
-    bio: string;
-    specialties: string[];
-    experience: number;
-  };
-};
+import type { UserProfile, ProfileLevel } from "../types/domain";
+export type { UserProfile, ProfileLevel };
 
 export type CompleteProfilePayload = {
   goal: string | null;
@@ -205,6 +148,9 @@ export const subscribeToUserProfile = (uid: string, callback: (profile: UserProf
     if (snapshot.exists()) {
       const data = snapshot.data();
       callback({
+        uid,
+        email: data.email || "",
+        role: data.role || "trainee",
         goal: data.profile?.goal || data.goal || "Not set",
         level: data.profile?.level,
         injuries: data.profile?.injuries,

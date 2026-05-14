@@ -51,7 +51,7 @@ export function useTraineeDetailData(traineeId: string) {
     const stats = useMemo(() => {
         const totalWorkouts = workouts.length;
         const avgCals = meals.length > 0 ? (meals.reduce((sum, m) => sum + (m.calories || 0), 0) / meals.length).toFixed(0) : "0";
-        const latestWeight = metrics.length > 0 ? metrics[0].weight : "N/A";
+        const latestWeight = metrics.length > 0 ? metrics[0].weight : undefined;
 
         return { totalWorkouts, avgCals, latestWeight };
     }, [workouts, meals, metrics]);

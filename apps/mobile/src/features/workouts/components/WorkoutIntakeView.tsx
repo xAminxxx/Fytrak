@@ -10,68 +10,68 @@ import {
 } from "react-native";
 import DateTimePicker from "@react-native-community/datetimepicker";
 import { Ionicons } from "@expo/vector-icons";
+import * as Haptics from "expo-haptics";
 import { colors } from "../../../theme/colors";
 import { radius, spacing, typography } from "../../../theme/tokens";
 import { SectionTitle } from "../../../components/SectionTitle";
 import { MetricStepper } from "../../../components/MetricStepper";
-import type { ProfileLevel } from "../../../services/userSession";
+import { ToastService } from "../../../components/Toast";
+import { auth } from "../../../config/firebase";
+import { saveWorkoutIntake } from "../../../services/userSession";
+import { toLocalDateKey } from "../../../utils/dateKeys";
+import type { ProfileLevel } from "../../../types/domain";
 
 type WorkoutIntakeViewProps = {
-  level: ProfileLevel;
-  onLevelChange: (level: ProfileLevel) => void;
-  trainingExp: string;
-  onTrainingExpChange: (value: string) => void;
-  injuries: string;
-  onInjuriesChange: (value: string) => void;
-  flexibility: number;
-  onFlexibilityChange: (value: number) => void;
-  lastTrainedDate: Date;
-  onLastTrainedDateChange: (value: Date) => void;
-  healthIssues: string;
-  onHealthIssuesChange: (value: string) => void;
-  workStress: number;
-  onWorkStressChange: (value: number) => void;
-  workToughness: number;
-  onWorkToughnessChange: (value: number) => void;
-  workStart: Date;
-  onWorkStartChange: (value: Date) => void;
-  workEnd: Date;
-  onWorkEndChange: (value: Date) => void;
-  isSaving: boolean;
-  onSubmit: () => void;
+  onComplete: () => void;
 };
 
 const clamp = (value: number, min: number, max: number) => {
   return Math.max(min, Math.min(max, value));
 };
 
-export function WorkoutIntakeView({
-  level,
-  onLevelChange,
-  trainingExp,
-  onTrainingExpChange,
-  injuries,
-  onInjuriesChange,
-  flexibility,
-  onFlexibilityChange,
-  lastTrainedDate,
-  onLastTrainedDateChange,
-  healthIssues,
-  onHealthIssuesChange,
-  workStress,
-  onWorkStressChange,
-  workToughness,
-  onWorkToughnessChange,
-  workStart,
-  onWorkStartChange,
-  workEnd,
-  onWorkEndChange,
-  isSaving,
-  onSubmit,
-}: WorkoutIntakeViewProps) {
+export function WorkoutIntakeView({ onComplete }: WorkoutIntakeViewProps) {
+  const [level, setLevel] = useState<ProfileLevel>("Beginner");
+  const [lastTrainedDate, setLastTrainedDate] = useState(new Date());
+  const [trainingExp, setTrainingExp] = useState("");
+  const [flexibility, setFlexibility] = useState(5);
+  const [injuries, setInjuries] = useState("");
+  const [healthIssues, setHealthIssues] = useState("");
+  const [workStress, setWorkStress] = useState(5);
+  const [workToughness, setWorkToughness] = useState(5);
+  const [workStart, setWorkStart] = useState(new Date(new Date().setHours(9, 0, 0)));
+  const [workEnd, setWorkEnd] = useState(new Date(new Date().setHours(17, 0, 0)));
+  const [isRotatingShift, setIsRotatingShift] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
+
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [showWorkStartPicker, setShowWorkStartPicker] = useState(false);
   const [showWorkEndPicker, setShowWorkEndPicker] = useState(false);
+
+  const handleSaveIntake = async () => {
+    if (!auth.currentUser) return;
+    try {
+      setIsSaving(true);
+      await saveWorkoutIntake(auth.currentUser.uid, {
+        level,
+        lastTrainedDate: toLocalDateKey(lastTrainedDate),
+        trainingExperience: trainingExp.trim() || "None",
+        flexibility,
+        injuries: injuries.trim() || "None",
+        healthIssues: healthIssues.trim() || "None",
+        work: {
+          stress: Number(workStress),
+          toughness: Number(workToughness),
+          timing: `${workStart.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} - ${workEnd.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} | ${isRotatingShift ? "Rotating" : "Fixed"}`
+        }
+      });
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      onComplete();
+    } catch (e) {
+      ToastService.error("Error", "Failed to save details.");
+    } finally {
+      setIsSaving(false);
+    }
+  };
 
   return (
     <ScrollView contentContainerStyle={styles.scroll}>
@@ -82,7 +82,7 @@ export function WorkoutIntakeView({
             <Pressable
               key={item}
               style={[styles.pill, level === item && styles.pillActive]}
-              onPress={() => onLevelChange(item)}
+              onPress={() => setLevel(item)}
             >
               <Text style={[styles.pillText, level === item && styles.pillTextActive]}>
                 {item.toUpperCase()}
@@ -97,7 +97,7 @@ export function WorkoutIntakeView({
             style={styles.input}
             placeholderTextColor="#666"
             value={trainingExp}
-            onChangeText={onTrainingExpChange}
+            onChangeText={setTrainingExp}
           />
         </View>
 
@@ -108,7 +108,7 @@ export function WorkoutIntakeView({
             style={styles.input}
             placeholderTextColor="#666"
             value={injuries}
-            onChangeText={onInjuriesChange}
+            onChangeText={setInjuries}
           />
         </View>
         <View style={styles.row}>
@@ -116,7 +116,7 @@ export function WorkoutIntakeView({
             label="Flexibility (1-10)"
             value={flexibility}
             onAdjust={(delta: number) =>
-              onFlexibilityChange(clamp(flexibility + delta, 1, 10))
+              setFlexibility(clamp(flexibility + delta, 1, 10))
             }
           />
         </View>
@@ -136,7 +136,7 @@ export function WorkoutIntakeView({
               display="spinner"
               onChange={(_: unknown, date?: Date) => {
                 setShowDatePicker(false);
-                if (date) onLastTrainedDateChange(date);
+                if (date) setLastTrainedDate(date);
               }}
             />
           )}
@@ -149,7 +149,7 @@ export function WorkoutIntakeView({
             placeholder="Describe any issues..."
             placeholderTextColor="#666"
             value={healthIssues}
-            onChangeText={onHealthIssuesChange}
+            onChangeText={setHealthIssues}
           />
         </View>
 
@@ -174,7 +174,7 @@ export function WorkoutIntakeView({
               display="spinner"
               onChange={(_: unknown, date?: Date) => {
                 setShowWorkStartPicker(false);
-                if (date) onWorkStartChange(date);
+                if (date) setWorkStart(date);
               }}
             />
           )}
@@ -185,7 +185,7 @@ export function WorkoutIntakeView({
               display="spinner"
               onChange={(_: unknown, date?: Date) => {
                 setShowWorkEndPicker(false);
-                if (date) onWorkEndChange(date);
+                if (date) setWorkEnd(date);
               }}
             />
           )}
@@ -195,18 +195,18 @@ export function WorkoutIntakeView({
             label="Work Stress"
             value={workStress}
             onAdjust={(delta: number) =>
-              onWorkStressChange(clamp(workStress + delta, 1, 10))
+              setWorkStress(clamp(workStress + delta, 1, 10))
             }
           />
           <MetricStepper
             label="Physicality"
             value={workToughness}
             onAdjust={(delta: number) =>
-              onWorkToughnessChange(clamp(workToughness + delta, 1, 10))
+              setWorkToughness(clamp(workToughness + delta, 1, 10))
             }
           />
         </View>
-        <Pressable style={styles.finishBtn} onPress={onSubmit} disabled={isSaving}>
+        <Pressable style={styles.finishBtn} onPress={handleSaveIntake} disabled={isSaving}>
           {isSaving ? (
             <ActivityIndicator color="#000" />
           ) : (

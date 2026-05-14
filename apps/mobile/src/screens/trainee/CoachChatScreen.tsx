@@ -145,10 +145,11 @@ export function CoachChatScreen({ traineeId, coachId, traineeName }: CoachChatSc
     >
       <KeyboardAvoidingView
         style={styles.container}
-        behavior={Platform.OS === "ios" ? "padding" : undefined}
-        keyboardVerticalOffset={100}
+        behavior={Platform.OS === "ios" ? "padding" : "padding"}
+        keyboardVerticalOffset={Platform.OS === "ios" ? 300 : 20}
       >
         <FlatList
+          style={{ flex: 1 }}
           data={messages}
           keyExtractor={(item) => item.id}
           contentContainerStyle={styles.messagesList}
@@ -187,7 +188,7 @@ export function CoachChatScreen({ traineeId, coachId, traineeName }: CoachChatSc
 
         {errorText ? <Text style={styles.errorText}>{errorText}</Text> : null}
 
-        <View style={[styles.composerWrapper, { bottom: isKeyboardVisible ? 0 : 80 }]}>
+        <View style={styles.composerWrapper}>
           <View style={styles.composerRow}>
             <Pressable
               style={styles.attachButton}
@@ -219,6 +220,7 @@ export function CoachChatScreen({ traineeId, coachId, traineeName }: CoachChatSc
             </Pressable>
           </View>
         </View>
+        {!isKeyboardVisible && <View style={{ height: 80 }} />}
       </KeyboardAvoidingView>
     </ScreenShell>
   );
@@ -233,7 +235,7 @@ const styles = StyleSheet.create({
   },
   messagesList: {
     gap: 12,
-    paddingBottom: 120,
+    paddingBottom: 20,
     paddingTop: 10,
   },
   bubble: {
@@ -295,12 +297,9 @@ const styles = StyleSheet.create({
     marginBottom: 8,
   },
   composerWrapper: {
-    position: "absolute",
-    bottom: 80,
-    left: 0,
-    right: 0,
     paddingHorizontal: 20,
-    paddingBottom: 20,
+    paddingTop: 8,
+    backgroundColor: "#000",
   },
   composerRow: {
     flexDirection: "row",

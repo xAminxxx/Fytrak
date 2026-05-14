@@ -6,7 +6,9 @@ import {
     TextInput,
     Pressable,
     Alert,
-    ActivityIndicator
+    ActivityIndicator,
+    KeyboardAvoidingView,
+    Platform
 } from "react-native";
 import { ScreenShell } from "../../components/ScreenShell";
 import { ExerciseDetailSheet } from "../../components/ExerciseDetailSheet";
@@ -17,6 +19,7 @@ import { useNavigation, useRoute } from "@react-navigation/native";
 import { useWorkoutPrescriptionBuilder } from "../../hooks/useWorkoutPrescriptionBuilder";
 import { TemplateLibraryModal } from "../../components/coach/TemplateLibraryModal";
 import { ExerciseSearchModal } from "../../features/workouts/components/ExerciseSearchModal";
+import { Typography } from "../../components/Typography";
 
 export function PrescribeWorkoutScreen() {
     const route = useRoute<any>();
@@ -58,154 +61,164 @@ export function PrescribeWorkoutScreen() {
 
     return (
         <ScreenShell
-            title="Prescribe Routine"
-            subtitle={`Assign a new workout for ${traineeName}`}
+            title="PRESCRIBE"
+            subtitle={`NEW ROUTINE FOR ${traineeName?.toUpperCase()}`}
             contentStyle={styles.shellContent}
         >
-            <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scroll}>
-                <View style={styles.topActions}>
+            <KeyboardAvoidingView 
+                behavior={Platform.OS === "ios" ? "padding" : undefined}
+                style={{ flex: 1 }}
+                keyboardVerticalOffset={Platform.OS === "ios" ? 100 : 0}
+            >
+                <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scroll}>
+                    
+                    {/* LIBRARY SHORTCUT */}
                     <Pressable
-                        style={styles.loadBtn}
-                        onPress={() => {
-                            if (templates.length === 0) {
-                                Alert.alert("Library Empty", "Save a workout as a template first to use this feature.");
-                            } else {
-                                setLibModalVisible(true);
-                            }
-                        }}
+                        style={styles.card}
+                        onPress={() => templates.length > 0 ? setLibModalVisible(true) : Alert.alert("Library Empty", "Save a template first.")}
                     >
-                        <Ionicons name="library" size={18} color={colors.primary} />
-                        <Text style={styles.loadBtnText}>LOAD FROM LIBRARY</Text>
-                        <View style={styles.countBadge}><Text style={styles.countText}>{templates.length}</Text></View>
+                        <View style={styles.cardHeader}>
+                            <Ionicons name="library" size={18} color={colors.primary} />
+                            <Typography variant="h2">Load from Library</Typography>
+                        </View>
+                        <View style={styles.libContent}>
+                            <Typography variant="bodySmall" color="#8c8c8c">{templates.length} saved routines available in your coach cloud.</Typography>
+                            <Ionicons name="chevron-forward" size={16} color="#444" />
+                        </View>
                     </Pressable>
-                </View>
 
-                <View style={styles.inputGroup}>
-                    <Text style={styles.label}>Workout Title</Text>
-                    <TextInput
-                        placeholder="e.g. Monday - Push Day"
-                        placeholderTextColor="#666"
-                        style={styles.input}
-                        value={title}
-                        onChangeText={setTitle}
-                    />
-                </View>
-
-                {exercises.map((ex, idx) => (
-                    <View key={idx} style={styles.exerciseCard}>
-                        <View style={styles.exHeader}>
-                            <Pressable
-                                style={styles.exInput}
-                                onPress={() => {
-                                    setActiveExerciseIndex(idx);
-                                    setExerciseSearchQuery("");
-                                    setExerciseModalVisible(true);
-                                }}
-                            >
-                                <Text style={{ color: ex.name ? "#fff" : "#444", fontSize: 16, fontWeight: "700" }}>
-                                    {ex.name || "Tap to select exercise..."}
-                                </Text>
-                            </Pressable>
-                            <View style={styles.exActions}>
-                                <Pressable
-                                    style={styles.infoIconBtn}
-                                    onPress={() => {
-                                        const info = findExerciseInfo(ex.name);
-                                        if (info) setSelectedExerciseInfo(info);
-                                    }}
-                                    disabled={!ex.name}
-                                >
-                                    <Ionicons name="information-circle-outline" size={20} color={colors.primary} />
-                                </Pressable>
-                                <Pressable
-                                    style={styles.exRemoveBtn}
-                                    onPress={() => {
-                                        removeExercise(idx);
-                                    }}
-                                >
-                                    <Ionicons name="close-circle-outline" size={20} color="#ff4444" />
-                                </Pressable>
-                            </View>
+                    {/* ROUTINE CONFIG */}
+                    <View style={styles.card}>
+                        <View style={styles.cardHeader}>
+                            <Ionicons name="create" size={18} color={colors.primary} />
+                            <Typography variant="h2">Workout Details</Typography>
                         </View>
-                        <View style={styles.typeSelectorRow}>
-                            {(["WEIGHT_REPS", "TIME", "BODYWEIGHT"] as WorkoutSetType[]).map(t => (
-                                <Pressable key={t} style={[styles.typePill, ex.type === t && styles.typePillActive]} onPress={() => updateExercise(idx, "type", t)}>
-                                    <Text style={[styles.typePillText, ex.type === t && styles.typePillTextActive]}>{t.replace("_", " ")}</Text>
-                                </Pressable>
-                            ))}
-                        </View>
-
-                        <View style={styles.paramGrid}>
-                            <View style={styles.paramItem}>
-                                <Text style={styles.paramLabel}>SETS</Text>
-                                <TextInput
-                                    keyboardType="numeric"
-                                    style={styles.paramInput}
-                                    value={ex.targetSets.toString()}
-                                    onChangeText={(v) => updateExercise(idx, "targetSets", parseInt(v) || 0)}
-                                />
-                            </View>
-                            <View style={styles.paramItem}>
-                                <Text style={styles.paramLabel}>{ex.type === "TIME" ? "SECONDS" : "REPS"}</Text>
-                                <TextInput
-                                    style={styles.paramInput}
-                                    value={ex.targetReps}
-                                    placeholder={ex.type === "TIME" ? "60s" : "10-12"}
-                                    placeholderTextColor="#444"
-                                    onChangeText={(v) => updateExercise(idx, "targetReps", v)}
-                                />
-                            </View>
-                            <View style={styles.paramItem}>
-                                <Text style={styles.paramLabel}>REST</Text>
-                                <TextInput
-                                    style={styles.paramInput}
-                                    value={ex.restTime}
-                                    onChangeText={(v) => updateExercise(idx, "restTime", v)}
-                                />
-                            </View>
+                        <View style={styles.inputGroup}>
+                            <Typography variant="label" color="#8c8c8c" style={{ fontSize: 9 }}>ROUTINE TITLE</Typography>
+                            <TextInput
+                                placeholder="e.g. Upper Body Power"
+                                placeholderTextColor="#444"
+                                style={styles.textInput}
+                                value={title}
+                                onChangeText={setTitle}
+                            />
                         </View>
                     </View>
-                ))}
 
-                <Pressable style={styles.addBtn} onPress={addExercise}>
-                    <Ionicons name="add-circle" size={24} color={colors.primary} />
-                    <Text style={styles.addBtnText}>ADD EXERCISE</Text>
-                </Pressable>
+                    {/* EXERCISE BUILDER */}
+                    <View style={styles.builderCard}>
+                        <View style={styles.cardHeader}>
+                            <Ionicons name="list" size={18} color={colors.primary} />
+                            <Typography variant="h2">Exercise Sequence</Typography>
+                        </View>
 
-                <View style={styles.divider} />
+                        {exercises.map((ex, idx) => (
+                            <View key={idx} style={styles.exerciseItem}>
+                                <View style={styles.exTop}>
+                                    <View style={styles.exIndexBox}><Text style={styles.exIndexText}>{idx + 1}</Text></View>
+                                    <Pressable
+                                        style={styles.exSelector}
+                                        onPress={() => {
+                                            setActiveExerciseIndex(idx);
+                                            setExerciseSearchQuery("");
+                                            setExerciseModalVisible(true);
+                                        }}
+                                    >
+                                <Typography variant="h2" style={{ fontSize: 15 }} numberOfLines={1}>
+                                            {ex.name || "Select exercise..."}
+                                        </Typography>
+                                    </Pressable>
+                                    <View style={styles.exActions}>
+                                        <Pressable
+                                            style={styles.exActionIcon}
+                                            onPress={() => {
+                                                const info = findExerciseInfo(ex.name);
+                                                if (info) setSelectedExerciseInfo(info);
+                                            }}
+                                            disabled={!ex.name}
+                                        >
+                                            <Ionicons name="information-circle-outline" size={20} color={ex.name ? colors.primary : "#222"} />
+                                        </Pressable>
+                                        <Pressable style={styles.exActionIcon} onPress={() => removeExercise(idx)}>
+                                            <Ionicons name="trash-outline" size={20} color="#f87171" />
+                                        </Pressable>
+                                    </View>
+                                </View>
 
-                <Pressable
-                    style={styles.templateToggle}
-                    onPress={() => setSaveAsTemplate(!saveAsTemplate)}
-                >
-                    <View style={styles.iconBox}>
-                        <Ionicons name="save-outline" size={20} color={saveAsTemplate ? colors.primary : "#666"} />
+                                <View style={styles.exParams}>
+                                    <View style={styles.paramBox}>
+                                        <Typography variant="label" color="#444" style={styles.paramLabel}>SETS</Typography>
+                                        <TextInput
+                                            keyboardType="numeric"
+                                            style={styles.paramInput}
+                                            value={ex.targetSets.toString()}
+                                            onChangeText={(v) => updateExercise(idx, "targetSets", parseInt(v) || 0)}
+                                        />
+                                    </View>
+                                    <View style={styles.paramBox}>
+                                        <Typography variant="label" color="#444" style={styles.paramLabel}>{ex.type === "TIME" ? "SEC" : "REPS"}</Typography>
+                                        <TextInput
+                                            style={styles.paramInput}
+                                            value={ex.targetReps}
+                                            placeholder={ex.type === "TIME" ? "60" : "12"}
+                                            placeholderTextColor="#333"
+                                            onChangeText={(v) => updateExercise(idx, "targetReps", v)}
+                                        />
+                                    </View>
+                                    <View style={styles.paramBox}>
+                                        <Typography variant="label" color="#444" style={styles.paramLabel}>REST</Typography>
+                                        <TextInput
+                                            style={styles.paramInput}
+                                            value={ex.restTime}
+                                            placeholder="90s"
+                                            placeholderTextColor="#333"
+                                            onChangeText={(v) => updateExercise(idx, "restTime", v)}
+                                        />
+                                    </View>
+                                </View>
+                            </View>
+                        ))}
+
+                        <Pressable style={styles.addBtn} onPress={addExercise}>
+                            <Ionicons name="add" size={20} color={colors.primary} />
+                            <Typography variant="label" color={colors.primary}>ADD EXERCISE</Typography>
+                        </Pressable>
                     </View>
-                    <View style={{ flex: 1 }}>
-                        <Text style={styles.toggleTitle}>Save to Template Library</Text>
-                        <Text style={styles.toggleSub}>Reusable for other trainees</Text>
-                    </View>
-                    <View style={[styles.switch, saveAsTemplate && styles.switchActive]}>
-                        <View style={[styles.switchCircle, saveAsTemplate && styles.switchCircleActive]} />
-                    </View>
-                </Pressable>
 
-                <View style={styles.footer}>
+                    {/* SAVE AS TEMPLATE */}
                     <Pressable
-                        style={[styles.saveBtn, isSubmitting && { opacity: 0.7 }]}
-                        onPress={handleSave}
-                        disabled={isSubmitting}
+                        style={[styles.card, saveAsTemplate && { borderColor: colors.primary }]}
+                        onPress={() => setSaveAsTemplate(!saveAsTemplate)}
                     >
-                        {isSubmitting ? <ActivityIndicator color={colors.primaryText} /> : (
-                            <>
-                                <Text style={styles.saveBtnText}>ASSIGN TO TRAINEE</Text>
-                                <Ionicons name="paper-plane" size={20} color={colors.primaryText} />
-                            </>
-                        )}
+                        <View style={styles.templateRow}>
+                            <Ionicons name={saveAsTemplate ? "checkbox" : "square-outline"} size={22} color={saveAsTemplate ? colors.primary : "#444"} />
+                            <View style={{ flex: 1 }}>
+                                <Typography variant="h2" style={{ fontSize: 15 }}>Save to Library</Typography>
+                                <Typography variant="label" color="#8c8c8c">Sync this routine to your coach templates.</Typography>
+                            </View>
+                        </View>
                     </Pressable>
-                </View>
-            </ScrollView>
 
+                    {/* FOOTER */}
+                    <View style={styles.footer}>
+                        <Pressable
+                            style={[styles.primaryAction, isSubmitting && { opacity: 0.7 }]}
+                            onPress={handleSave}
+                            disabled={isSubmitting}
+                        >
+                            {isSubmitting ? <ActivityIndicator color="#000" /> : (
+                                <>
+                                    <Typography style={{ color: "#000", fontWeight: '900', fontSize: 14 }}>ASSIGN TO TRAINEE</Typography>
+                                    <Ionicons name="send" size={16} color="#000" />
+                                </>
+                            )}
+                        </Pressable>
+                    </View>
+
+                </ScrollView>
+            </KeyboardAvoidingView>
+
+            {/* MODALS */}
             <TemplateLibraryModal
                 visible={libModalVisible}
                 onClose={() => setLibModalVisible(false)}
@@ -254,154 +267,33 @@ export function PrescribeWorkoutScreen() {
 
 const styles = StyleSheet.create({
     shellContent: { paddingBottom: 0 },
-    scroll: { paddingBottom: 60, gap: 20, marginTop: 10 },
-    topActions: { marginBottom: 4 },
-    loadBtn: {
-        flexDirection: "row",
-        alignItems: "center",
-        backgroundColor: "#161616",
-        padding: 16,
-        borderRadius: 20,
-        borderWidth: 1,
-        borderColor: "#2c2c2e",
-        gap: 12,
-    },
-    loadBtnText: { color: colors.primary, fontSize: 13, fontWeight: "900", letterSpacing: 0.5 },
-    countBadge: { backgroundColor: "#1c1c1e", paddingHorizontal: 8, paddingVertical: 2, borderRadius: 8, borderWidth: 1, borderColor: "#333" },
-    countText: { color: "#666", fontSize: 10, fontWeight: "800" },
-    card: {
-        backgroundColor: "#161616",
-        borderRadius: 20,
-        padding: 20,
-        borderWidth: 1,
-        borderColor: "#2c2c2e",
-        gap: 8,
-    },
-    label: { color: colors.primary, fontSize: 11, fontWeight: "900", letterSpacing: 1, textTransform: "uppercase" },
-    titleInput: { color: "#ffffff", fontSize: 20, fontWeight: "800", paddingVertical: 8 },
-    exerciseCard: {
-        backgroundColor: "#1c1c1e",
-        borderRadius: 22,
-        padding: 20,
-        gap: 16,
-        borderWidth: 1,
-        borderColor: "#2c2c2e",
-        position: "relative",
-    },
-    exHeader: {
-        flexDirection: "row",
-        alignItems: "center",
-        gap: 12,
-    },
-    exActions: {
-        flexDirection: "row",
-        alignItems: "center",
-        gap: 8,
-    },
-    exRemoveBtn: {
-        width: 28,
-        height: 28,
-        alignItems: "center",
-        justifyContent: "center",
-    },
-    exInput: {
-        backgroundColor: "#161616",
-        borderRadius: 12,
-        paddingHorizontal: 16,
-        paddingVertical: 14,
-        color: "#ffffff",
-        fontSize: 16,
-        fontWeight: "700",
-        borderWidth: 1,
-        borderColor: "#2c2c2e",
-    },
-    typeSelectorRow: { flexDirection: "row", gap: 6 },
-    typePill: { paddingVertical: 6, paddingHorizontal: 12, borderRadius: 8, backgroundColor: "#1c1c1e", borderWidth: 1, borderColor: "#2c2c2e" },
-    typePillActive: { backgroundColor: colors.primary, borderColor: colors.primary },
-    typePillText: { color: "#8c8c8c", fontSize: 10, fontWeight: "900" },
-    typePillTextActive: { color: "#000" },
-    inputGroup: {
-        gap: 12,
-        marginBottom: 10,
-    },
-    input: {
-        backgroundColor: "#161616",
-        borderRadius: 16,
-        paddingHorizontal: 16,
-        paddingVertical: 14,
-        color: "#ffffff",
-        fontSize: 16,
-        fontWeight: "700",
-        borderWidth: 1,
-        borderColor: "#2c2c2e",
-    },
-    indexText: {
-        color: "#666",
-        fontSize: 14,
-        fontWeight: "900",
-    },
-    paramGrid: { flexDirection: "row", gap: 12 },
-    paramItem: { flex: 1, gap: 6 },
-    paramLabel: { color: "#666", fontSize: 10, fontWeight: "900", textAlign: "center" },
-    paramInput: {
-        backgroundColor: "#161616",
-        borderRadius: 10,
-        paddingVertical: 10,
-        textAlign: "center",
-        color: colors.primary,
-        fontSize: 15,
-        fontWeight: "800",
-        borderWidth: 1,
-        borderColor: "#2c2c2e",
-    },
-    addBtn: {
-        flexDirection: "row",
-        alignItems: "center",
-        justifyContent: "center",
-        paddingVertical: 18,
-        gap: 10,
-        backgroundColor: "#161616",
-        borderRadius: 20,
-        borderStyle: "dashed",
-        borderWidth: 1,
-        borderColor: "#333",
-    },
-    addBtnText: { color: colors.primary, fontWeight: "900", fontSize: 13 },
-    divider: { height: 1, backgroundColor: "#2c2c2e", marginVertical: 4 },
-    templateToggle: {
-        flexDirection: "row",
-        alignItems: "center",
-        backgroundColor: "#161616",
-        padding: 18,
-        borderRadius: 24,
-        borderWidth: 1,
-        borderColor: "#2c2c2e",
-        gap: 16,
-    },
-    iconBox: {
-        width: 44,
-        height: 44,
-        borderRadius: 14,
-        backgroundColor: "#1c1c1e",
-        alignItems: "center",
-        justifyContent: "center",
-    },
-    toggleTitle: { color: "#ffffff", fontSize: 15, fontWeight: "700" },
-    toggleSub: { color: "#666", fontSize: 12, fontWeight: "500", marginTop: 2 },
-    switch: { width: 44, height: 24, borderRadius: 12, backgroundColor: "#333", padding: 2, justifyContent: "center" },
-    switchActive: { backgroundColor: colors.primary },
-    switchCircle: { width: 20, height: 20, borderRadius: 10, backgroundColor: "#ffffff" },
-    switchCircleActive: { alignSelf: "flex-end" },
-    footer: { marginTop: 10 },
-    saveBtn: {
-        backgroundColor: colors.primary,
-        borderRadius: 22,
-        height: 64,
-        flexDirection: "row",
-        alignItems: "center",
-        justifyContent: "center",
-        gap: 12,
-    },
-    saveBtnText: { color: colors.primaryText, fontWeight: "900", fontSize: 16, letterSpacing: 1 },
-    infoIconBtn: { width: 36, height: 36, borderRadius: 12, backgroundColor: "#1c1c1e", alignItems: "center", justifyContent: "center", borderWidth: 1, borderColor: "#2c2c2e" },
+    scroll: { paddingBottom: 100, gap: 16, marginTop: 10 },
+    
+    card: { backgroundColor: "#161616", borderRadius: 24, padding: 20, borderWidth: 1, borderColor: "#333", gap: 16 },
+    cardHeader: { flexDirection: "row", alignItems: "center", gap: 10 },
+    libContent: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', flex: 1 },
+
+    inputGroup: { gap: 8 },
+    textInput: { backgroundColor: '#0a0a0a', borderRadius: 16, padding: 16, color: '#fff', fontSize: 16, fontWeight: '700', borderWidth: 1, borderColor: '#1c1c1e' },
+
+    builderCard: { backgroundColor: "#161616", borderRadius: 24, padding: 18, borderWidth: 1, borderColor: "#333", gap: 16 },
+    exerciseItem: { backgroundColor: '#0a0a0a', borderRadius: 20, padding: 16, borderWidth: 1, borderColor: '#1c1c1e', gap: 16 },
+    exTop: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+    exIndexBox: { width: 24, height: 24, borderRadius: 6, backgroundColor: '#1c1c1e', alignItems: 'center', justifyContent: 'center' },
+    exIndexText: { color: colors.primary, fontSize: 11, fontWeight: '900' },
+    exSelector: { flex: 1 },
+    exActions: { flexDirection: 'row', gap: 8 },
+    exActionIcon: { width: 32, height: 32, borderRadius: 8, backgroundColor: '#161616', alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: '#2c2c2e' },
+
+    exParams: { flexDirection: 'row', gap: 10 },
+    paramBox: { flex: 1, gap: 4 },
+    paramLabel: { textAlign: 'center', fontSize: 8, fontWeight: '900' },
+    paramInput: { backgroundColor: '#161616', borderRadius: 10, paddingVertical: 10, textAlign: 'center', color: colors.primary, fontSize: 16, fontWeight: '900', borderWidth: 1, borderColor: '#2c2c2e' },
+
+    addBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', paddingVertical: 14, gap: 8, borderStyle: 'dashed', borderWidth: 1, borderColor: '#2c2c2e', borderRadius: 16 },
+
+    templateRow: { flexDirection: 'row', alignItems: 'center', gap: 14 },
+
+    footer: { marginTop: 8 },
+    primaryAction: { backgroundColor: colors.primary, height: 60, borderRadius: 20, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 10 },
 });

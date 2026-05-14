@@ -1,11 +1,11 @@
-import { Alert, Pressable, StyleSheet, Text, View, ActivityIndicator } from "react-native";
+import { Pressable, StyleSheet, Text, View, ActivityIndicator } from "react-native";
 import { ScreenShell } from "../../components/ScreenShell";
 import { colors } from "../../theme/colors";
 import { Ionicons } from "@expo/vector-icons";
 import { saveAssignmentStatus } from "../../services/userSession";
 import { auth } from "../../config/firebase";
-import { signOut } from "firebase/auth";
 import { ToastService } from "../../components/Toast";
+import { logOut } from "../../services/auth";
 
 type PendingCoachScreenProps = {
   coachName: string | null;
@@ -15,7 +15,7 @@ type PendingCoachScreenProps = {
 export function PendingCoachScreen({ coachName, onSimulateApprove }: PendingCoachScreenProps) {
   const handleLogout = async () => {
     try {
-      await signOut(auth);
+      await logOut();
       ToastService.info("Signed out", "Your Fytrak session has been closed.");
     } catch (error) {
       ToastService.error("Sign out failed", "Please try again.");
@@ -23,22 +23,19 @@ export function PendingCoachScreen({ coachName, onSimulateApprove }: PendingCoac
   };
 
   const handleCancelRequest = () => {
-    Alert.alert(
-      "Cancel Request",
-      "Are you sure you want to cancel your coach assignment request?",
-      [
-        { text: "No, keep it", style: "cancel" },
-        {
-          text: "Yes, cancel",
-          style: "destructive",
-          onPress: async () => {
-            if (auth.currentUser) {
-              await saveAssignmentStatus(auth.currentUser.uid, "unassigned");
-            }
-          }
-        },
-      ]
-    );
+    ToastService.confirm({
+      title: "Cancel request",
+      message: "Are you sure you want to cancel your coach assignment request?",
+      cancelLabel: "Keep it",
+      confirmLabel: "Cancel request",
+      destructive: true,
+      onConfirm: async () => {
+        if (auth.currentUser) {
+          await saveAssignmentStatus(auth.currentUser.uid, "unassigned");
+          ToastService.info("Request cancelled", "You can choose another coach anytime.");
+        }
+      },
+    });
   };
 
   return (

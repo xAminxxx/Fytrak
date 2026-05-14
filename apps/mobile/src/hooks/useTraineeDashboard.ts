@@ -21,6 +21,17 @@ import { buildTodayMission } from "../features/retention/todayMission";
 import { toLocalDateKey } from "../utils/dateKeys";
 import { useCurrentUser } from "./useCurrentUser";
 import { useLocalDateKey } from "./useLocalDateKey";
+import { Ionicons } from "@expo/vector-icons";
+
+export type DashboardAction = {
+  eyebrow: string;
+  title: string;
+  subtitle: string;
+  icon: keyof typeof Ionicons.glyphMap;
+  actionLabel: string;
+  actionType: "workout" | "nutrition" | "chat" | "progress" | "workout_prescription";
+  payload?: any;
+};
 
 export function useTraineeDashboard() {
   const uid = useCurrentUser();
@@ -152,6 +163,62 @@ export function useTraineeDashboard() {
     });
   }, [metrics, nutritionStats.current, nutritionStats.target, prescribed.length, prescribedMeals.length, profile?.selectedCoachId, workouts.length, dateKey, lastMessage, uid]);
 
+  const primaryAction = useMemo((): DashboardAction => {
+    if (prescribed.length > 0) {
+      return {
+        eyebrow: "Coach assigned",
+        title: prescribed[0].title,
+        subtitle: `${prescribed[0].exercises.length} exercises ready`,
+        icon: "play",
+        actionLabel: "Start session",
+        actionType: "workout_prescription",
+        payload: { prescriptionId: prescribed[0].id }
+      };
+    }
+
+    if (workouts.length === 0) {
+      return {
+        eyebrow: "Training focus",
+        title: "Log today's workout",
+        subtitle: "Keep the streak alive with a fast session log.",
+        icon: "barbell",
+        actionLabel: "Start workout",
+        actionType: "workout"
+      };
+    }
+
+    if (nutritionStats.current < nutritionStats.target * 0.6) {
+      return {
+        eyebrow: "Recovery support",
+        title: "Log nutrition",
+        subtitle: `${nutritionStats.current}/${nutritionStats.target} kcal tracked today`,
+        icon: "nutrition",
+        actionLabel: "Open nutrition",
+        actionType: "nutrition"
+      };
+    }
+
+    if (profile?.assignmentStatus === "assigned") {
+      return {
+        eyebrow: "Accountability",
+        title: "Send a coach update",
+        subtitle: "Share how the session felt while it is fresh.",
+        icon: "chatbubble-ellipses",
+        actionLabel: "Ask coach",
+        actionType: "chat"
+      };
+    }
+
+    return {
+      eyebrow: "Transformation",
+      title: "Review progress",
+      subtitle: "See what your consistency is building.",
+      icon: "stats-chart",
+      actionLabel: "View progress",
+      actionType: "progress"
+    };
+  }, [prescribed, workouts.length, nutritionStats.current, nutritionStats.target, profile?.assignmentStatus]);
+
   return {
     meals,
     workouts,
@@ -166,5 +233,6 @@ export function useTraineeDashboard() {
     workoutStatus,
     greeting,
     todayMission,
+    primaryAction,
   };
 }
