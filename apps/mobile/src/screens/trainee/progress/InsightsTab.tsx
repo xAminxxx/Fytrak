@@ -1,7 +1,7 @@
 import React, { useState } from "react";
-import { ScrollView, StyleSheet, View, Pressable, Dimensions } from "react-native";
+import { ScrollView, StyleSheet, View, Pressable, Dimensions, Text } from "react-native";
 import { colors } from "../../../theme/colors";
-import { spacing } from "../../../theme/tokens";
+import { spacing, radius } from "../../../theme/tokens";
 import { Typography } from "../../../components/Typography";
 import { ConsistencyCalendar } from "../../../components/ConsistencyCalendar";
 import { MetricCard } from "../../../components/MetricCard";
@@ -38,63 +38,60 @@ export function InsightsTab() {
 
   return (
     <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scroll}>
-      <View style={styles.header}>
-        <Typography variant="h2">Insights</Typography>
-        <Typography variant="bodySmall" color="#666">Your journey in data</Typography>
-      </View>
-
-      <View style={{ marginBottom: 20 }}>
-        <ConsistencyCalendar workouts={workouts} />
-      </View>
-
-      <View style={styles.grid}>
-        <MetricCard icon="calendar" label="Weekly Flow" value={weeklyConsistency} unit="Days" color="#60a5fa" />
-        <MetricCard icon="flash" label="Daily Fuel" value={macroAdherence} unit="%" color={colors.primary} />
-        <MetricCard icon="barbell" label="Total Volume" value={totalVolumeLifted > 1000 ? `${(totalVolumeLifted / 1000).toFixed(1)}k` : totalVolumeLifted} unit="kg" color="#f87171" />
-        <MetricCard icon="body" label="BMI Index" value={calculateBMI} unit="" color="#4ade80" />
-      </View>
-
-      <View style={styles.trendCard}>
-        <View style={styles.trendHeader}>
-          <View style={styles.trendTitleRow}>
-            <View style={styles.accentBar} />
-            <Typography variant="h2" style={{ fontSize: 18 }}>Weight Trend</Typography>
-          </View>
-          <View style={{ alignItems: 'flex-end' }}>
-            <Typography variant="metric" style={{ fontSize: 22 }}>{metrics[0]?.weight || '--'} <Typography variant="label" color="#444">kg</Typography></Typography>
-            <Typography variant="label" color="#4ade80" style={{ fontSize: 9 }}>Tracking active</Typography>
-          </View>
+      {/* OVERVIEW METRICS (SAME AS PROFILE) */}
+      <View style={styles.metricsHeader}>
+        <View style={styles.metricsGrid}>
+            <MetricBox label="FLOW" value={weeklyConsistency} unit="Days" />
+            <MetricBox label="FUEL" value={macroAdherence} unit="%" />
+            <MetricBox label="BMI" value={calculateBMI} unit="" />
         </View>
-        <TrendChart
-          data={weightChartData.data}
-          color={colors.primary}
-          yAxisOffset={weightChartData.yAxisOffset}
-          emptyLabel="Insufficient tracking data"
-        />
-        <ChartFilterBar value={chartFilter} onChange={setChartFilter} />
       </View>
 
-      <View style={styles.trendCard}>
-        <View style={styles.trendHeader}>
-          <View style={styles.trendTitleRow}>
-            <View style={[styles.accentBar, { backgroundColor: "#f87171" }]} />
-            <Typography variant="h2" style={{ fontSize: 18 }}>Volume Progression</Typography>
-          </View>
-        </View>
-        <TrendChart
-          data={volumeChartData.data}
-          color="#f87171"
-          emptyLabel="No volume data in this period"
-        />
+      <View style={styles.calendarSection}>
+         <ConsistencyCalendar workouts={workouts} />
       </View>
 
-      <View style={styles.trendCard}>
-        <View style={styles.trendHeader}>
-          <View style={styles.trendTitleRow}>
-            <View style={[styles.accentBar, { backgroundColor: "#a855f7" }]} />
-            <Typography variant="h2" style={{ fontSize: 18 }}>Strength PRs</Typography>
-          </View>
+      {/* WEIGHT TREND - CARDLESS PROFILE STYLE */}
+      <View style={styles.chartSection}>
+        <Text style={styles.eyebrow}>Weight Trend</Text>
+        <View style={styles.valueRow}>
+          <Text style={styles.valueText}>{metrics[0]?.weight || '--'}</Text>
+          <Text style={styles.unitText}>kg</Text>
         </View>
+        <View style={styles.chartFrame}>
+          <TrendChart
+            data={weightChartData.data}
+            color={colors.primary}
+            yAxisOffset={weightChartData.yAxisOffset}
+            height={160}
+          />
+        </View>
+        <View style={styles.filterRow}>
+          <ChartFilterBar value={chartFilter} onChange={setChartFilter} />
+        </View>
+      </View>
+
+      {/* VOLUME TREND - CARDLESS PROFILE STYLE */}
+      <View style={styles.chartSection}>
+        <Text style={styles.eyebrow}>Volume Progression</Text>
+        <View style={styles.valueRow}>
+          <Text style={styles.valueText}>
+            {totalVolumeLifted >= 1000 ? (totalVolumeLifted / 1000).toFixed(1) : totalVolumeLifted}
+          </Text>
+          <Text style={styles.unitText}>{totalVolumeLifted >= 1000 ? "k kg" : "kg"}</Text>
+        </View>
+        <View style={styles.chartFrame}>
+          <TrendChart
+            data={volumeChartData.data}
+            color="#f87171"
+            height={160}
+          />
+        </View>
+      </View>
+
+      {/* STRENGTH PRs - CARDLESS PROFILE STYLE */}
+      <View style={styles.chartSection}>
+        <Text style={styles.eyebrow}>Strength Records</Text>
         <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.prFilterRow}>
           {EXERCISE_LIBRARY.filter(ex => ex.muscleGroup === "Chest" || ex.muscleGroup === "Back" || ex.muscleGroup === "Legs").map(ex => (
             <Pressable
@@ -102,41 +99,39 @@ export function InsightsTab() {
               style={[styles.prFilterBtn, selectedPrId === ex.id && styles.prFilterBtnActive]}
               onPress={() => setSelectedPrId(ex.id)}
             >
-              <Typography variant="label" color={selectedPrId === ex.id ? "#000" : "#8c8c8c"}>
+              <Text style={[styles.prFilterText, selectedPrId === ex.id && styles.prFilterTextActive]}>
                 {ex.name.en.toUpperCase()}
-              </Typography>
+              </Text>
             </Pressable>
           ))}
         </ScrollView>
-        <TrendChart
-          data={prChartData.data}
-          color="#a855f7"
-          yAxisOffset={prChartData.yAxisOffset}
-          emptyLabel="No PR data for this exercise"
-        />
+        <View style={styles.chartFrame}>
+          <TrendChart
+            data={prChartData.data}
+            color="#a855f7"
+            yAxisOffset={prChartData.yAxisOffset}
+            height={160}
+          />
+        </View>
       </View>
 
-      <View style={styles.trendCard}>
-        <View style={styles.trendHeader}>
-          <View style={styles.trendTitleRow}>
-            <View style={[styles.accentBar, { backgroundColor: "#fbbf24" }]} />
-            <Typography variant="h2" style={{ fontSize: 18 }}>Muscle Distribution</Typography>
-          </View>
-        </View>
+      {/* MUSCLE FOCUS - CARDLESS PROFILE STYLE */}
+      <View style={styles.chartSection}>
+        <Text style={styles.eyebrow}>Muscle Focus</Text>
         <View style={styles.distChartBox}>
           <BarChart
             data={muscleDistributionData}
-            barWidth={28}
-            spacing={24}
-            noOfSections={4}
-            barBorderRadius={6}
+            barWidth={32}
+            spacing={20}
+            noOfSections={3}
+            barBorderRadius={8}
             frontColor={colors.primary}
             yAxisThickness={0}
             xAxisThickness={0}
             hideRules
-            width={Dimensions.get("window").width - 110}
-            yAxisTextStyle={{ color: "#777", fontSize: 10 }}
-            xAxisLabelTextStyle={{ color: "#777", fontSize: 10, fontWeight: "800" }}
+            width={Dimensions.get("window").width - 100}
+            yAxisTextStyle={{ color: "rgba(255,255,255,0.25)", fontSize: 10, fontWeight: "700" }}
+            xAxisLabelTextStyle={{ color: "rgba(255,255,255,0.3)", fontSize: 10, fontWeight: "800" }}
             isAnimated
             animationDuration={800}
           />
@@ -146,65 +141,127 @@ export function InsightsTab() {
   );
 }
 
+function MetricBox({ label, value, unit }: { label: string; value: string | number; unit: string }) {
+    return (
+        <View style={styles.metricBox}>
+            <Text style={styles.metricValue}>{value}</Text>
+            <Text style={styles.metricLabel}>{label}</Text>
+            {unit ? <Text style={styles.metricUnit}>{unit}</Text> : null}
+        </View>
+    );
+}
+
 const styles = StyleSheet.create({
   scroll: {
-    padding: spacing.sm,
-    paddingTop: 0,
-    paddingBottom: 80,
+    paddingBottom: 100,
   },
-  header: {
-    marginBottom: 12,
+  metricsHeader: {
+    paddingHorizontal: spacing.lg,
+    paddingTop: spacing.md,
+    paddingBottom: spacing.xl,
   },
-  grid: {
+  metricsGrid: {
     flexDirection: "row",
-    flexWrap: "wrap",
-    gap: 12,
-    marginBottom: 20,
+    gap: spacing.lg,
   },
-  trendCard: {
-    backgroundColor: "#161616",
-    borderRadius: 24,
-    padding: 20,
+  metricBox: {
+    flex: 1,
+    paddingVertical: spacing.md,
+    backgroundColor: "rgba(255,255,255,0.02)",
+    borderRadius: radius.lg,
+    alignItems: "center",
     borderWidth: 1,
-    borderColor: "#2c2c2e",
-    marginBottom: 20,
+    borderColor: "rgba(255,255,255,0.05)",
   },
-  trendHeader: {
+  metricValue: {
+    color: colors.text,
+    fontSize: 22,
+    fontWeight: "900",
+  },
+  metricLabel: {
+    color: colors.textDim,
+    fontSize: 9,
+    fontWeight: "800",
+    textTransform: "uppercase",
+    letterSpacing: 0.8,
+    marginTop: 2,
+  },
+  metricUnit: {
+    color: colors.primary,
+    fontSize: 8,
+    fontWeight: "900",
+    textTransform: "uppercase",
+  },
+  calendarSection: {
+    paddingHorizontal: spacing.lg,
+    marginBottom: spacing.xl,
+  },
+  chartSection: {
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.xl,
+    borderTopWidth: 1,
+    borderTopColor: "rgba(255,255,255,0.05)",
+  },
+  eyebrow: {
+    color: colors.textDim,
+    fontSize: 12,
+    fontWeight: "700",
+    letterSpacing: 0.5,
+  },
+  valueRow: {
     flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    marginBottom: 20,
+    alignItems: "baseline",
+    gap: 4,
+    marginTop: 2,
   },
-  trendTitleRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 10,
+  valueText: {
+    color: colors.text,
+    fontSize: 32,
+    fontWeight: "900",
   },
-  accentBar: {
-    width: 4,
-    height: 18,
-    backgroundColor: colors.primary,
-    borderRadius: 2,
+  unitText: {
+    color: colors.textDim,
+    fontSize: 14,
+    fontWeight: "800",
+    textTransform: "uppercase",
+    letterSpacing: 0.5,
+  },
+  chartFrame: {
+    width: "100%",
+    marginTop: spacing.lg,
+    marginBottom: spacing.sm,
+  },
+  filterRow: {
+    marginTop: spacing.md,
   },
   prFilterRow: {
     flexDirection: "row",
-    marginBottom: 16,
+    marginTop: spacing.md,
+    marginBottom: spacing.sm,
   },
   prFilterBtn: {
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 8,
-    backgroundColor: "#1c1c1e",
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: radius.pill,
+    backgroundColor: "rgba(255,255,255,0.04)",
     marginRight: 8,
     borderWidth: 1,
-    borderColor: "#2c2c2e",
+    borderColor: "rgba(255,255,255,0.08)",
   },
   prFilterBtnActive: {
     backgroundColor: colors.primary,
     borderColor: colors.primary,
   },
+  prFilterText: {
+    color: colors.textDim,
+    fontSize: 10,
+    fontWeight: "900",
+  },
+  prFilterTextActive: {
+    color: "#000",
+  },
   distChartBox: {
-    marginTop: 10,
+    marginTop: spacing.xl,
     alignItems: "center",
   },
 });

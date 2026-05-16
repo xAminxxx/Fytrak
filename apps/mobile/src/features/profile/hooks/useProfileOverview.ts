@@ -12,6 +12,18 @@ export type ProfileChartPoint = {
   label: string;
 };
 
+export type WeeklyChartData = {
+  duration: ProfileChartPoint[];
+  volume: ProfileChartPoint[];
+  workouts: ProfileChartPoint[];
+};
+
+export type WeeklyChartTotals = {
+  duration: number;
+  volume: number;
+  workouts: number;
+};
+
 export type ProfileOverview = {
   profile: UserProfile | null;
   isLoading: boolean;
@@ -20,7 +32,8 @@ export type ProfileOverview = {
   totalSets: number;
   weeklyWorkouts: number;
   streakDays: number;
-  chartData: ProfileChartPoint[];
+  weeklyCharts: WeeklyChartData;
+  weeklyTotals: WeeklyChartTotals;
   completionPercent: number;
 };
 
@@ -82,28 +95,37 @@ function completionPercent(profile: UserProfile | null): number {
   return Math.round((checks.filter(Boolean).length / checks.length) * 100);
 }
 
-function buildWeeklyChart(workouts: WorkoutLog[]): ProfileChartPoint[] {
+function buildWeeklySeries(
+  workouts: WorkoutLog[],
+  selector: (workout: WorkoutLog) => number
+): { data: ProfileChartPoint[]; total: number } {
   const today = new Date();
   const days = Array.from({ length: 7 }, (_, index) => {
     const date = new Date(today.getTime() - (6 - index) * DAY_MS);
     return {
       date,
       key: dayKey(date),
-      label: date.toLocaleDateString("en-US", { weekday: "short" }).slice(0, 1),
+      label: "",
       value: 0,
     };
   });
 
+  const indexByKey = new Map(days.map((day, idx) => [day.key, idx] as const));
   workouts.forEach((log) => {
     const date = workoutDate(log);
     if (!date) return;
-    const match = days.find((day) => day.key === dayKey(date));
-    if (match) {
-      match.value += Math.max(1, Math.round((log.totalVolume || 0) / 100));
-    }
+    const idx = indexByKey.get(dayKey(date));
+    if (idx === undefined) return;
+    const next = days[idx];
+    next.value += Math.max(0, selector(log));
   });
 
-  return days.map(({ label, value }) => ({ label, value }));
+  const total = days.reduce((sum, day) => sum + day.value, 0);
+
+  return {
+    data: days.map(({ label, value }) => ({ label, value: Math.round(value) })),
+    total,
+  };
 }
 
 export function useProfileOverview(): ProfileOverview {
@@ -142,6 +164,10 @@ export function useProfileOverview(): ProfileOverview {
       0
     );
 
+    const durationSeries = buildWeeklySeries(workouts, (log) => log.duration || 0);
+    const volumeSeries = buildWeeklySeries(workouts, (log) => log.totalVolume || 0);
+    const workoutsSeries = buildWeeklySeries(workouts, () => 1);
+
     return {
       profile,
       isLoading,
@@ -150,7 +176,16 @@ export function useProfileOverview(): ProfileOverview {
       totalSets,
       weeklyWorkouts: recentWorkouts.length,
       streakDays: calculateStreak(workouts),
-      chartData: buildWeeklyChart(workouts),
+      weeklyCharts: {
+        duration: durationSeries.data,
+        volume: volumeSeries.data,
+        workouts: workoutsSeries.data,
+      },
+      weeklyTotals: {
+        duration: durationSeries.total,
+        volume: volumeSeries.total,
+        workouts: workoutsSeries.total,
+      },
       completionPercent: completionPercent(profile),
     };
   }, [isLoading, profile, workouts]);

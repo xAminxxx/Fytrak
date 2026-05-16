@@ -1,10 +1,11 @@
-import { PropsWithChildren, ReactNode } from "react";
+import { PropsWithChildren, ReactNode, useState } from "react";
 import { Pressable, StyleProp, StyleSheet, Text, TextStyle, View, ViewStyle, Image } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { colors } from "../theme/colors";
 import { Ionicons } from "@expo/vector-icons";
 import { radius, spacing, touchTarget, typography } from "../theme/tokens";
 import { IconButton } from "./IconButton";
+import { ContextMenu, ContextMenuItem } from "./ContextMenu";
 
 type ScreenShellProps = PropsWithChildren<{
   title: ReactNode;
@@ -18,6 +19,7 @@ type ScreenShellProps = PropsWithChildren<{
   rightActionIcon?: keyof typeof Ionicons.glyphMap;
   rightActionImageUri?: string;
   onRightAction?: () => void;
+  rightActionMenu?: ContextMenuItem[];
 }>;
 
 export function ScreenShell({
@@ -32,8 +34,10 @@ export function ScreenShell({
   rightActionIcon,
   rightActionImageUri,
   onRightAction,
+  rightActionMenu,
   children,
 }: ScreenShellProps) {
+  const [menuVisible, setMenuVisible] = useState(false);
   return (
     <SafeAreaView style={styles.safeArea} edges={["top", "left", "right", "bottom"]}>
       <View style={[styles.container, centered && styles.containerCentered]}>
@@ -47,6 +51,7 @@ export function ScreenShell({
                 style={styles.leftButton}
               />
             )}
+            
             {typeof title === "string" ? (
               <Text 
                 numberOfLines={1} 
@@ -55,30 +60,46 @@ export function ScreenShell({
                 {title.toUpperCase()}
               </Text>
             ) : (
-              <View style={centered && { alignItems: "center", justifyContent: "center" }}>
+              <View style={[!centered && { flex: 1 }, centered && { alignItems: "center", justifyContent: "center" }]}>
                 {title}
               </View>
             )}
-            {(rightActionIcon || rightActionImageUri) && onRightAction && (
+
+            {(rightActionIcon || rightActionImageUri) && (onRightAction || rightActionMenu) && (
               <Pressable
-                onPress={onRightAction}
+                onPress={rightActionMenu ? () => setMenuVisible(true) : onRightAction}
                 accessibilityRole="button"
                 accessibilityLabel={rightActionImageUri ? "Open profile" : "Open action"}
                 hitSlop={8}
-                style={[styles.headerButton, rightActionImageUri && styles.avatarButton]}
+                style={[
+                  styles.headerButton, 
+                  rightActionImageUri && styles.avatarButton,
+                  rightActionMenu && styles.menuButton
+                ]}
               >
-                {rightActionImageUri ? (
-                  <Image source={{ uri: rightActionImageUri }} style={styles.avatarImage} />
-                ) : (
-                  <Ionicons name={rightActionIcon!} size={24} color={colors.primary} />
-                )}
+                <View style={styles.rightActionContent}>
+                  {rightActionImageUri ? (
+                    <Image source={{ uri: rightActionImageUri }} style={styles.avatarImage} />
+                  ) : (
+                    <Ionicons name={rightActionIcon!} size={24} color={colors.primary} />
+                  )}
+                  {rightActionMenu && (
+                    <Ionicons name="chevron-down" size={14} color={colors.primary} style={styles.chevron} />
+                  )}
+                </View>
               </Pressable>
             )}
           </View>
-          {subtitle ? <Text style={[styles.subtitle, subtitleStyle, centered && { textAlign: "center" }]}>{subtitle}</Text> : null}
         </View>
         <View style={[styles.content, centered && styles.contentCentered, contentStyle]}>{children}</View>
       </View>
+      {rightActionMenu && (
+        <ContextMenu
+          visible={menuVisible}
+          onClose={() => setMenuVisible(false)}
+          items={rightActionMenu}
+        />
+      )}
     </SafeAreaView>
   );
 }
@@ -96,8 +117,8 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   header: {
-    marginTop: spacing.lg,
-    marginBottom: spacing.sm,
+    marginTop: spacing.xs,
+    marginBottom: 0,
   },
   headerTitleRow: {
     flexDirection: "row",
@@ -105,8 +126,8 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   headerButton: {
-    width: touchTarget.comfortable,
-    height: touchTarget.comfortable,
+    width: 36,
+    height: 36,
     borderRadius: radius.pill,
     backgroundColor: colors.surfaceMuted,
     alignItems: "center",
@@ -115,7 +136,9 @@ const styles = StyleSheet.create({
     borderColor: colors.borderSubtle,
   },
   leftButton: {
-    marginRight: spacing.lg,
+    width: 36,
+    height: 36,
+    marginRight: spacing.md,
   },
   avatarButton: {
     borderWidth: 0,
@@ -123,14 +146,29 @@ const styles = StyleSheet.create({
     backgroundColor: "transparent",
   },
   avatarImage: {
-    width: touchTarget.comfortable,
-    height: touchTarget.comfortable,
+    width: 36,
+    height: 36,
     borderRadius: radius.pill,
     borderWidth: 2,
     borderColor: colors.primary,
   },
+  menuButton: {
+    width: "auto",
+    paddingLeft: spacing.xs,
+    paddingRight: spacing.xs,
+    backgroundColor: "transparent",
+    borderWidth: 0,
+  },
+  rightActionContent: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+  },
+  chevron: {
+    marginTop: 0,
+  },
   title: {
-    ...typography.display,
+    ...typography.title,
     color: colors.primary,
     letterSpacing: 1.0,
     paddingRight: spacing.sm,

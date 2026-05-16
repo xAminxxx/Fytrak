@@ -1,10 +1,11 @@
+import { useState } from "react";
 import { Image, Platform, Pressable, StyleSheet, Text, TextInput, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import Svg, { Circle } from "react-native-svg";
 import { colors } from "../../../theme/colors";
 import { radius, spacing, typography } from "../../../theme/tokens";
 import type { UserProfile } from "../../../services/userSession";
-import type { ProfileChartPoint } from "../hooks/useProfileOverview";
+import type { ProfileChartPoint, WeeklyChartData, WeeklyChartTotals } from "../hooks/useProfileOverview";
 import { TrendChart } from "../../../components/TrendChart";
 
 type IconName = keyof typeof Ionicons.glyphMap;
@@ -20,6 +21,7 @@ export function ProfileHero({
   onSaveName,
   onEditName,
   onPickImage,
+  onShareProfile,
 }: {
   profile: UserProfile | null;
   name: string;
@@ -31,22 +33,18 @@ export function ProfileHero({
   onSaveName: () => void;
   onEditName: () => void;
   onPickImage: () => void;
+  onShareProfile?: () => void;
 }) {
   const initials = (profile?.name || "F").slice(0, 1).toUpperCase();
-  const coachStatus = profile?.selectedCoachName ? `Coached by ${profile.selectedCoachName}` : "Independent athlete";
+  const shareDisabled = !onShareProfile;
+  const stats = [
+    { label: "WORKOUTS", value: `${weeklyWorkouts}` },
+    { label: "STREAK", value: `${streakDays}` },
+    { label: "VOLUME", value: formatVolume(totalVolume) },
+  ];
 
   return (
     <View style={styles.hero}>
-      <View style={styles.heroAmbientOne} />
-      <View style={styles.heroAmbientTwo} />
-      <View style={styles.heroHeaderRow}>
-        <Text style={styles.heroEyebrow}>Athlete identity</Text>
-        <View style={styles.liveStatus}>
-          <View style={styles.liveDot} />
-          <Text style={styles.liveText}>{profile?.isPremium ? "Premium" : "Active"}</Text>
-        </View>
-      </View>
-
       <Pressable style={styles.avatarButton} onPress={onPickImage} accessibilityRole="button" accessibilityLabel="Update profile photo">
         <View style={styles.avatarHaloOuter} />
         <View style={styles.avatarHaloInner} />
@@ -57,9 +55,9 @@ export function ProfileHero({
             <Text style={styles.avatarInitial}>{initials}</Text>
           </View>
         )}
-          <View style={styles.cameraBadge}>
-            <Ionicons name="camera" size={14} color={colors.primaryText} />
-          </View>
+        <View style={styles.cameraBadge}>
+          <Ionicons name="camera" size={12} color={colors.primaryText} />
+        </View>
       </Pressable>
 
       <View style={styles.identityBlock}>
@@ -83,34 +81,28 @@ export function ProfileHero({
           </Pressable>
         )}
 
-        <View style={styles.badgeRow}>
-          <View style={styles.roleBadge}>
-            <Text style={styles.roleBadgeText}>{profile?.role === "coach" ? "Coach" : "Athlete"}</Text>
-          </View>
-          <View style={styles.roleBadgeMuted}>
-            <Text style={styles.roleBadgeMutedText}>{profile?.level || "Building base"}</Text>
-          </View>
+        <View style={styles.statsRow}>
+          {stats.map((stat, idx) => (
+            <View key={stat.label} style={styles.statItem}>
+              <Text style={styles.statValue}>{stat.value}</Text>
+              <Text style={styles.statLabel}>{stat.label}</Text>
+              {idx < stats.length - 1 ? <View style={styles.statDivider} /> : null}
+            </View>
+          ))}
         </View>
 
-        <View style={styles.coachPill}>
-          <Ionicons name={profile?.selectedCoachName ? "shield-checkmark" : "person"} size={14} color={colors.primary} />
-          <Text numberOfLines={1} style={styles.coachText}>{coachStatus}</Text>
+        <View style={styles.ctaRow}>
+          <Pressable style={[styles.ctaButton, styles.ctaButtonMuted]} onPress={onEditName}>
+            <Text style={styles.ctaText}>Edit profile</Text>
+          </Pressable>
+          <Pressable
+            style={[styles.ctaButton, shareDisabled && styles.ctaButtonDisabled]}
+            onPress={onShareProfile}
+            disabled={shareDisabled}
+          >
+            <Text style={styles.ctaText}>Share profile</Text>
+          </Pressable>
         </View>
-
-        <View style={styles.embeddedSocialRow}>
-          <SocialAction icon="logo-instagram" label="Instagram" compact />
-          <SocialAction icon="logo-youtube" label="YouTube" compact />
-          <SocialAction icon="logo-tiktok" label="TikTok" compact />
-          <SocialAction icon="link-outline" label="Link" compact />
-        </View>
-      </View>
-
-      <View style={styles.heroProofStrip}>
-        <HeroProof value={`${streakDays}`} label="Streak" />
-        <View style={styles.heroProofDivider} />
-        <HeroProof value={`${weeklyWorkouts}`} label="This week" />
-        <View style={styles.heroProofDivider} />
-        <HeroProof value={formatVolume(totalVolume)} label="Volume" />
       </View>
     </View>
   );
@@ -169,41 +161,43 @@ export function ProfileBioSection({
   onEdit: () => void;
   onSave: () => void;
 }) {
-  const displayBio = bio?.trim() || "No athlete statement yet. Add a short line that captures your goal, discipline, or training identity.";
+  const displayBio = bio?.trim() || "Add bio...";
 
   return (
-    <View style={styles.bioPanel}>
-      <View style={styles.bioHeader}>
-        <View>
-          <Text style={styles.bioEyebrow}>Athlete statement</Text>
-          <Text style={styles.bioTitle}>Your training identity</Text>
-        </View>
-        <Pressable
-          style={({ pressed }) => [styles.bioEditButton, pressed && styles.pressed]}
-          onPress={isEditing ? onSave : onEdit}
-          accessibilityRole="button"
-          accessibilityLabel={isEditing ? "Save bio" : "Edit bio"}
-        >
-          <Text style={styles.bioEditText}>{isEditing ? "Save" : "Edit"}</Text>
-        </Pressable>
-      </View>
-
+    <Pressable
+      style={styles.bioInline}
+      onPress={isEditing ? undefined : onEdit}
+      accessibilityRole="button"
+      accessibilityLabel={isEditing ? "Edit bio" : "Add bio"}
+    >
       {isEditing ? (
-        <TextInput
-          value={value}
-          onChangeText={onChange}
-          onBlur={onSave}
-          autoFocus
-          multiline
-          maxLength={140}
-          placeholder="Example: Building strength, discipline, and a physique I am proud of."
-          placeholderTextColor={colors.textDim}
-          style={styles.bioInput}
-        />
+        <View style={styles.bioEditRow}>
+          <TextInput
+            value={value}
+            onChangeText={onChange}
+            onBlur={onSave}
+            autoFocus
+            multiline
+            maxLength={140}
+            placeholder="Add bio..."
+            placeholderTextColor={colors.textDim}
+            style={styles.bioInlineInput}
+          />
+          <Pressable style={styles.bioSaveButton} onPress={onSave} accessibilityRole="button">
+            <Text style={styles.bioSaveText}>Save</Text>
+          </Pressable>
+        </View>
       ) : (
-        <Text style={[styles.bioText, !bio?.trim() && styles.bioTextEmpty]}>{displayBio}</Text>
+        <View style={styles.bioDisplayRow}>
+          <Text style={[styles.bioInlineText, !bio?.trim() && styles.bioInlinePlaceholder]}>
+            {displayBio}
+          </Text>
+          <View style={styles.bioEditBubble}>
+            <Ionicons name="create-outline" size={12} color={colors.primary} />
+          </View>
+        </View>
       )}
-    </View>
+    </Pressable>
   );
 }
 
@@ -219,40 +213,77 @@ export function ProfileSocialBar() {
 }
 
 export function ProfileProgressPanel({
-  chartData,
-  completionPercent,
-  goal,
+  weeklyCharts,
+  weeklyTotals,
 }: {
-  chartData: ProfileChartPoint[];
-  completionPercent: number;
-  goal?: string;
+  weeklyCharts: WeeklyChartData;
+  weeklyTotals: WeeklyChartTotals;
 }) {
+  const [activeMetric, setActiveMetric] = useState<"duration" | "volume" | "workouts">("duration");
+  const configs = {
+    duration: {
+      label: "Duration",
+      icon: "time-outline" as IconName,
+      unit: "min",
+      axisSuffix: "min",
+    },
+    volume: {
+      label: "Volume",
+      icon: "barbell-outline" as IconName,
+      unit: "kg",
+      axisSuffix: "kg",
+    },
+    workouts: {
+      label: "Workouts",
+      icon: "fitness-outline" as IconName,
+      unit: "",
+      axisSuffix: "",
+    },
+  } as const;
+
+  const config = configs[activeMetric];
+  const totalValue = Math.round(weeklyTotals[activeMetric]);
+  const unit = config.unit;
+  const chartData = weeklyCharts[activeMetric];
+
   return (
-    <View style={styles.panel}>
-      <View style={styles.panelHeader}>
-        <View>
-          <Text style={styles.sectionLabel}>Transformation signal</Text>
-          <Text style={styles.panelTitle}>Training momentum</Text>
-        </View>
-        <View style={styles.completionPill}>
-          <Text style={styles.completionText}>{completionPercent}% profile</Text>
-        </View>
+    <View style={styles.weeklyChart}>
+      <Text style={styles.weeklyEyebrow}>This week</Text>
+      <View style={styles.weeklyValueRow}>
+        <Text style={styles.weeklyValue}>{totalValue}</Text>
+        {unit ? <Text style={styles.weeklyUnit}>{unit}</Text> : null}
       </View>
 
-      <View style={styles.completionTrack}>
-        <View style={[styles.completionBar, { width: `${completionPercent}%` }]} />
+      <View style={styles.weeklyChartFrame}>
+        <TrendChart
+          data={chartData}
+          color={colors.primary}
+          height={140}
+          emptyLabel="Log workouts to start the signal"
+          yAxisLabelSuffix={config.axisSuffix || undefined}
+          variant="capture"
+        />
       </View>
 
-      <TrendChart data={chartData} color={colors.primary} height={128} emptyLabel="Log workouts to build your training signal" />
-
-      <View style={styles.goalRow}>
-        <View style={styles.goalIcon}>
-          <Ionicons name="flag" size={18} color={colors.primary} />
-        </View>
-        <View style={styles.goalTextBlock}>
-          <Text style={styles.goalLabel}>Current goal</Text>
-          <Text numberOfLines={2} style={styles.goalValue}>{formatGoal(goal)}</Text>
-        </View>
+      <View style={styles.metricToggleRow}>
+        {(Object.keys(configs) as Array<keyof typeof configs>).map((key) => {
+          const item = configs[key];
+          const isActive = activeMetric === key;
+          return (
+            <Pressable
+              key={item.label}
+              style={[styles.metricToggle, isActive && styles.metricToggleActive]}
+              onPress={() => setActiveMetric(key)}
+            >
+              <Ionicons
+                name={item.icon}
+                size={12}
+                color={isActive ? colors.primary : colors.textDim}
+              />
+              <Text style={[styles.metricToggleText, isActive && styles.metricToggleTextActive]}>{item.label}</Text>
+            </Pressable>
+          );
+        })}
       </View>
     </View>
   );
@@ -265,10 +296,8 @@ export function ProfileNextMove({
   profile: UserProfile | null;
   completionPercent: number;
 }) {
-  const title = completionPercent < 100 ? "Complete your athlete profile" : "Keep the streak alive";
-  const body = completionPercent < 100
-    ? "A complete profile gives your coach better context and makes Fytrak feel more personal."
-    : "Your profile foundation is strong. Use the next workout to reinforce the transformation loop.";
+  const title = "Complete your athlete profile";
+  const body = "A complete profile gives your coach better context and makes Fytrak feel more personal.";
 
   return (
     <View style={styles.nextMove}>
@@ -286,32 +315,19 @@ export function ProfileNextMove({
 
 export function ProfileAccountPanel({
   profile,
-  onPickImage,
-  onEditName,
   onLogout,
 }: {
   profile: UserProfile | null;
-  onPickImage: () => void;
-  onEditName: () => void;
   onLogout: () => void;
 }) {
   return (
-    <View style={styles.accountPanel}>
-      <ActionRow icon="person-circle-outline" title="Edit identity" subtitle="Name and profile photo" onPress={onEditName} />
-      <ActionRow icon="image-outline" title="Update photo" subtitle="Keep your transformation identity current" onPress={onPickImage} />
-      <ActionRow
-        icon="shield-checkmark-outline"
-        title="Coach status"
-        subtitle={profile?.selectedCoachName ? `Connected to ${profile.selectedCoachName}` : "No coach connected yet"}
-      />
-      <Pressable style={[styles.actionRow, styles.logoutRow]} onPress={onLogout}>
-        <View style={[styles.actionIcon, styles.logoutIcon]}>
-          <Ionicons name="log-out-outline" size={20} color={colors.danger} />
-        </View>
-        <View style={styles.actionCopy}>
-          <Text style={[styles.actionTitle, styles.logoutText]}>Sign out</Text>
-          <Text style={styles.actionSubtitle}>Close this Fytrak session</Text>
-        </View>
+    <View style={styles.logoutContainer}>
+      <Pressable 
+        style={({ pressed }) => [styles.logoutButton, pressed && styles.pressed]} 
+        onPress={onLogout}
+      >
+        <Ionicons name="log-out-outline" size={20} color={colors.danger} />
+        <Text style={styles.logoutButtonText}>Sign out</Text>
       </Pressable>
     </View>
   );
@@ -359,14 +375,7 @@ function MiniSignal({ value, label }: { value: string; label: string }) {
   );
 }
 
-function HeroProof({ value, label }: { value: string; label: string }) {
-  return (
-    <View style={styles.heroProof}>
-      <Text style={styles.heroProofValue}>{value}</Text>
-      <Text style={styles.heroProofLabel}>{label}</Text>
-    </View>
-  );
-}
+
 
 function SocialAction({ icon, label, compact }: { icon: IconName; label: string; compact?: boolean }) {
   return (
@@ -411,112 +420,59 @@ const styles = StyleSheet.create({
     position: "relative",
     alignItems: "center",
     paddingHorizontal: spacing.lg,
-    paddingTop: spacing.md,
-    paddingBottom: spacing.lg,
-    borderRadius: 32,
-    backgroundColor: colors.surfaceMuted,
-    borderWidth: 1,
-    borderColor: "#2c2c24",
-    overflow: "hidden",
+    paddingTop: spacing.lg,
+    paddingBottom: spacing.xl,
+    borderRadius: 0,
+    backgroundColor: "transparent",
+    borderWidth: 0,
+    borderColor: "transparent",
+    overflow: "visible",
     ...Platform.select({
       ios: {
         shadowColor: "#000",
         shadowOffset: { width: 0, height: 16 },
-        shadowOpacity: 0.22,
-        shadowRadius: 22,
+        shadowOpacity: 0,
+        shadowRadius: 0,
       },
       android: {
-        elevation: 8,
+        elevation: 0,
       },
     }),
   },
-  heroAmbientOne: {
-    position: "absolute",
-    top: -72,
-    width: 220,
-    height: 220,
-    borderRadius: 110,
-    backgroundColor: colors.primary,
-    opacity: 0.08,
-  },
-  heroAmbientTwo: {
-    position: "absolute",
-    right: -80,
-    bottom: -90,
-    width: 210,
-    height: 210,
-    borderRadius: 105,
-    backgroundColor: colors.info,
-    opacity: 0.05,
-  },
-  heroHeaderRow: {
-    width: "100%",
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    marginBottom: spacing.md,
-  },
-  heroEyebrow: {
-    ...typography.label,
-    color: colors.textDim,
-  },
-  liveStatus: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: spacing.sm,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
-    borderRadius: radius.pill,
-    backgroundColor: "rgba(255,255,255,0.04)",
-    borderWidth: 1,
-    borderColor: colors.borderSubtle,
-  },
-  liveDot: {
-    width: 7,
-    height: 7,
-    borderRadius: 4,
-    backgroundColor: colors.success,
-  },
-  liveText: {
-    color: colors.textSecondary,
-    fontSize: 11,
-    fontWeight: "800",
-    textTransform: "uppercase",
-  },
   avatarButton: {
     position: "relative",
-    width: 86,
-    height: 86,
+    width: 92,
+    height: 92,
     borderRadius: radius.pill,
-    marginBottom: spacing.lg,
+    marginBottom: spacing.md,
     alignItems: "center",
     justifyContent: "center",
   },
   avatarHaloOuter: {
     position: "absolute",
-    width: 112,
-    height: 112,
-    borderRadius: 56,
+    width: 118,
+    height: 118,
+    borderRadius: 59,
     borderWidth: 1,
-    borderColor: "rgba(255,204,0,0.18)",
+    borderColor: colors.borderSubtle,
   },
   avatarHaloInner: {
     position: "absolute",
-    width: 98,
-    height: 98,
-    borderRadius: 49,
-    backgroundColor: "rgba(255,204,0,0.07)",
+    width: 104,
+    height: 104,
+    borderRadius: 52,
+    backgroundColor: colors.bgDark,
   },
   avatarImage: {
-    width: 86,
-    height: 86,
+    width: 92,
+    height: 92,
     borderRadius: radius.pill,
     borderWidth: 2,
     borderColor: colors.primary,
   },
   avatarFallback: {
-    width: 86,
-    height: 86,
+    width: 92,
+    height: 92,
     borderRadius: radius.pill,
     alignItems: "center",
     justifyContent: "center",
@@ -533,44 +489,18 @@ const styles = StyleSheet.create({
     position: "absolute",
     right: 2,
     bottom: 2,
-    width: 30,
-    height: 30,
+    width: 26,
+    height: 26,
     borderRadius: radius.pill,
     alignItems: "center",
     justifyContent: "center",
     backgroundColor: colors.primary,
-    borderWidth: 3,
+    borderWidth: 2,
     borderColor: colors.surfaceMuted,
   },
   identityBlock: {
     width: "100%",
     alignItems: "center",
-  },
-  badgeRow: {
-    flexDirection: "row",
-    gap: spacing.sm,
-    marginTop: spacing.md,
-    justifyContent: "center",
-  },
-  roleBadge: {
-    backgroundColor: colors.primary,
-    borderRadius: radius.pill,
-    paddingHorizontal: spacing.sm,
-    paddingVertical: spacing.xs,
-  },
-  roleBadgeText: {
-    ...typography.label,
-    color: colors.primaryText,
-  },
-  roleBadgeMuted: {
-    backgroundColor: colors.surfaceRaised,
-    borderRadius: radius.pill,
-    paddingHorizontal: spacing.sm,
-    paddingVertical: spacing.xs,
-  },
-  roleBadgeMutedText: {
-    ...typography.label,
-    color: colors.textMuted,
   },
   nameRow: {
     flexDirection: "row",
@@ -580,16 +510,16 @@ const styles = StyleSheet.create({
   },
   nameText: {
     color: colors.text,
-    fontSize: 25,
-    lineHeight: 31,
+    fontSize: 22,
+    lineHeight: 28,
     fontWeight: "900",
     textAlign: "center",
     maxWidth: 245,
   },
   nameInput: {
     color: colors.text,
-    fontSize: 25,
-    lineHeight: 31,
+    fontSize: 22,
+    lineHeight: 28,
     fontWeight: "900",
     borderBottomWidth: 1,
     borderBottomColor: colors.primary,
@@ -605,129 +535,133 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     backgroundColor: colors.primaryMuted,
   },
-  coachText: {
-    color: colors.textMuted,
-    ...typography.bodySmall,
-    flexShrink: 1,
-  },
-  coachPill: {
-    marginTop: spacing.md,
-    maxWidth: "100%",
+  statsRow: {
+    width: "100%",
     flexDirection: "row",
+    justifyContent: "space-between",
     alignItems: "center",
-    gap: spacing.sm,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
+    marginTop: spacing.lg,
+  },
+  statItem: {
+    flex: 1,
+    alignItems: "center",
+    gap: spacing.xs,
+  },
+  statValue: {
+    color: colors.text,
+    fontSize: 16,
+    fontWeight: "900",
+  },
+  statLabel: {
+    color: colors.textDim,
+    fontSize: 9,
+    fontWeight: "800",
+    textTransform: "uppercase",
+    letterSpacing: 0.8,
+  },
+  statDivider: {
+    position: "absolute",
+    right: 0,
+    top: 4,
+    bottom: 4,
+    width: 1,
+    backgroundColor: colors.borderSubtle,
+  },
+  ctaRow: {
+    width: "100%",
+    flexDirection: "row",
+    gap: spacing.md,
+    marginTop: spacing.lg,
+  },
+  ctaButton: {
+    flex: 1,
     borderRadius: radius.pill,
-    backgroundColor: colors.bg,
+    paddingVertical: spacing.sm,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: colors.surfaceRaised,
     borderWidth: 1,
     borderColor: colors.borderSubtle,
   },
-  embeddedSocialRow: {
-    flexDirection: "row",
-    gap: spacing.sm,
-    marginTop: spacing.lg,
+  ctaButtonMuted: {
+    backgroundColor: colors.bg,
   },
-  heroProofStrip: {
+  ctaButtonDisabled: {
+    opacity: 0.6,
+  },
+  ctaText: {
+    color: colors.textSecondary,
+    fontSize: 12,
+    fontWeight: "800",
+  },
+  bioInline: {
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.sm,
+  },
+  bioInlineText: {
+    color: colors.textSecondary,
+    fontSize: 13,
+    lineHeight: 18,
+    fontWeight: "600",
+    textAlign: "center",
+  },
+  bioInlinePlaceholder: {
+    color: colors.textDim,
+    fontSize: 12,
+    fontWeight: "700",
+  },
+  bioDisplayRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: spacing.xs,
+  },
+  bioEditBubble: {
+    width: 24,
+    height: 24,
+    borderRadius: radius.pill,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: colors.primaryMuted,
+  },
+  bioEditRow: {
     width: "100%",
     flexDirection: "row",
     alignItems: "center",
-    marginTop: spacing.lg,
-    paddingTop: spacing.lg,
-    borderTopWidth: 1,
-    borderTopColor: colors.borderSubtle,
+    gap: spacing.sm,
   },
-  heroProof: {
+  bioInlineInput: {
     flex: 1,
-    alignItems: "center",
-  },
-  heroProofValue: {
+    minHeight: 36,
     color: colors.text,
-    fontSize: 19,
-    lineHeight: 23,
-    fontWeight: "900",
+    fontSize: 13,
+    lineHeight: 18,
+    fontWeight: "600",
+    paddingVertical: 0,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.borderSubtle,
+    textAlign: "center",
   },
-  heroProofLabel: {
-    color: colors.textDim,
-    fontSize: 10,
-    lineHeight: 13,
-    fontWeight: "900",
-    textTransform: "uppercase",
-  },
-  heroProofDivider: {
-    width: 1,
-    height: 30,
-    backgroundColor: colors.borderSubtle,
-  },
-  bioPanel: {
-    padding: spacing.lg,
-    borderRadius: 28,
-    backgroundColor: colors.surfaceMuted,
-    borderWidth: 1,
-    borderColor: colors.borderSubtle,
-  },
-  bioHeader: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "flex-start",
-    gap: spacing.md,
-    marginBottom: spacing.md,
-  },
-  bioEyebrow: {
-    ...typography.label,
-    color: colors.primary,
-  },
-  bioTitle: {
-    marginTop: spacing.xs,
-    color: colors.text,
-    fontSize: 17,
-    lineHeight: 22,
-    fontWeight: "900",
-  },
-  bioEditButton: {
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
+  bioSaveButton: {
+    paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.xs,
     borderRadius: radius.pill,
-    backgroundColor: colors.bg,
-    borderWidth: 1,
-    borderColor: colors.borderSubtle,
+    backgroundColor: colors.primaryMuted,
   },
-  bioEditText: {
+  bioSaveText: {
     color: colors.primary,
-    fontSize: 12,
+    fontSize: 11,
     fontWeight: "900",
     textTransform: "uppercase",
-  },
-  bioText: {
-    color: colors.textSecondary,
-    fontSize: 14,
-    lineHeight: 21,
-    fontWeight: "600",
-  },
-  bioTextEmpty: {
-    color: colors.textMuted,
-  },
-  bioInput: {
-    minHeight: 84,
-    color: colors.text,
-    fontSize: 14,
-    lineHeight: 21,
-    fontWeight: "600",
-    padding: spacing.md,
-    borderRadius: radius.lg,
-    backgroundColor: colors.bg,
-    borderWidth: 1,
-    borderColor: colors.borderSubtle,
-    textAlignVertical: "top",
   },
   momentumSurface: {
     flexDirection: "row",
     alignItems: "center",
     gap: spacing.lg,
-    borderRadius: 30,
-    backgroundColor: colors.surfaceMuted,
-    borderWidth: 1,
-    borderColor: colors.borderSubtle,
+    borderRadius: 0,
+    backgroundColor: "transparent",
+    borderWidth: 0,
+    borderColor: "transparent",
     padding: spacing.lg,
   },
   momentumHero: {
@@ -826,90 +760,87 @@ const styles = StyleSheet.create({
     opacity: 0.72,
     transform: [{ scale: 0.98 }],
   },
-  panel: {
-    borderRadius: 30,
-    backgroundColor: colors.surfaceMuted,
-    borderWidth: 1,
-    borderColor: colors.borderSubtle,
-    padding: spacing.lg,
-    overflow: "hidden",
-  },
-  panelHeader: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "flex-start",
-    marginBottom: spacing.md,
-  },
-  completionTrack: {
-    height: 6,
-    borderRadius: radius.pill,
-    backgroundColor: colors.bg,
-    overflow: "hidden",
-    marginBottom: spacing.md,
-  },
-  completionBar: {
-    height: "100%",
-    borderRadius: radius.pill,
-    backgroundColor: colors.primary,
-  },
   sectionLabel: {
     ...typography.label,
     color: colors.primary,
   },
-  panelTitle: {
-    marginTop: spacing.xs,
-    color: colors.text,
-    ...typography.heading,
+  weeklyChart: {
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.md,
+    alignItems: "flex-start",
   },
-  completionPill: {
-    borderRadius: radius.pill,
-    backgroundColor: colors.primaryMuted,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
-  },
-  completionText: {
-    color: colors.primary,
+  weeklyEyebrow: {
+    color: colors.textDim,
     fontSize: 11,
+    fontWeight: "700",
+  },
+  weeklyValueRow: {
+    flexDirection: "row",
+    alignItems: "baseline",
+    gap: 0,
+    marginTop: 2,
+  },
+  weeklyValue: {
+    color: colors.text,
+    fontSize: 24,
     fontWeight: "900",
   },
-  goalRow: {
-    marginTop: spacing.lg,
+  weeklyUnit: {
+    color: colors.textDim,
+    fontSize: 12,
+    fontWeight: "800",
+    letterSpacing: 0.6,
+    textTransform: "uppercase",
+  },
+  weeklyChartFrame: {
+    width: "100%",
+    marginTop: spacing.md,
+    marginBottom: spacing.sm,
+    position: "relative",
+  },
+  metricToggleRow: {
+    width: "100%",
     flexDirection: "row",
     alignItems: "center",
-    padding: spacing.md,
-    borderRadius: radius.lg,
-    backgroundColor: colors.bg,
+    justifyContent: "space-between",
+    paddingVertical: 6,
+    paddingHorizontal: 6,
+    borderRadius: radius.pill,
+    borderWidth: 1,
+    borderColor: colors.borderSubtle,
+    backgroundColor: colors.bgDark,
   },
-  goalIcon: {
-    width: 40,
-    height: 40,
-    borderRadius: radius.md,
+  metricToggle: {
+    flex: 1,
+    flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
+    gap: 6,
+    paddingVertical: 6,
+    borderRadius: radius.pill,
+  },
+  metricToggleActive: {
+    borderWidth: 1,
+    borderColor: colors.primary,
     backgroundColor: colors.primaryMuted,
   },
-  goalTextBlock: {
-    flex: 1,
-    marginLeft: spacing.md,
-  },
-  goalLabel: {
-    ...typography.label,
+  metricToggleText: {
     color: colors.textDim,
+    fontSize: 10,
+    fontWeight: "800",
   },
-  goalValue: {
-    marginTop: spacing.xs,
-    color: colors.text,
-    ...typography.body,
+  metricToggleTextActive: {
+    color: colors.primary,
   },
   nextMove: {
     flexDirection: "row",
     alignItems: "center",
     gap: spacing.md,
-    borderRadius: 30,
+    borderRadius: 0,
     padding: spacing.md,
-    backgroundColor: colors.surfaceMuted,
-    borderWidth: 1,
-    borderColor: colors.primaryMuted,
+    backgroundColor: "transparent",
+    borderWidth: 0,
+    borderColor: "transparent",
   },
   nextMoveIcon: {
     width: 38,
@@ -931,12 +862,29 @@ const styles = StyleSheet.create({
     color: colors.textMuted,
     ...typography.bodySmall,
   },
-  accountPanel: {
-    borderRadius: 30,
-    overflow: "hidden",
-    backgroundColor: colors.surfaceMuted,
-    borderWidth: 1,
-    borderColor: colors.borderSubtle,
+  logoutContainer: {
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.xl,
+    alignItems: "center",
+  },
+  logoutButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: spacing.sm,
+    paddingVertical: 12,
+    paddingHorizontal: 40,
+    borderRadius: radius.pill,
+    borderWidth: 1.5,
+    borderColor: colors.danger,
+    backgroundColor: "transparent",
+  },
+  logoutButtonText: {
+    color: colors.danger,
+    fontSize: 14,
+    fontWeight: "900",
+    letterSpacing: 2.5,
+    textTransform: "uppercase",
   },
   actionRow: {
     minHeight: 62,

@@ -16,6 +16,7 @@ import { DashboardActionCard } from "../../components/DashboardActionCard";
 import { TodayMissionCard } from "../../features/retention/components/TodayMissionCard";
 import type { TodayMissionItemId } from "../../features/retention/todayMission";
 import { updateCheckInTaskStatus } from "../../services/userSession";
+import { logOut } from "../../services/auth";
 import { ToastService } from "../../components/Toast";
 import { toSafeDate } from "../../utils/chartFilters";
 import { auth } from "../../config/firebase";
@@ -115,13 +116,33 @@ export function TraineeHomeScreen({ onQuickAskCoach }: TraineeHomeScreenProps) {
     }
   };
 
+  const handleLogout = () => {
+    ToastService.confirm({
+      title: "Sign out",
+      message: "Are you sure you want to leave Fytrak?",
+      confirmLabel: "Sign out",
+      destructive: true,
+      onConfirm: async () => {
+        try {
+          await logOut();
+          ToastService.info("Signed out", "Your Fytrak session has been closed.");
+        } catch (error) {
+          ToastService.error("Sign out failed", "Please try again.");
+        }
+      },
+    });
+  };
+
   return (
     <ScreenShell
       title="FYTRAK"
       contentStyle={styles.shellContent}
       rightActionIcon={!profile?.profileImageUrl ? "person-circle-outline" : undefined}
       rightActionImageUri={profile?.profileImageUrl}
-      onRightAction={() => navigation.navigate("Profile")}
+      rightActionMenu={[
+        { label: "Profile", icon: "person-outline", onPress: () => navigation.navigate("Profile") },
+        { label: "Sign out", icon: "log-out-outline", onPress: handleLogout, destructive: true },
+      ]}
     >
       {isLoading ? (
         <View style={styles.loader}>
@@ -173,6 +194,40 @@ export function TraineeHomeScreen({ onQuickAskCoach }: TraineeHomeScreenProps) {
 
             {/* PRIMARY CONTEXTUAL ACTION */}
             <DashboardActionCard action={primaryAction} onPress={handlePrimaryAction} />
+
+            {/* TODAY STATS SUMMARY */}
+            <View style={styles.card}>
+              <View style={styles.cardHeader}>
+                <Ionicons name="stats-chart" size={18} color={colors.primary} />
+                <Typography variant="h2">Today Status</Typography>
+              </View>
+              
+              <View style={styles.statsGrid}>
+                <View style={styles.ringContainer}>
+                  <MacroRing 
+                    current={nutritionStats.current} 
+                    target={nutritionStats.target} 
+                    label="Nutrition Intake" 
+                  />
+                  <View style={styles.ringSideStats}>
+                    <View style={styles.sideStatBox}>
+                       <Ionicons name="body-outline" size={16} color={colors.textFaint} />
+                       <View>
+                         <Typography variant="label" color={colors.textFaint} style={{ fontSize: 10 }}>BODY WEIGHT</Typography>
+                         <Typography variant="h2" style={{ fontSize: 16 }}>{metrics[0]?.weight || profile?.weight || "--"} <Typography style={{ fontSize: 10, color: colors.textDim }}>kg</Typography></Typography>
+                       </View>
+                    </View>
+                    <View style={styles.sideStatBox}>
+                       <Ionicons name={workouts.length > 0 ? "checkmark-circle" : "time-outline"} size={16} color={workouts.length > 0 ? colors.success : colors.textFaint} />
+                       <View>
+                         <Typography variant="label" color={colors.textFaint} style={{ fontSize: 10 }}>WORKOUT</Typography>
+                         <Typography variant="h2" style={{ fontSize: 16, color: workouts.length > 0 ? colors.success : colors.text }}>{workoutStatus}</Typography>
+                       </View>
+                    </View>
+                  </View>
+                </View>
+              </View>
+            </View>
 
             {/* TODAY MISSION TRACKER */}
             <TodayMissionCard mission={todayMission} onAction={handleMissionAction} />
@@ -226,39 +281,7 @@ export function TraineeHomeScreen({ onQuickAskCoach }: TraineeHomeScreenProps) {
               </View>
             )}
 
-            {/* TODAY STATS SUMMARY */}
-            <View style={styles.card}>
-              <View style={styles.cardHeader}>
-                <Ionicons name="stats-chart" size={18} color={colors.primary} />
-                <Typography variant="h2">Today Status</Typography>
-              </View>
-              
-              <View style={styles.statsGrid}>
-                <View style={styles.ringContainer}>
-                  <MacroRing 
-                    current={nutritionStats.current} 
-                    target={nutritionStats.target} 
-                    label="Nutrition Intake" 
-                  />
-                  <View style={styles.ringSideStats}>
-                    <View style={styles.sideStatBox}>
-                       <Ionicons name="body-outline" size={16} color={colors.textFaint} />
-                       <View>
-                         <Typography variant="label" color={colors.textFaint} style={{ fontSize: 10 }}>BODY WEIGHT</Typography>
-                         <Typography variant="h2" style={{ fontSize: 16 }}>{metrics[0]?.weight || profile?.weight || "--"} <Typography style={{ fontSize: 10, color: colors.textDim }}>kg</Typography></Typography>
-                       </View>
-                    </View>
-                    <View style={styles.sideStatBox}>
-                       <Ionicons name={workouts.length > 0 ? "checkmark-circle" : "time-outline"} size={16} color={workouts.length > 0 ? colors.success : colors.textFaint} />
-                       <View>
-                         <Typography variant="label" color={colors.textFaint} style={{ fontSize: 10 }}>WORKOUT</Typography>
-                         <Typography variant="h2" style={{ fontSize: 16, color: workouts.length > 0 ? colors.success : colors.text }}>{workoutStatus}</Typography>
-                       </View>
-                    </View>
-                  </View>
-                </View>
-              </View>
-            </View>
+
 
             {/* ACTIVE PROGRAM & COACH PLANS */}
             <CoachPlansSection 

@@ -13,7 +13,6 @@ export type TodayMission = {
   completionPercent: number;
   completedCount: number;
   totalCount: number;
-  headline: string;
   items: TodayMissionItem[];
 };
 
@@ -37,7 +36,7 @@ export function buildTodayMission(input: BuildTodayMissionInput): TodayMission {
     {
       id: "workout",
       title: input.hasPendingWorkoutPlan ? "Complete coach session" : "Log today's workout",
-      subtitle: input.hasWorkoutToday ? "Training complete" : input.hasPendingWorkoutPlan ? "Coach plan is waiting" : "One logged session keeps the chain alive",
+      subtitle: input.hasWorkoutToday ? "Training complete" : input.hasPendingWorkoutPlan ? "Coach plan is waiting" : "keep your streak alive",
       icon: input.hasWorkoutToday ? "checkmark-circle" : "barbell-outline",
       isComplete: input.hasWorkoutToday,
       priority: input.hasPendingWorkoutPlan ? 1 : 2,
@@ -77,16 +76,10 @@ export function buildTodayMission(input: BuildTodayMissionInput): TodayMission {
   const totalCount = items.length;
   const completionPercent = Math.round((completedCount / totalCount) * 100);
 
-  let headline = "Win today";
-  if (completionPercent === 100) headline = "Mission complete";
-  else if (completionPercent >= 50) headline = "Strong day in progress";
-  else if (input.hasPendingWorkoutPlan || input.hasPendingMealPlan) headline = "Coach plan waiting";
-
   return {
     completionPercent,
     completedCount,
     totalCount,
-    headline,
     items,
   };
 }

@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { ActivityIndicator, Animated, StyleSheet, View } from "react-native";
+import { useNavigation } from "@react-navigation/native";
 import * as ImagePicker from "expo-image-picker";
 import { ScreenShell } from "../../components/ScreenShell";
 import { ToastService } from "../../components/Toast";
@@ -14,7 +15,6 @@ import {
   ProfileAccountPanel,
   ProfileBioSection,
   ProfileHero,
-  ProfileNextMove,
   ProfileProgressPanel,
 } from "../../features/profile/components/ProfileSections";
 
@@ -25,7 +25,8 @@ export function ProfileScreen({ session }: { session: SessionState }) {
     totalVolume,
     weeklyWorkouts,
     streakDays,
-    chartData,
+    weeklyCharts,
+    weeklyTotals,
     completionPercent,
   } = useProfileOverview();
 
@@ -35,6 +36,7 @@ export function ProfileScreen({ session }: { session: SessionState }) {
   const [tempBio, setTempBio] = useState("");
   const [isUploadingImage, setIsUploadingImage] = useState(false);
   const fadeAnim = useRef(new Animated.Value(0)).current;
+  const navigation = useNavigation();
 
   useEffect(() => {
     setTempName(profile?.name || auth.currentUser?.displayName || "");
@@ -129,12 +131,16 @@ export function ProfileScreen({ session }: { session: SessionState }) {
     }
   };
 
+  const handleShareProfile = () => {
+    ToastService.info("Share profile", "Share profile is coming soon.");
+  };
+
   return (
     <ScreenShell
       title="PROFILE"
       subtitle={session.selectedCoachName ? "Identity, progress and coach connection" : "Identity, progress and account control"}
-      titleStyle={styles.screenTitle}
-      subtitleStyle={styles.screenSubtitle}
+      leftActionIcon="arrow-back"
+      onLeftAction={() => navigation.goBack()}
       contentStyle={styles.shellContent}
     >
       {isLoading ? (
@@ -158,6 +164,7 @@ export function ProfileScreen({ session }: { session: SessionState }) {
             onSaveName={() => void handleUpdateName()}
             onEditName={() => setIsEditingName(true)}
             onPickImage={() => void handlePickImage()}
+            onShareProfile={handleShareProfile}
           />
 
           {isUploadingImage ? (
@@ -175,18 +182,13 @@ export function ProfileScreen({ session }: { session: SessionState }) {
             onSave={() => void handleUpdateBio()}
           />
 
-          <ProfileNextMove profile={profile} completionPercent={completionPercent} />
-
           <ProfileProgressPanel
-            chartData={chartData}
-            completionPercent={completionPercent}
-            goal={profile?.goal}
+            weeklyCharts={weeklyCharts}
+            weeklyTotals={weeklyTotals}
           />
 
           <ProfileAccountPanel
             profile={profile}
-            onPickImage={() => void handlePickImage()}
-            onEditName={() => setIsEditingName(true)}
             onLogout={handleLogout}
           />
         </Animated.ScrollView>
@@ -199,14 +201,6 @@ const styles = StyleSheet.create({
   shellContent: {
     paddingBottom: 0,
     marginTop: spacing.md,
-  },
-  screenTitle: {
-    fontSize: 30,
-    lineHeight: 36,
-  },
-  screenSubtitle: {
-    fontSize: 12,
-    lineHeight: 17,
   },
   loader: {
     flex: 1,
