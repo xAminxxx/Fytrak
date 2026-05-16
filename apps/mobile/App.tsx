@@ -5,24 +5,43 @@ import { RootNavigator } from "./src/navigation/RootNavigator";
 import { Toast } from "./src/components/Toast";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 import { useFonts } from 'expo-font';
+import * as Font from 'expo-font';
+import { Ionicons } from '@expo/vector-icons';
 import * as SplashScreenNative from 'expo-splash-screen';
-import { useCallback } from "react";
+import { useCallback, useEffect, useState } from "react";
 
 // Keep the native splash screen visible while we fetch resources
 SplashScreenNative.preventAutoHideAsync();
 
 export default function App() {
-  const [fontsLoaded, fontError] = useFonts({
-    'Adcure': require('./assets/fonts/Adcure-Regular.ttf'),
-  });
+  const [appReady, setAppReady] = useState(false);
+
+  useEffect(() => {
+    async function prepare() {
+      try {
+        // Pre-load fonts, make any API calls you need to do here
+        await Font.loadAsync({
+          'Adcure': require('./assets/fonts/Adcure-Regular.ttf'),
+          ...Ionicons.font,
+        });
+      } catch (e) {
+        console.warn(e);
+      } finally {
+        // Tell the application to render
+        setAppReady(true);
+      }
+    }
+
+    prepare();
+  }, []);
 
   const onLayoutRootView = useCallback(async () => {
-    if (fontsLoaded || fontError) {
+    if (appReady) {
       await SplashScreenNative.hideAsync();
     }
-  }, [fontsLoaded, fontError]);
+  }, [appReady]);
 
-  if (!fontsLoaded && !fontError) {
+  if (!appReady) {
     return null;
   }
 

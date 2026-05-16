@@ -14,40 +14,186 @@ service cloud.firestore {
       return get(/databases/$(database)/documents/users/$(userId));
     }
 
+    function userDocAfter(userId) {
+      return getAfter(/databases/$(database)/documents/users/$(userId));
+    }
+
     function isAssignedCoach(userId) {
-      return isSignedIn() && userDoc(userId).data.selectedCoachId == request.auth.uid;
+      return isSignedIn()
+        && userDoc(userId).data.selectedCoachId == request.auth.uid
+        && userDoc(userId).data.assignmentStatus == "assigned";
     }
 
     function isPublicCoachProfile() {
       return resource.data.role == "coach";
     }
 
+    function changedUserKeys() {
+      return request.resource.data.diff(resource.data).affectedKeys();
+    }
+
+    function ownerCanUpdateProfile() {
+      return changedUserKeys().hasOnly([
+        "name",
+        "bio",
+        "profileImageUrl",
+        "profileCompleted",
+        "profile",
+        "macroTargets",
+        "workoutProfileCompleted",
+        "nutritionProfileCompleted",
+        "updatedAt"
+      ]);
+    }
+
+    function traineeCanUpdateCheckInTask(userId) {
+      return isOwner(userId)
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+          "status",
+          "updatedAt",
+          "completedAt"
+        ])
+        && request.resource.data.status in ["completed", "dismissed"];
+    }
+
+    function isCoachRequestParticipant() {
+      return isSignedIn()
+        && (request.auth.uid == resource.data.traineeId || request.auth.uid == resource.data.coachId);
+    }
+
+    function isThreadParticipant() {
+      return isSignedIn() && request.auth.uid in resource.data.participants;
+    }
+
+    function isMessageParticipant(threadKey) {
+      return isSignedIn()
+        && exists(/databases/$(database)/documents/chatThreads/$(threadKey))
+        && request.auth.uid in get(/databases/$(database)/documents/chatThreads/$(threadKey)).data.participants;
+    }
+
+    function isMessageCreateParticipant(threadKey) {
+      return isSignedIn()
+        && exists(/databases/$(database)/documents/chatThreads/$(threadKey))
+        && request.auth.uid in get(/databases/$(database)/documents/chatThreads/$(threadKey)).data.participants;
+    }
+
     match /users/{userId} {
       allow read: if isOwner(userId) || isAssignedCoach(userId) || isPublicCoachProfile();
       allow create: if isOwner(userId);
-      allow update: if isOwner(userId)
-        || (
-          isAssignedCoach(userId)
-          && request.resource.data.diff(resource.data).changedKeys().hasOnly(["assignmentStatus", "updatedAt"])
-        );
+      allow update: if (
+        (isOwner(userId)
+          && ownerCanUpdateProfile())
+      );
       allow delete: if false;
 
-      match /{subCollection}/{docId} {
+      match /metrics/{docId} {
         allow read: if isOwner(userId) || isAssignedCoach(userId);
-        allow create, update, delete: if isOwner(userId) || isAssignedCoach(userId);
+        allow create, update, delete: if isOwner(userId);
+      }
+
+      match /photos/{docId} {
+        allow read: if isOwner(userId) || isAssignedCoach(userId);
+        allow create, update, delete: if isOwner(userId);
+      }
+
+      match /workouts/{docId} {
+        allow read: if isOwner(userId) || isAssignedCoach(userId);
+        allow create, update, delete: if isOwner(userId);
+      }
+
+      match /meals/{docId} {
+        allow read: if isOwner(userId) || isAssignedCoach(userId);
+        allow create, update, delete: if isOwner(userId);
+      }
+
+      match /water/{docId} {
+        allow read: if isOwner(userId) || isAssignedCoach(userId);
+        allow create, update, delete: if isOwner(userId);
+      }
+
+      match /prescribedWorkouts/{docId} {
+        allow read: if isOwner(userId) || isAssignedCoach(userId);
+        allow create, update: if isOwner(userId) || isAssignedCoach(userId);
+        allow delete: if false;
+      }
+
+      match /prescribed_meals/{docId} {
+        allow read: if isOwner(userId) || isAssignedCoach(userId);
+        allow create, update: if isOwner(userId) || isAssignedCoach(userId);
+        allow delete: if false;
+      }
+
+      match /programs/{docId} {
+        allow read: if isOwner(userId) || isAssignedCoach(userId);
+        allow create, update: if isAssignedCoach(userId);
+        allow delete: if false;
+      }
+
+      match /templates/{docId} {
+        allow read, create, update, delete: if isOwner(userId);
+      }
+
+      match /subscriptionEvents/{docId} {
+        allow read: if isOwner(userId);
+        allow write: if false;
+      }
+
+      match /summaries/{docId} {
+        allow read: if isOwner(userId) || isAssignedCoach(userId);
+        allow create, update: if false;
+        allow delete: if false;
+      }
+
+      match /coachNotes/{docId} {
+        allow read, create, update: if isAssignedCoach(userId);
+        allow delete: if false;
+      }
+
+      match /checkInTasks/{docId} {
+        allow read: if isOwner(userId) || isAssignedCoach(userId);
+        allow create: if isAssignedCoach(userId);
+        allow update: if isAssignedCoach(userId) || traineeCanUpdateCheckInTask(userId);
+        allow delete: if false;
       }
     }
 
-    match /chats/{threadId}/messages/{messageId} {
+    match /coachRequests/{requestId} {
+      allow read: if isCoachRequestParticipant();
+      allow create, update: if false;
+      allow delete: if false;
+    }
+
+    match /auditEvents/{eventId} {
+      allow read: if false;
+      allow create: if false;
+      allow update, delete: if false;
+    }
+
+    match /assignments/{assignmentId} {
       allow read: if isSignedIn()
-        && (
-          request.auth.uid == resource.data.senderId
-          || request.auth.uid == resource.data.receiverId
-          || (resource.data.participants is list && request.auth.uid in resource.data.participants)
+        && (request.auth.uid == resource.data.traineeId || request.auth.uid == resource.data.coachId);
+      allow create, update, delete: if false;
+    }
+
+    match /chatThreads/{threadId} {
+      allow read: if isThreadParticipant();
+      allow create, update, delete: if false;
+    }
+
+    match /chats/{threadId}/messages/{messageId} {
+      allow read: if isMessageParticipant(threadId)
+        || (
+          isSignedIn()
+          && (
+            request.auth.uid == resource.data.senderId
+            || request.auth.uid == resource.data.receiverId
+            || (resource.data.participants is list && request.auth.uid in resource.data.participants)
+          )
         );
-      allow create: if isSignedIn()
+      allow create: if isMessageCreateParticipant(threadId)
         && request.auth.uid == request.resource.data.senderId
         && request.resource.data.receiverId is string
+        && request.resource.data.receiverId in get(/databases/$(database)/documents/chatThreads/$(threadId)).data.participants
         && request.resource.data.threadId == threadId
         && request.resource.data.type in ["text", "image"];
       allow update, delete: if false;
