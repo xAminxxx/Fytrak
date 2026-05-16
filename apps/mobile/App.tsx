@@ -22,7 +22,7 @@ export default function App() {
         // Pre-load fonts, make any API calls you need to do here
         await Font.loadAsync({
           'Adcure': require('./assets/fonts/Adcure-Regular.ttf'),
-          ...Ionicons.font,
+          'Ionicons': require('./assets/fonts/Ionicons.ttf'),
         });
       } catch (e) {
         console.warn(e);
