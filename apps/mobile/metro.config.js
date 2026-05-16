@@ -3,11 +3,19 @@ const { getDefaultConfig } = require('expo/metro-config');
 /** @type {import('expo/metro-config').MetroConfig} */
 const config = getDefaultConfig(__dirname);
 
+// Ensure we don't accidentally overwrite important defaults
+const {
+  resolver: { sourceExtensions, assetExtensions },
+} = config;
+
 config.resolver.sourceExtensions = [
-    'android.js', 'android.tsx', 'android.ts',
-    'ios.js', 'ios.tsx', 'ios.ts',
-    'native.js', 'native.tsx', 'native.ts',
-    'ts', 'tsx', 'js', 'jsx', 'json',
+  ...sourceExtensions,
+  'ts', 'tsx', 'js', 'jsx', 'json',
+];
+
+config.resolver.assetExtensions = [
+  ...assetExtensions,
+  'ttf', 'otf', 'png', 'jpg', 'jpeg', 'svg'
 ];
 
 module.exports = config;
