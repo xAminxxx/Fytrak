@@ -4,7 +4,6 @@ import "./src/i18n";
 import { RootNavigator } from "./src/navigation/RootNavigator";
 import { Toast } from "./src/components/Toast";
 import { SafeAreaProvider } from "react-native-safe-area-context";
-import { useFonts } from 'expo-font';
 import * as Font from 'expo-font';
 import { Ionicons } from '@expo/vector-icons';
 import * as SplashScreenNative from 'expo-splash-screen';
@@ -19,15 +18,20 @@ export default function App() {
   useEffect(() => {
     async function prepare() {
       try {
-        // Pre-load fonts, make any API calls you need to do here
+        // 1. Load custom brand font
         await Font.loadAsync({
           'Adcure': require('./assets/fonts/Adcure-Regular.ttf'),
-          'ionicons': require('./assets/fonts/Ionicons.ttf'),
         });
+
+        // 2. Load Ionicons via the official component method
+        //    This uses the exact asset ID the component expects
+        await Ionicons.loadFont();
+
+        console.log('[App] All fonts loaded successfully');
+        console.log('[App] ionicons loaded:', Font.isLoaded('ionicons'));
       } catch (e) {
-        console.warn(e);
+        console.error('[App] Font loading error:', e);
       } finally {
-        // Tell the application to render
         setAppReady(true);
       }
     }

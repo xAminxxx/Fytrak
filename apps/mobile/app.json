@@ -32,14 +32,10 @@
       "expo-localization",
       "expo-web-browser",
       "@react-native-community/datetimepicker",
-      ["expo-font", {
-        "fonts": [
-          "./assets/fonts/Ionicons.ttf",
-          "./assets/fonts/Adcure-Regular.ttf"
-        ]
-      }],
+      "expo-font",
       "expo-audio",
-      "expo-image-picker"
+      "expo-image-picker",
+      "expo-asset"
     ],
     "extra": {
       "eas": {
