@@ -1,19 +1,22 @@
 import {
-  addDoc,
   collection,
+  doc,
+  getDoc,
   getDocs,
   limit,
   onSnapshot,
   orderBy,
   query,
   serverTimestamp,
+  setDoc,
   Timestamp,
+  where,
 } from "firebase/firestore";
 import { auth, db } from "../config/firebase";
 import type { ChatImage, ChatMessage, ChatMessageType } from "../types/chat";
-import { updateClientSummaryAfterMessage } from "./clientSummaryService";
 
 const chatsCollection = "chats";
+const chatThreadsCollection = "chatThreads";
 
 export const getChatThreadId = (traineeId: string, coachId: string): string => {
   return [traineeId, coachId].sort().join("_");
@@ -51,6 +54,12 @@ export type ChatThreadSummary = {
   lastSenderId: string | null;
 };
 
+export type CoachThreadSummary = ChatThreadSummary & {
+  traineeId: string;
+  coachId: string;
+  unreadByCoach: number;
+};
+
 export const subscribeToChatMessages = (
   threadId: string,
   onChange: (messages: ChatMessage[]) => void,
@@ -76,26 +85,47 @@ export const subscribeToLatestMessage = (
   threadId: string,
   onChange: (summary: ChatThreadSummary | null) => void
 ) => {
-  const q = query(
-    collection(db, chatsCollection, threadId, "messages"),
-    orderBy("createdAt", "desc"),
-    limit(1)
-  );
-
-  return onSnapshot(q, (snapshot) => {
-    if (snapshot.empty) {
+  return onSnapshot(doc(db, chatThreadsCollection, threadId), (snapshot) => {
+    if (!snapshot.exists()) {
       onChange(null);
       return;
     }
-    const docSnap = snapshot.docs[0];
-    const message = parseChatMessage(docSnap.id, docSnap.data());
+    const data = snapshot.data();
     onChange({
       threadId,
-      lastMessageText: message.type === "image" ? "Image" : message.text,
-      lastMessageType: message.type,
-      lastMessageAt: message.createdAt,
-      lastSenderId: message.senderId,
+      lastMessageText: typeof data.lastMessageText === "string" ? data.lastMessageText : "",
+      lastMessageType: data.lastMessageType === "image" ? "image" : "text",
+      lastMessageAt: data.lastMessageAt ? toIsoString(data.lastMessageAt) : null,
+      lastSenderId: typeof data.lastSenderId === "string" ? data.lastSenderId : null,
     });
+  });
+};
+
+export const subscribeToCoachThreadSummaries = (
+  coachId: string,
+  onChange: (summaries: CoachThreadSummary[]) => void
+) => {
+  const q = query(
+    collection(db, chatThreadsCollection),
+    where("participants", "array-contains", coachId),
+    orderBy("lastMessageAt", "desc"),
+    limit(100)
+  );
+
+  return onSnapshot(q, (snapshot) => {
+    onChange(snapshot.docs.map((threadDoc) => {
+      const data = threadDoc.data();
+      return {
+        threadId: typeof data.threadId === "string" ? data.threadId : threadDoc.id,
+        traineeId: typeof data.traineeId === "string" ? data.traineeId : "",
+        coachId: typeof data.coachId === "string" ? data.coachId : "",
+        lastMessageText: typeof data.lastMessageText === "string" ? data.lastMessageText : "",
+        lastMessageType: data.lastMessageType === "image" ? "image" : "text",
+        lastMessageAt: data.lastMessageAt ? toIsoString(data.lastMessageAt) : null,
+        lastSenderId: typeof data.lastSenderId === "string" ? data.lastSenderId : null,
+        unreadByCoach: Number(data.unreadByCoach) || 0,
+      };
+    }));
   });
 };
 
@@ -120,8 +150,9 @@ export const sendChatMessage = async ({
   if (!senderId) throw new Error("You must be signed in to send messages.");
 
   const receiverId = senderId === traineeId ? coachId : traineeId;
+  const messageRef = doc(collection(db, chatsCollection, threadId, "messages"));
 
-  await addDoc(collection(db, chatsCollection, threadId, "messages"), {
+  await setDoc(messageRef, {
     threadId,
     senderId,
     receiverId,
@@ -133,21 +164,21 @@ export const sendChatMessage = async ({
     createdAt: serverTimestamp(),
     readAt: null,
   });
-
-  const summaryText = type === "image" ? "Image" : text;
-  try {
-    await updateClientSummaryAfterMessage({
-      traineeId,
-      senderId,
-      text: summaryText,
-      incrementUnreadForCoach: senderId === traineeId,
-    });
-  } catch (error) {
-    console.error("Failed to update message summary:", error);
-  }
 };
 
 export const fetchLatestThreadMessage = async (threadId: string): Promise<ChatThreadSummary | null> => {
+  const threadSnapshot = await getDoc(doc(db, chatThreadsCollection, threadId));
+  if (threadSnapshot.exists()) {
+    const data = threadSnapshot.data();
+    return {
+      threadId,
+      lastMessageText: typeof data.lastMessageText === "string" ? data.lastMessageText : "",
+      lastMessageType: data.lastMessageType === "image" ? "image" : "text",
+      lastMessageAt: data.lastMessageAt ? toIsoString(data.lastMessageAt) : null,
+      lastSenderId: typeof data.lastSenderId === "string" ? data.lastSenderId : null,
+    };
+  }
+
   const messagesQuery = query(
     collection(db, chatsCollection, threadId, "messages"),
     orderBy("createdAt", "desc"),

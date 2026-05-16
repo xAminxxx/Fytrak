@@ -11,10 +11,11 @@ import {
   query,
   where,
   orderBy,
+  limit,
   serverTimestamp,
 } from "firebase/firestore";
 import { db } from "../config/firebase";
-import { updateClientSummaryAfterWorkout } from "./clientSummaryService";
+import { toLocalDateKey } from "../utils/dateKeys";
 
 import type { WorkoutSetType, WorkoutSet, WorkoutLog, PrescribedWorkout } from "../types/domain";
 export type { WorkoutSetType, WorkoutSet, WorkoutLog, PrescribedWorkout };
@@ -31,16 +32,32 @@ const usersCollection = "users";
 
 export const saveWorkoutLog = async (uid: string, workout: Omit<WorkoutLog, "id">): Promise<void> => {
   const ref = collection(db, usersCollection, uid, "workouts");
-  await addDoc(ref, { ...workout, createdAt: serverTimestamp() });
-  try {
-    await updateClientSummaryAfterWorkout(uid);
-  } catch (error) {
-    console.error("Failed to update workout summary:", error);
-  }
+  await addDoc(ref, {
+    ...workout,
+    date: workout.date || toLocalDateKey(),
+    createdAt: serverTimestamp(),
+  });
 };
 
 export const subscribeToWorkouts = (uid: string, callback: (workouts: WorkoutLog[]) => void) => {
   const q = query(collection(db, usersCollection, uid, "workouts"), orderBy("createdAt", "desc"));
+  return onSnapshot(q, (snapshot) => {
+    const workouts = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as WorkoutLog));
+    callback(workouts);
+  });
+};
+
+export const subscribeToDailyWorkouts = (
+  uid: string,
+  dateKey: string,
+  callback: (workouts: WorkoutLog[]) => void
+) => {
+  const q = query(
+    collection(db, usersCollection, uid, "workouts"),
+    where("date", "==", dateKey),
+    orderBy("createdAt", "desc"),
+    limit(10)
+  );
   return onSnapshot(q, (snapshot) => {
     const workouts = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as WorkoutLog));
     callback(workouts);

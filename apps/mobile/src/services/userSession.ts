@@ -25,3 +25,6 @@ export * from "./programService";
 export * from "./subscriptionService";
 export * from "./chatService";
 export * from "./clientSummaryService";
+export * from "./assignmentService";
+export * from "./auditService";
+export * from "./coachOperationsService";

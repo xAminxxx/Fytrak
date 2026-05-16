@@ -2,10 +2,11 @@ import { useState, useEffect, useMemo } from "react";
 import { subscribeWithCache } from "../data/subscriptions/subscriptionCache";
 import {
   subscribeToDailyMeals,
-  subscribeToWorkouts,
+  subscribeToDailyWorkouts,
   subscribeToUserProfile,
   subscribeToPrescribedWorkouts,
   subscribeToPrescribedMeals,
+  subscribeToOpenCheckInTasks,
   subscribeToLatestMetrics,
   subscribeToTraineePrograms,
   type Meal,
@@ -14,7 +15,8 @@ import {
   type PrescribedWorkout,
   type PrescribedMeal,
   type BodyMetric,
-  type Program
+  type Program,
+  type CheckInTask
 } from "../services/userSession";
 import { getChatThreadId, subscribeToLatestMessage, type ChatThreadSummary } from "../services/chatService";
 import { buildTodayMission } from "../features/retention/todayMission";
@@ -43,6 +45,7 @@ export function useTraineeDashboard() {
   const [prescribedMeals, setPrescribedMeals] = useState<PrescribedMeal[]>([]);
   const [metrics, setMetrics] = useState<BodyMetric[]>([]);
   const [programs, setPrograms] = useState<Program[]>([]);
+  const [checkInTasks, setCheckInTasks] = useState<CheckInTask[]>([]);
   const [lastMessage, setLastMessage] = useState<ChatThreadSummary | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
@@ -56,16 +59,9 @@ export function useTraineeDashboard() {
     );
 
     const unsubWorkouts = subscribeWithCache<WorkoutLog[]>(
-      `workouts:${uid}`,
-      (emit) => subscribeToWorkouts(uid, emit),
-      (data) => {
-        const todayFlows = data.filter((w) => {
-          if (!w.createdAt) return false;
-          const wDate = toLocalDateKey(w.createdAt.toDate ? w.createdAt.toDate() : new Date(w.createdAt));
-          return wDate === dateKey;
-        });
-        setWorkouts(todayFlows);
-      }
+      `dailyWorkouts:${uid}:${dateKey}`,
+      (emit) => subscribeToDailyWorkouts(uid, dateKey, emit),
+      setWorkouts
     );
 
     const unsubPrescribed = subscribeWithCache<PrescribedWorkout[]>(
@@ -78,6 +74,12 @@ export function useTraineeDashboard() {
       `prescribedMeals:${uid}`,
       (emit) => subscribeToPrescribedMeals(uid, emit),
       setPrescribedMeals
+    );
+
+    const unsubCheckInTasks = subscribeWithCache<CheckInTask[]>(
+      `openCheckInTasks:${uid}`,
+      (emit) => subscribeToOpenCheckInTasks(uid, emit),
+      setCheckInTasks
     );
 
     const unsubProfile = subscribeWithCache<UserProfile>(
@@ -112,6 +114,7 @@ export function useTraineeDashboard() {
       unsubWorkouts();
       unsubPrescribed();
       unsubPrescribedMeals();
+      unsubCheckInTasks();
       unsubProfile();
       unsubMetrics();
       unsubPrograms();
@@ -227,6 +230,7 @@ export function useTraineeDashboard() {
     prescribedMeals,
     metrics,
     programs,
+    checkInTasks,
     isLoading,
     isPremium,
     nutritionStats,

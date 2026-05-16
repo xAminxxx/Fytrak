@@ -15,6 +15,10 @@ import { useTraineeDashboard } from "../../hooks/useTraineeDashboard";
 import { DashboardActionCard } from "../../components/DashboardActionCard";
 import { TodayMissionCard } from "../../features/retention/components/TodayMissionCard";
 import type { TodayMissionItemId } from "../../features/retention/todayMission";
+import { updateCheckInTaskStatus } from "../../services/userSession";
+import { ToastService } from "../../components/Toast";
+import { toSafeDate } from "../../utils/chartFilters";
+import { auth } from "../../config/firebase";
 
 type TraineeHomeScreenProps = {
   onQuickAskCoach: () => void;
@@ -31,6 +35,7 @@ export function TraineeHomeScreen({ onQuickAskCoach }: TraineeHomeScreenProps) {
     prescribedMeals,
     metrics,
     programs,
+    checkInTasks,
     isLoading,
     isPremium,
     nutritionStats,
@@ -39,6 +44,33 @@ export function TraineeHomeScreen({ onQuickAskCoach }: TraineeHomeScreenProps) {
     todayMission,
     primaryAction,
   } = useTraineeDashboard();
+  const hasAssignedCoach = profile?.assignmentStatus === "assigned" && !!profile?.selectedCoachId;
+
+  const formatDueDate = (value?: string | null) => {
+    if (!value) return "";
+    const date = toSafeDate(value);
+    if (Number.isNaN(date.getTime())) return "";
+    return date.toLocaleDateString([], { month: "short", day: "numeric" });
+  };
+
+  const handleTaskAction = async (taskId: string, status: "completed" | "dismissed") => {
+    const traineeId = auth.currentUser?.uid || profile?.uid;
+    if (!traineeId) {
+      ToastService.error("Session expired", "Please sign in again.");
+      return;
+    }
+
+    try {
+      await updateCheckInTaskStatus(traineeId, taskId, status);
+      ToastService.success(
+        status === "completed" ? "Task completed" : "Task dismissed",
+        status === "completed" ? "Nice work staying accountable." : "No worries. Keep moving forward."
+      );
+    } catch (error) {
+      console.error("Failed to update task:", error);
+      ToastService.error("Update failed", "Could not update the check-in task.");
+    }
+  };
 
   const handlePrimaryAction = () => {
     const { actionType, payload } = primaryAction;
@@ -100,14 +132,12 @@ export function TraineeHomeScreen({ onQuickAskCoach }: TraineeHomeScreenProps) {
           <View style={styles.container}>
 
             {/* COACH ASSIGNMENT BANNER */}
-            {!isPremium && (
+            {!hasAssignedCoach && (
               <Pressable 
                 style={styles.premiumBanner}
                 onPress={() => {
                   if (profile?.assignmentStatus === 'pending') {
                     navigation.navigate("PendingCoach");
-                  } else if (profile?.assignmentStatus === 'assigned') {
-                    Alert.alert("Fytrak Premium", "Connect with your coach and unlock plans.");
                   } else {
                     navigation.navigate("CoachAssignment");
                   }
@@ -146,6 +176,55 @@ export function TraineeHomeScreen({ onQuickAskCoach }: TraineeHomeScreenProps) {
 
             {/* TODAY MISSION TRACKER */}
             <TodayMissionCard mission={todayMission} onAction={handleMissionAction} />
+
+            {hasAssignedCoach && checkInTasks.length > 0 && (
+              <View style={styles.card}>
+                <View style={styles.cardHeader}>
+                  <Ionicons name="clipboard" size={18} color={colors.primary} />
+                  <Typography variant="h2">Coach check-ins</Typography>
+                  <View style={styles.taskCountPill}>
+                    <Typography style={styles.taskCountText}>{checkInTasks.length} OPEN</Typography>
+                  </View>
+                </View>
+                <View style={styles.taskList}>
+                  {checkInTasks.slice(0, 3).map((task) => {
+                    const dueLabel = formatDueDate(task.dueDate);
+                    return (
+                      <View key={task.id} style={styles.taskItem}>
+                        <View style={styles.taskInfo}>
+                          <Typography variant="h2" style={styles.taskTitle}>{task.title}</Typography>
+                          {!!task.description && (
+                            <Typography variant="label" color={colors.textFaint} style={styles.taskDesc}>{task.description}</Typography>
+                          )}
+                          {!!dueLabel && (
+                            <Typography variant="label" color={colors.warning} style={styles.taskDue}>Due {dueLabel}</Typography>
+                          )}
+                        </View>
+                        <View style={styles.taskActions}>
+                          <Pressable
+                            style={[styles.taskActionBtn, styles.taskActionComplete]}
+                            onPress={() => handleTaskAction(task.id, "completed")}
+                          >
+                            <Ionicons name="checkmark" size={16} color={colors.primaryText} />
+                          </Pressable>
+                          <Pressable
+                            style={[styles.taskActionBtn, styles.taskActionDismiss]}
+                            onPress={() => handleTaskAction(task.id, "dismissed")}
+                          >
+                            <Ionicons name="close" size={16} color={colors.textSecondary} />
+                          </Pressable>
+                        </View>
+                      </View>
+                    );
+                  })}
+                </View>
+                {checkInTasks.length > 3 && (
+                  <Typography variant="label" color={colors.textFaint} style={styles.moreTasksText}>
+                    {checkInTasks.length - 3} more tasks waiting
+                  </Typography>
+                )}
+              </View>
+            )}
 
             {/* TODAY STATS SUMMARY */}
             <View style={styles.card}>
@@ -205,13 +284,13 @@ export function TraineeHomeScreen({ onQuickAskCoach }: TraineeHomeScreenProps) {
                   <Ionicons name="nutrition" size={20} color={colors.primary} />
                   <Typography style={[styles.actionButtonText, { color: colors.primary }] as any}>Nutrition</Typography>
                 </Pressable>
-                {profile?.assignmentStatus === 'assigned' ? (
+                {hasAssignedCoach ? (
                   <Pressable 
-                    style={[styles.actionButton, !isPremium && styles.disabledAction]} 
-                    onPress={() => isPremium ? onQuickAskCoach() : Alert.alert("Premium Only", "Asking a coach directly is a premium feature.")}
+                    style={styles.actionButton}
+                    onPress={onQuickAskCoach}
                   >
-                    <Ionicons name={isPremium ? "chatbubble-ellipses" : "lock-closed"} size={20} color={isPremium ? colors.primaryText : colors.textDim} />
-                    <Typography style={[styles.actionButtonText, !isPremium && { color: colors.textDim }] as any}>Ask Coach</Typography>
+                    <Ionicons name="chatbubble-ellipses" size={20} color={colors.primaryText} />
+                    <Typography style={styles.actionButtonText}>Ask Coach</Typography>
                   </Pressable>
                 ) : (
                   <Pressable 
@@ -410,6 +489,20 @@ const styles = StyleSheet.create({
   outlinedAction: { backgroundColor: "transparent", borderWidth: 1, borderColor: colors.border },
   disabledAction: { backgroundColor: "#222", borderColor: "#333", borderWidth: 1 },
   actionButtonText: { color: colors.primaryText, fontWeight: "900", fontSize: 14, textTransform: "uppercase" },
+
+  taskCountPill: { marginLeft: "auto", backgroundColor: colors.primaryMuted, paddingHorizontal: 10, paddingVertical: 4, borderRadius: radius.pill },
+  taskCountText: { color: colors.primary, fontSize: 10, fontWeight: "900" },
+  taskList: { gap: spacing.md },
+  taskItem: { flexDirection: "row", alignItems: "center", gap: spacing.md, backgroundColor: colors.bgDark, padding: spacing.md, borderRadius: radius.md, borderWidth: 1, borderColor: colors.borderSubtle },
+  taskInfo: { flex: 1, gap: 4 },
+  taskTitle: { fontSize: 14 },
+  taskDesc: { fontSize: 9, letterSpacing: 0.6 },
+  taskDue: { fontSize: 9, letterSpacing: 0.6 },
+  taskActions: { flexDirection: "row", gap: 8 },
+  taskActionBtn: { width: 32, height: 32, borderRadius: 10, alignItems: "center", justifyContent: "center", borderWidth: 1 },
+  taskActionComplete: { backgroundColor: colors.primary, borderColor: colors.primary },
+  taskActionDismiss: { backgroundColor: "transparent", borderColor: colors.borderStrong },
+  moreTasksText: { textAlign: "right", fontSize: 10 },
 
   premiumBadge: { flexDirection: "row", alignItems: "center", backgroundColor: colors.primary, paddingHorizontal: 6, paddingVertical: 2, borderRadius: radius.xs, gap: 4, marginLeft: 8 },
   coachBadge: { marginLeft: "auto", backgroundColor: colors.primary, paddingHorizontal: 8, paddingVertical: 4, borderRadius: radius.xs },

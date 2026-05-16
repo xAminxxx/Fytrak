@@ -65,7 +65,7 @@ function ChatLockedScreen({ onUnlock }: { onUnlock: () => void }) {
         <View style={lockedStyles.iconCircle}>
           <Ionicons name="lock-closed" size={40} color={colors.primary} />
         </View>
-        <Text style={lockedStyles.title}>Premium Feature</Text>
+        <Text style={lockedStyles.title}>Coach Feature</Text>
         <Text style={lockedStyles.desc}>
           Connect with a certified coach to unlock direct messaging, personalized plans, and real-time feedback.
         </Text>

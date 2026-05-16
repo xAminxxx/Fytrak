@@ -29,7 +29,6 @@ import { SplashScreen } from "../screens/onboarding/SplashScreen";
 import { WelcomeScreen } from "../screens/onboarding/WelcomeScreen";
 import {
   ensureUserSession,
-  saveAssignmentStatus,
   saveCoachRequest,
   saveCompleteProfile,
   saveCoachProfile,
@@ -179,11 +178,6 @@ export function RootNavigator() {
                   {() => (
                     <PendingCoachScreen
                       coachName={session.selectedCoachName}
-                      onSimulateApprove={async () => {
-                        const user = auth.currentUser;
-                        if (!user) throw new Error("Please login again.");
-                        await saveAssignmentStatus(user.uid, "assigned");
-                      }}
                     />
                   )}
                 </Stack.Screen>

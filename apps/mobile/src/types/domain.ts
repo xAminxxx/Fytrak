@@ -8,6 +8,7 @@ export interface UserProfile {
   role: UserRole;
   name?: string;
   profileImageUrl?: string;
+  bio?: string;
   gender?: "male" | "female" | null;
   goal?: string;
   level?: ProfileLevel;
@@ -111,6 +112,7 @@ export interface WorkoutSet {
 export interface WorkoutLog {
   id: string;
   name: string;
+  date?: string;
   exercises: {
     name: string;
     sets: WorkoutSet[];

@@ -5,9 +5,9 @@ import { ScreenShell } from "../../components/ScreenShell";
 import { colors } from "../../theme/colors";
 import { auth } from "../../config/firebase";
 import {
-    fetchLatestThreadMessage,
-    getChatThreadId,
+    subscribeToCoachThreadSummaries,
     subscribeToCoachTrainees,
+    type CoachThreadSummary,
     type ChatThreadSummary,
     type CoachTrainee,
 } from "../../services/userSession";
@@ -15,11 +15,31 @@ import { useNavigation } from "@react-navigation/native";
 import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import type { RootStackParamList } from "../../navigation/types";
 
+const toTime = (value: unknown): number => {
+    if (!value) return 0;
+    if (value instanceof Date) return value.getTime();
+    if (typeof value === "string" || typeof value === "number") {
+        const parsed = new Date(value);
+        return Number.isNaN(parsed.getTime()) ? 0 : parsed.getTime();
+    }
+    if (typeof value === "object" && "toDate" in value) {
+        const maybeTimestamp = value as { toDate?: () => unknown };
+        if (typeof maybeTimestamp.toDate !== "function") return 0;
+        const parsed = maybeTimestamp.toDate();
+        return parsed instanceof Date && !Number.isNaN(parsed.getTime()) ? parsed.getTime() : 0;
+    }
+    return 0;
+};
+
+const toTimeLabel = (value: unknown): string => {
+    const time = toTime(value);
+    return time > 0 ? new Date(time).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : "";
+};
+
 export function CoachInboxScreen() {
     const [trainees, setTrainees] = useState<CoachTrainee[]>([]);
     const [summaries, setSummaries] = useState<Record<string, ChatThreadSummary | null>>({});
     const [isLoading, setIsLoading] = useState(true);
-    const [isLoadingThreads, setIsLoadingThreads] = useState(false);
     const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
 
     useEffect(() => {
@@ -35,49 +55,17 @@ export function CoachInboxScreen() {
     }, []);
 
     useEffect(() => {
-        let isMounted = true;
         const user = auth.currentUser;
         if (!user) return;
 
-        if (trainees.length === 0) {
-            setSummaries({});
-            return;
-        }
-
-        const missing = trainees.filter((trainee) => !trainee.clientSummary?.lastMessageAt);
-        if (missing.length === 0) {
-            setSummaries({});
-            return;
-        }
-
-        setIsLoadingThreads(true);
-        Promise.all(
-            missing.map(async (trainee) => {
-                const threadId = getChatThreadId(trainee.id, user.uid);
-                const summary = await fetchLatestThreadMessage(threadId);
-                return { traineeId: trainee.id, summary };
-            })
-        )
-            .then((rows) => {
-                if (!isMounted) return;
-                const map: Record<string, ChatThreadSummary | null> = {};
-                rows.forEach((row) => {
-                    map[row.traineeId] = row.summary;
-                });
-                setSummaries(map);
-            })
-            .catch((error) => {
-                console.error("Failed to load inbox summaries:", error);
-                if (isMounted) setSummaries({});
-            })
-            .finally(() => {
-                if (isMounted) setIsLoadingThreads(false);
+        return subscribeToCoachThreadSummaries(user.uid, (threadSummaries: CoachThreadSummary[]) => {
+            const next: Record<string, ChatThreadSummary> = {};
+            threadSummaries.forEach((summary) => {
+                next[summary.traineeId] = summary;
             });
-
-        return () => {
-            isMounted = false;
-        };
-    }, [trainees]);
+            setSummaries(next);
+        });
+    }, []);
 
     const rows = useMemo(() => {
         const sorted = [...trainees].sort((a, b) => {
@@ -87,8 +75,8 @@ export function CoachInboxScreen() {
             const bSummary = b.clientSummary?.lastMessageAt ? {
                 lastMessageAt: b.clientSummary.lastMessageAt,
             } : summaries[b.id];
-            const aTime = aSummary?.lastMessageAt ? new Date(aSummary.lastMessageAt).getTime() : 0;
-            const bTime = bSummary?.lastMessageAt ? new Date(bSummary.lastMessageAt).getTime() : 0;
+            const aTime = toTime(aSummary?.lastMessageAt);
+            const bTime = toTime(bSummary?.lastMessageAt);
             if (aTime !== bTime) return bTime - aTime;
             return (a.name || "").localeCompare(b.name || "");
         });
@@ -107,13 +95,6 @@ export function CoachInboxScreen() {
                 </View>
             ) : (
                 <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.list}>
-                    {isLoadingThreads && (
-                        <View style={styles.signalLoader}>
-                            <ActivityIndicator size="small" color={colors.primary} />
-                            <Text style={styles.signalText}>Refreshing threads...</Text>
-                        </View>
-                    )}
-
                     {rows.length === 0 ? (
                         <View style={styles.emptyBox}>
                             <Ionicons name="chatbubbles-outline" size={32} color="#444" />
@@ -126,10 +107,9 @@ export function CoachInboxScreen() {
                                 lastMessageText: trainee.clientSummary.lastMessageText,
                             } : summaries[trainee.id];
                             const preview = summary?.lastMessageText || "No messages yet";
-                            const timeLabel = summary?.lastMessageAt
-                                ? new Date(summary.lastMessageAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
-                                : "";
-                            const unreadCount = trainee.clientSummary?.unreadCoachCount || 0;
+                            const timeLabel = toTimeLabel(summary?.lastMessageAt);
+                            const threadSummary = summaries[trainee.id] as CoachThreadSummary | undefined;
+                            const unreadCount = threadSummary?.unreadByCoach ?? trainee.clientSummary?.unreadCoachCount ?? 0;
 
                             return (
                                 <Pressable

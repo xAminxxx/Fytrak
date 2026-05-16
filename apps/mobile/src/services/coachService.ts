@@ -4,7 +4,6 @@
  */
 import {
   doc,
-  getDoc,
   setDoc,
   onSnapshot,
   collection,
@@ -13,13 +12,16 @@ import {
   getDocs,
   query,
   where,
-  orderBy,
   limit,
   serverTimestamp,
 } from "firebase/firestore";
 import { db } from "../config/firebase";
-import { localDateKeyDaysAgo } from "../utils/dateKeys";
 import type { ClientSummary } from "./clientSummaryService";
+import {
+  resolveCoachRequest,
+  subscribeToPendingCoachRequests,
+  type CoachRequestWithTrainee,
+} from "./assignmentService";
 
 export type Coach = {
   id: string;
@@ -82,6 +84,24 @@ export type CoachClientSignal = {
 
 const usersCollection = "users";
 
+export type CoachRequestCard = CoachRequestWithTrainee;
+
+const toDateOrNull = (value: unknown): Date | null => {
+  if (!value) return null;
+  if (value instanceof Date) return value;
+  if (typeof value === "string" || typeof value === "number") {
+    const parsed = new Date(value);
+    return Number.isNaN(parsed.getTime()) ? null : parsed;
+  }
+  if (typeof value === "object" && "toDate" in value) {
+    const maybeTimestamp = value as { toDate?: () => unknown };
+    if (typeof maybeTimestamp.toDate !== "function") return null;
+    const parsed = maybeTimestamp.toDate();
+    return parsed instanceof Date && !Number.isNaN(parsed.getTime()) ? parsed : null;
+  }
+  return null;
+};
+
 // --- COACH PROFILE ---
 
 export const saveCoachProfile = async (uid: string, payload: CoachProfilePayload): Promise<void> => {
@@ -98,7 +118,7 @@ export const saveCoachProfile = async (uid: string, payload: CoachProfilePayload
 };
 
 export const fetchCoaches = async (): Promise<Coach[]> => {
-  const q = query(collection(db, usersCollection), where("role", "==", "coach"));
+  const q = query(collection(db, usersCollection), where("role", "==", "coach"), limit(50));
   const snapshot = await getDocs(q);
   return snapshot.docs.map(doc => {
     const data = doc.data();
@@ -113,68 +133,45 @@ export const fetchCoaches = async (): Promise<Coach[]> => {
       responseTime: data.responseTime || "Fast",
       avatarUrl: data.avatarUrl,
     };
-  });
+  }).sort((a, b) => Number(b.verified) - Number(a.verified) || b.rating - a.rating);
 };
 
 // --- TRAINEE MANAGEMENT ---
 
 export const subscribeToCoachTrainees = (coachId: string, callback: (trainees: CoachTrainee[]) => void) => {
-  const q = query(collection(db, usersCollection), where("selectedCoachId", "==", coachId));
+  const q = query(
+    collection(db, usersCollection),
+    where("selectedCoachId", "==", coachId),
+    where("assignmentStatus", "==", "assigned"),
+    limit(100)
+  );
   return onSnapshot(q, (snapshot) => {
-    const trainees = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as CoachTrainee));
+    const trainees = snapshot.docs.map(doc => {
+      const data = doc.data();
+      const profile = data.profile || {};
+      return {
+        id: doc.id,
+        ...data,
+        profile: {
+          ...profile,
+          goal: profile.basic?.goal || profile.goal,
+          goalText: profile.basic?.goal || profile.goalText || profile.goal,
+        },
+      } as CoachTrainee;
+    });
     callback(trainees);
   });
 };
 
 export const fetchCoachClientSignal = async (trainee: CoachTrainee): Promise<CoachClientSignal> => {
-  if (trainee.clientSummary?.workoutsLast7Days !== undefined || trainee.clientSummary?.mealsLast7Days !== undefined) {
-    const lastWorkoutAt = trainee.clientSummary?.lastWorkoutAt?.toDate
-      ? trainee.clientSummary.lastWorkoutAt.toDate()
-      : trainee.clientSummary?.lastWorkoutAt
-        ? new Date(trainee.clientSummary.lastWorkoutAt)
-        : null;
-
-    return {
-      traineeId: trainee.id,
-      lastWorkoutAt: lastWorkoutAt && !Number.isNaN(lastWorkoutAt.getTime()) ? lastWorkoutAt : null,
-      workoutsLast7Days: trainee.clientSummary?.workoutsLast7Days ?? 0,
-      mealsLast7Days: trainee.clientSummary?.mealsLast7Days ?? 0,
-      avgDailyProtein: trainee.clientSummary?.avgDailyProtein ?? 0,
-      proteinTarget: trainee.macroTargets?.protein ?? null,
-    };
-  }
-
-  const workoutSnapshot = await getDocs(
-    query(
-      collection(db, usersCollection, trainee.id, "workouts"),
-      orderBy("createdAt", "desc"),
-      limit(20)
-    )
-  );
-  const mealSnapshot = await getDocs(
-    query(
-      collection(db, usersCollection, trainee.id, "meals"),
-      where("date", ">=", localDateKeyDaysAgo(6))
-    )
-  );
-
-  const sevenDaysAgo = Date.now() - 7 * 86400000;
-  const workouts = workoutSnapshot.docs.map((workoutDoc) => workoutDoc.data());
-  const workoutsLast7Days = workouts.filter((workout) => {
-    const createdAt = workout.createdAt?.toDate ? workout.createdAt.toDate() : null;
-    return createdAt ? createdAt.getTime() >= sevenDaysAgo : false;
-  }).length;
-  const lastWorkoutAt = workouts[0]?.createdAt?.toDate ? workouts[0].createdAt.toDate() as Date : null;
-
-  const meals = mealSnapshot.docs.map((mealDoc) => mealDoc.data());
-  const totalProtein = meals.reduce((sum, meal) => sum + (Number(meal.protein) || 0), 0);
+  const lastWorkoutAt = toDateOrNull(trainee.clientSummary?.lastWorkoutAt);
 
   return {
     traineeId: trainee.id,
     lastWorkoutAt,
-    workoutsLast7Days,
-    mealsLast7Days: meals.length,
-    avgDailyProtein: Math.round(totalProtein / 7),
+    workoutsLast7Days: trainee.clientSummary?.workoutsLast7Days ?? 0,
+    mealsLast7Days: trainee.clientSummary?.mealsLast7Days ?? 0,
+    avgDailyProtein: trainee.clientSummary?.avgDailyProtein ?? 0,
     proteinTarget: trainee.macroTargets?.protein ?? null,
   };
 };
@@ -184,12 +181,10 @@ export const fetchCoachClientSignals = async (trainees: CoachTrainee[]): Promise
 };
 
 export const respondToTraineeRequest = async (traineeId: string, accept: boolean): Promise<void> => {
-  const ref = doc(db, usersCollection, traineeId);
-  await setDoc(ref, {
-    assignmentStatus: accept ? "assigned" : "rejected",
-    updatedAt: serverTimestamp(),
-  }, { merge: true });
+  await resolveCoachRequest(traineeId, accept);
 };
+
+export { subscribeToPendingCoachRequests };
 
 // --- TEMPLATES ---
 

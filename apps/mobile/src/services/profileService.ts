@@ -22,6 +22,10 @@ import { appEnv } from "../config/env";
 import type { AssignmentStatus, SessionState, UserRole } from "../state/types";
 import { authenticatedSessionState, defaultSessionData, toSessionState } from "../state/session";
 import { toLocalDateKey } from "../utils/dateKeys";
+import {
+  cancelCoachAssignmentRequest,
+  requestCoachAssignment,
+} from "./assignmentService";
 
 import type { UserProfile, ProfileLevel } from "../types/domain";
 export type { UserProfile, ProfileLevel };
@@ -147,23 +151,34 @@ export const subscribeToUserProfile = (uid: string, callback: (profile: UserProf
   return onSnapshot(ref, (snapshot) => {
     if (snapshot.exists()) {
       const data = snapshot.data();
+      const profile = data.profile || {};
+      const basic = profile.basic || {};
+      const training = profile.training || {};
+      const nutritionProfile = profile.nutritionProfile || {};
       callback({
         uid,
         email: data.email || "",
         role: data.role || "trainee",
-        goal: data.profile?.goal || data.goal || "Not set",
-        level: data.profile?.level,
-        injuries: data.profile?.injuries,
+        goal: basic.goal || profile.goal || data.goal || "Not set",
+        level: training.level || basic.level || profile.level,
+        injuries: training.injuries || profile.injuries,
         name: data.name,
+        bio: data.bio || profile.bio,
         macroTargets: data.macroTargets || { calories: 2100, protein: 160, carbs: 220, fats: 65 },
         workoutProfileCompleted: data.workoutProfileCompleted || false,
         nutritionProfileCompleted: data.nutritionProfileCompleted || false,
         isPremium: data.isPremium || false,
-        lifestyle: data.profile?.lifestyle || data.lifestyle,
-        work: data.profile?.work || data.work,
-        weight: data.profile?.weight || data.weight,
-        height: data.profile?.height || data.height,
-        activityLevel: data.profile?.activityLevel || data.activityLevel,
+        lifestyle: nutritionProfile.lifestyle || profile.lifestyle || data.lifestyle,
+        medical: nutritionProfile.medical || profile.medical || data.medical,
+        nutrition: nutritionProfile.nutrition || profile.nutrition || data.nutrition,
+        work: training.work || profile.work || data.work,
+        weight: basic.weight || profile.weight || data.weight,
+        height: basic.height || profile.height || data.height,
+        birthDate: basic.birthDate || profile.birthDate,
+        gender: basic.gender || profile.gender,
+        city: basic.city || profile.city,
+        country: basic.country || profile.country,
+        activityLevel: nutritionProfile.activityLevel || profile.activityLevel || data.activityLevel,
         assignmentStatus: data.assignmentStatus || "unassigned",
         selectedCoachId: data.selectedCoachId,
         selectedCoachName: data.selectedCoachName,
@@ -178,14 +193,16 @@ export const saveCompleteProfile = async (uid: string, payload: CompleteProfileP
   await setDoc(ref, {
     profileCompleted: true,
     profile: {
-      goal: payload.goal ? payload.goal.trim() : "",
-      weight: payload.weight,
-      height: payload.height,
-      birthDate: payload.birthday,
-      gender: payload.gender || null,
-      level: payload.level || null,
-      city: payload.city?.trim() || "",
-      country: payload.country?.trim() || "",
+      basic: {
+        goal: payload.goal ? payload.goal.trim() : "",
+        weight: payload.weight,
+        height: payload.height,
+        birthDate: payload.birthday,
+        gender: payload.gender || null,
+        level: payload.level || null,
+        city: payload.city?.trim() || "",
+        country: payload.country?.trim() || "",
+      },
     },
     workoutProfileCompleted: false,
     nutritionProfileCompleted: false,
@@ -198,7 +215,9 @@ export const saveWorkoutIntake = async (uid: string, payload: WorkoutIntakePaylo
   const ref = doc(db, usersCollection, uid);
   await setDoc(ref, {
     workoutProfileCompleted: true,
-    profile: payload,
+    profile: {
+      training: payload,
+    },
     updatedAt: serverTimestamp(),
   }, { merge: true });
 };
@@ -207,7 +226,9 @@ export const saveNutritionIntake = async (uid: string, payload: NutritionIntakeP
   const ref = doc(db, usersCollection, uid);
   await setDoc(ref, {
     nutritionProfileCompleted: true,
-    profile: payload,
+    profile: {
+      nutritionProfile: payload,
+    },
     updatedAt: serverTimestamp(),
   }, { merge: true });
 };
@@ -225,23 +246,16 @@ export const saveUserRole = async (uid: string, role: UserRole): Promise<void> =
 // --- ASSIGNMENT ---
 
 export const saveCoachRequest = async (uid: string, coach: { id: string; name: string }): Promise<void> => {
-  const ref = doc(db, usersCollection, uid);
-  await setDoc(ref, {
-    assignmentStatus: "pending",
-    selectedCoachId: coach.id,
-    selectedCoachName: coach.name,
-    updatedAt: serverTimestamp(),
-  }, { merge: true });
+  await requestCoachAssignment(uid, coach);
 };
 
 export const saveAssignmentStatus = async (uid: string, status: AssignmentStatus): Promise<void> => {
-  const ref = doc(db, usersCollection, uid);
-  const updateData: any = { assignmentStatus: status, updatedAt: serverTimestamp() };
   if (status === "unassigned") {
-    updateData.selectedCoachId = null;
-    updateData.selectedCoachName = null;
+    await cancelCoachAssignmentRequest(uid);
+    return;
   }
-  await setDoc(ref, updateData, { merge: true });
+
+  throw new Error(`Assignment status '${status}' must be changed through the coach request workflow.`);
 };
 
 // --- BODY METRICS ---
@@ -270,7 +284,11 @@ export const saveBodyMetric = async (uid: string, metric: { weight: number; body
     await addDoc(collRef, data);
   }
 
-  await setDoc(userRef, { profile: profileUpdates }, { merge: true });
+  await setDoc(userRef, {
+    profile: {
+      basic: profileUpdates,
+    },
+  }, { merge: true });
 };
 
 export const subscribeToLatestMetrics = (uid: string, callback: (metrics: BodyMetric[]) => void) => {

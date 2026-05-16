@@ -1,11 +1,10 @@
-export type UserRole = "trainee" | "coach";
+import type {
+  AssignmentStatus as SharedAssignmentStatus,
+  UserRole as SharedUserRole,
+} from "../../../../packages/shared/src";
 
-export type AssignmentStatus =
-  | "unassigned"
-  | "pending"
-  | "assigned"
-  | "rejected"
-  | "expired";
+export type UserRole = Exclude<SharedUserRole, "admin">;
+export type AssignmentStatus = SharedAssignmentStatus;
 
 export type SessionState = {
   isAuthenticated: boolean;

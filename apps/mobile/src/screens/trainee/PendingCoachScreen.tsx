@@ -9,10 +9,9 @@ import { logOut } from "../../services/auth";
 
 type PendingCoachScreenProps = {
   coachName: string | null;
-  onSimulateApprove?: () => void; // Keep for dev but make optional
 };
 
-export function PendingCoachScreen({ coachName, onSimulateApprove }: PendingCoachScreenProps) {
+export function PendingCoachScreen({ coachName }: PendingCoachScreenProps) {
   const handleLogout = async () => {
     try {
       await logOut();
@@ -73,12 +72,6 @@ export function PendingCoachScreen({ coachName, onSimulateApprove }: PendingCoac
             <Ionicons name="close-circle-outline" size={20} color="#ff4444" />
             <Text style={styles.cancelBtnText}>CANCEL REQUEST</Text>
           </Pressable>
-
-          {onSimulateApprove && (
-            <Pressable style={styles.devBtn} onPress={onSimulateApprove}>
-              <Text style={styles.devBtnText}>[DEV] SIMULATE APPROVAL</Text>
-            </Pressable>
-          )}
         </View>
 
         <View style={styles.infoBox}>
@@ -227,15 +220,6 @@ const styles = StyleSheet.create({
     fontWeight: "800",
     fontSize: 14,
     letterSpacing: 0.5,
-  },
-  devBtn: {
-    padding: 10,
-    alignItems: "center",
-  },
-  devBtnText: {
-    color: "#444",
-    fontSize: 11,
-    fontWeight: "700",
   },
   infoBox: {
     flexDirection: "row",

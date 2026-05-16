@@ -12,28 +12,39 @@ import {
 } from "firebase/firestore";
 import { db } from "../config/firebase";
 import { localDateKeyDaysAgo } from "../utils/dateKeys";
+import type { ClientSummary as SharedClientSummary } from "../../../../packages/shared/src";
+import { callMarkCoachThreadRead } from "./backendFunctionsService";
 
-export type ClientSummary = {
-  workoutsLast7Days?: number;
-  mealsLast7Days?: number;
-  avgDailyProtein?: number;
-  lastWorkoutAt?: any;
-  lastMealAt?: any;
-  lastMessageAt?: any;
-  lastMessageText?: string;
-  lastMessageSenderId?: string;
-  unreadCoachCount?: number;
-  updatedAt?: any;
-};
+export type ClientSummary = SharedClientSummary;
 
 const usersCollection = "users";
+const summariesCollection = "summaries";
+
+const toClientSummaryDocument = (data: Record<string, unknown>): ClientSummary => {
+  const summary: ClientSummary = {};
+
+  Object.entries(data).forEach(([key, value]) => {
+    if (!key.startsWith("clientSummary.")) return;
+    const field = key.replace("clientSummary.", "") as keyof ClientSummary;
+    (summary as Record<string, unknown>)[field] = value;
+  });
+
+  return summary;
+};
 
 const safeUpdate = async (uid: string, data: Record<string, unknown>) => {
   const ref = doc(db, usersCollection, uid);
+  const summaryRef = doc(db, usersCollection, uid, summariesCollection, "client");
+  const summaryData = toClientSummaryDocument(data);
+
   try {
     await updateDoc(ref, data);
   } catch (error) {
     await setDoc(ref, data, { merge: true });
+  }
+
+  if (Object.keys(summaryData).length > 0) {
+    await setDoc(summaryRef, summaryData, { merge: true });
   }
 };
 
@@ -93,9 +104,16 @@ export const updateClientSummaryAfterMessage = async (params: {
   await safeUpdate(params.traineeId, updates);
 };
 
-export const clearCoachUnread = async (traineeId: string): Promise<void> => {
-  await safeUpdate(traineeId, {
+export const clearCoachUnread = async (traineeId: string, threadId?: string): Promise<void> => {
+  if (threadId) {
+    await callMarkCoachThreadRead(threadId);
+    return;
+  }
+
+  const updates = {
     "clientSummary.unreadCoachCount": 0,
     "clientSummary.updatedAt": serverTimestamp(),
-  });
+  };
+
+  await safeUpdate(traineeId, updates);
 };

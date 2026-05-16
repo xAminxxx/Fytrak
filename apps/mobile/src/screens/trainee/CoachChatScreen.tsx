@@ -68,7 +68,7 @@ export function CoachChatScreen({ traineeId, coachId, traineeName }: CoachChatSc
   useEffect(() => {
     const isCoach = auth.currentUser?.uid === coachId;
     if (!isCoach) return;
-    clearCoachUnread(traineeId).catch((error) => {
+    clearCoachUnread(traineeId, threadId).catch((error) => {
       console.error("Failed to clear unread count:", error);
     });
   }, [coachId, traineeId, threadId]);

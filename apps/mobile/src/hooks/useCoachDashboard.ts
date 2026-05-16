@@ -5,6 +5,7 @@ import {
     fetchCoachClientSignals,
     respondToTraineeRequest,
     subscribeToCoachTrainees,
+    subscribeToPendingCoachRequests,
     type CoachTrainee,
 } from "../services/userSession";
 import { useCurrentUser } from "./useCurrentUser";
@@ -17,6 +18,7 @@ import {
 export function useCoachDashboard() {
     const uid = useCurrentUser();
     const [trainees, setTrainees] = useState<CoachTrainee[]>([]);
+    const [pendingRequests, setPendingRequests] = useState<CoachTrainee[]>([]);
     const [clientSignals, setClientSignals] = useState<CoachClientSignal[]>([]);
     const [isLoading, setIsLoading] = useState(true);
     const [isLoadingSignals, setIsLoadingSignals] = useState(false);
@@ -37,7 +39,30 @@ export function useCoachDashboard() {
         return () => unsubscribe();
     }, [uid]);
 
-    const pending = useMemo(() => trainees.filter(t => t.assignmentStatus === "pending"), [trainees]);
+    useEffect(() => {
+        if (!uid) return;
+
+        const unsubscribe = subscribeWithCache<CoachTrainee[]>(
+            `coachPendingRequests:${uid}`,
+            (emit) => subscribeToPendingCoachRequests(uid, (requests) => {
+                emit(requests.map((request) => ({
+                    id: request.traineeId,
+                    name: request.traineeName,
+                    profile: {
+                        goal: request.traineeGoal,
+                        goalText: request.traineeGoal,
+                    },
+                    assignmentStatus: "pending",
+                    selectedCoachId: uid,
+                })));
+            }),
+            setPendingRequests
+        );
+
+        return () => unsubscribe();
+    }, [uid]);
+
+    const pending = pendingRequests;
     const assigned = useMemo(() => trainees.filter(t => t.assignmentStatus === "assigned"), [trainees]);
 
     useEffect(() => {
