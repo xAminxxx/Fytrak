@@ -32,6 +32,14 @@ const toClientSummaryDocument = (data: Record<string, unknown>): ClientSummary =
   return summary;
 };
 
+const isNotFoundError = (error: unknown): boolean => {
+  if (!error || typeof error !== "object") return false;
+  const code = "code" in error ? String((error as { code?: string }).code || "") : "";
+  if (code.includes("not-found")) return true;
+  const message = "message" in error ? String((error as { message?: string }).message || "") : "";
+  return message.toLowerCase().includes("not-found");
+};
+
 const safeUpdate = async (uid: string, data: Record<string, unknown>) => {
   const ref = doc(db, usersCollection, uid);
   const summaryRef = doc(db, usersCollection, uid, summariesCollection, "client");
@@ -106,8 +114,12 @@ export const updateClientSummaryAfterMessage = async (params: {
 
 export const clearCoachUnread = async (traineeId: string, threadId?: string): Promise<void> => {
   if (threadId) {
-    await callMarkCoachThreadRead(threadId);
-    return;
+    try {
+      await callMarkCoachThreadRead(threadId);
+      return;
+    } catch (error) {
+      if (!isNotFoundError(error)) throw error;
+    }
   }
 
   const updates = {
